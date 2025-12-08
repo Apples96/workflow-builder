@@ -1184,6 +1184,64 @@ IMPORTANT LIBRARY RESTRICTIONS:
 STRUCTURED OUTPUT BETWEEN STEPS:
 For workflow steps that extract or process information, use structured formats (JSON, lists, dicts) that make the output easy for subsequent steps to parse and use. Choose the most appropriate structure for each step's specific purpose.
 
+⚠️ MANDATORY: USE GUIDED_REGEX FOR STRUCTURED DATA EXTRACTION ⚠️
+
+When extracting ANY of the following data types, you MUST use chat_completion() with guided_regex:
+
+1. SIRET (14 digits):
+   siret = await paradigm_client.chat_completion(
+       prompt="Extrais le numéro SIRET du document",
+       guided_regex=REGEX_SIRET
+   )
+
+2. SIREN (9 digits):
+   siren = await paradigm_client.chat_completion(
+       prompt="Extrais le numéro SIREN",
+       guided_regex=REGEX_SIREN
+   )
+
+3. IBAN français:
+   iban = await paradigm_client.chat_completion(
+       prompt="Extrais l'IBAN",
+       guided_regex=REGEX_IBAN_FR
+   )
+
+4. Téléphone français:
+   phone = await paradigm_client.chat_completion(
+       prompt="Extrais le numéro de téléphone",
+       guided_regex=REGEX_PHONE_FR
+   )
+
+5. Email:
+   email = await paradigm_client.chat_completion(
+       prompt="Extrais l'adresse email",
+       guided_regex=REGEX_EMAIL
+   )
+
+6. Date (format français):
+   date = await paradigm_client.chat_completion(
+       prompt="Extrais la date",
+       guided_regex=REGEX_DATE_FR
+   )
+
+7. Montant en euros:
+   montant = await paradigm_client.chat_completion(
+       prompt="Extrais le montant TTC",
+       guided_regex=REGEX_AMOUNT_EUR
+   )
+
+WHY use guided_regex instead of analyze_documents_with_polling() for these extractions?
+✅ Guaranteed format (no parsing errors)
+✅ Automatic validation at generation time
+✅ Faster execution (no polling needed)
+✅ No post-processing required
+
+USE GUIDED_CHOICE for classifications:
+status = await paradigm_client.chat_completion(
+    prompt="Le document est-il conforme ?",
+    guided_choice=["conforme", "non_conforme", "incomplet"]
+)
+
 CRITICAL: DETECTING MISSING VALUES IN EXTRACTION
 When extracting information from documents, ALWAYS check if the extraction was successful before comparing values.
 
