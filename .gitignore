@@ -78,6 +78,7 @@ start.bat
 workflow_ugap_description*.txt
 workflow_*_description*.txt
 workflow_*_description*.md
+workflow_description*.md
 
 # Temporary diagrams and analysis files
 _temp_diagrams/

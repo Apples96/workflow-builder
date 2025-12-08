@@ -2,6 +2,21 @@
 
 Ce document explique comment utiliser les fonctionnalités **guided_choice** et **guided_regex** de l'API LightOn Paradigm pour extraire des données structurées de manière fiable.
 
+## ⚠️ Limitation Importante
+
+**`chat_completion()` avec `guided_choice`/`guided_regex` fonctionne uniquement avec du TEXTE.**
+
+❌ Il ne peut **PAS** accéder directement aux documents uploadés (PDFs, images, etc.)
+✅ Il fonctionne sur du texte fourni dans le prompt
+
+Pour les workflows avec **documents uploadés**, utilisez l'approche en **2 étapes** :
+1. **Extraire les données des documents** :
+   - ✅ **`analyze_documents_with_polling()`** : Pour extraction complète et structurée (CV, formulaires complexes, documents DC4)
+   - ✅ **`document_search()`** : Pour questions simples et rapides sur un seul champ
+2. **Normaliser/formater** (optionnel) :
+   - Avec `chat_completion()` + `guided_regex` pour formats stricts (SIRET, IBAN, etc.)
+   - Directement en Python avec regex (souvent plus simple)
+
 ## 📚 Table des matières
 
 1. [Guided Choice - Classification](#guided-choice---classification)

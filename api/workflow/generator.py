@@ -613,6 +613,11 @@ class ParadigmClient:
 
         No documents involved - just a conversation with the AI.
 
+        ⚠️ CRITICAL: This method does NOT accept max_wait_time parameter!
+        It's a simple, fast API call that returns immediately (typically < 10 seconds).
+        NEVER use max_wait_time with chat_completion() - it will cause errors.
+        Only analyze_documents_with_polling() accepts max_wait_time for long tasks.
+
         Args:
             prompt: Your question or instruction
             model: Which AI model to use (default: alfred-4.2)
@@ -1184,63 +1189,72 @@ IMPORTANT LIBRARY RESTRICTIONS:
 STRUCTURED OUTPUT BETWEEN STEPS:
 For workflow steps that extract or process information, use structured formats (JSON, lists, dicts) that make the output easy for subsequent steps to parse and use. Choose the most appropriate structure for each step's specific purpose.
 
-⚠️ MANDATORY: USE GUIDED_REGEX FOR STRUCTURED DATA EXTRACTION ⚠️
+⚠️ GUIDED_REGEX AND GUIDED_CHOICE - WHEN TO USE ⚠️
 
-When extracting ANY of the following data types, you MUST use chat_completion() with guided_regex:
+IMPORTANT: chat_completion() with guided_regex/guided_choice works with TEXT ONLY.
+It CANNOT directly access uploaded documents (file_ids/document_ids).
 
-1. SIRET (14 digits):
+📋 TWO-STEP APPROACH FOR UPLOADED DOCUMENTS (PDFs, etc.):
+
+1. First, extract raw text from documents:
+   raw_text = await paradigm_client.analyze_documents_with_polling(
+       "Extraire le SIRET, l'IBAN et le téléphone",
+       document_ids=[dc4_id]
+   )
+
+2. Then, normalize/extract structured data with guided_regex:
    siret = await paradigm_client.chat_completion(
-       prompt="Extrais le numéro SIRET du document",
+       prompt=f"Extrais uniquement le SIRET de ce texte: {raw_text}",
        guided_regex=REGEX_SIRET
    )
 
-2. SIREN (9 digits):
-   siren = await paradigm_client.chat_completion(
-       prompt="Extrais le numéro SIREN",
-       guided_regex=REGEX_SIREN
-   )
+✅ USE GUIDED_REGEX when:
+- User provides text input directly (not uploaded documents)
+- You already extracted raw text and need to normalize format
+- You need to format/validate a value extracted from analyze_documents_with_polling()
 
-3. IBAN français:
-   iban = await paradigm_client.chat_completion(
-       prompt="Extrais l'IBAN",
-       guided_regex=REGEX_IBAN_FR
-   )
+Example - User provides text input:
+async def execute_workflow(user_input: str) -> str:
+    # User input: "Mon entreprise, SIRET 12345678901234, est basée à Paris"
+    siret = await paradigm_client.chat_completion(
+        prompt=f"Extrais le SIRET de: {user_input}",
+        guided_regex=REGEX_SIRET
+    )
+    # Returns: "12345678901234" (guaranteed 14 digits)
 
-4. Téléphone français:
-   phone = await paradigm_client.chat_completion(
-       prompt="Extrais le numéro de téléphone",
-       guided_regex=REGEX_PHONE_FR
-   )
+Example - Post-processing after document extraction:
+async def execute_workflow(user_input: str) -> str:
+    # Step 1: Extract from uploaded document
+    raw_data = await paradigm_client.analyze_documents_with_polling(
+        "Extraire nom, SIRET, email du document",
+        document_ids=[file_id]
+    )
 
-5. Email:
-   email = await paradigm_client.chat_completion(
-       prompt="Extrais l'adresse email",
-       guided_regex=REGEX_EMAIL
-   )
+    # Step 2: Normalize with guided_regex (only if needed for critical validation)
+    siret = await paradigm_client.chat_completion(
+        prompt=f"Extrais uniquement le SIRET (14 chiffres) de: {raw_data}",
+        guided_regex=REGEX_SIRET
+    )
 
-6. Date (format français):
-   date = await paradigm_client.chat_completion(
-       prompt="Extrais la date",
-       guided_regex=REGEX_DATE_FR
-   )
+⚠️ ALTERNATIVE: Python normalization functions (often simpler for document workflows)
+For workflows with uploaded documents, you can also normalize AFTER extraction using Python:
 
-7. Montant en euros:
-   montant = await paradigm_client.chat_completion(
-       prompt="Extrais le montant TTC",
-       guided_regex=REGEX_AMOUNT_EUR
-   )
+raw_siret = await paradigm_client.analyze_documents_with_polling(
+    "Extraire le SIRET",
+    document_ids=[file_id]
+)
+# Then normalize with Python
+cleaned_siret = re.sub(r'[^\d]', '', raw_siret)  # Remove non-digits
+if len(cleaned_siret) == 14:
+    siret = cleaned_siret
 
-WHY use guided_regex instead of analyze_documents_with_polling() for these extractions?
-✅ Guaranteed format (no parsing errors)
-✅ Automatic validation at generation time
-✅ Faster execution (no polling needed)
-✅ No post-processing required
-
-USE GUIDED_CHOICE for classifications:
+✅ USE GUIDED_CHOICE for classifications/validations:
 status = await paradigm_client.chat_completion(
     prompt="Le document est-il conforme ?",
     guided_choice=["conforme", "non_conforme", "incomplet"]
 )
+
+This works regardless of whether the question comes from documents or user input.
 
 CRITICAL: DETECTING MISSING VALUES IN EXTRACTION
 When extracting information from documents, ALWAYS check if the extraction was successful before comparing values.
