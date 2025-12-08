@@ -241,6 +241,35 @@ LIGHTON_BASE_URL = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# COMMON REGEX PATTERNS FOR GUIDED_REGEX
+# ============================================================================
+# Use these patterns with chat_completion(guided_regex=...) to extract structured data
+
+# French formats
+REGEX_SIRET = r"\\d{{14}}"  # 14 digits
+REGEX_SIREN = r"\\d{{9}}"   # 9 digits
+REGEX_IBAN_FR = r"FR\\d{{2}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{3}}"
+REGEX_PHONE_FR = r"\\+33[1-9]\\d{{8}}"  # +33XXXXXXXXX
+REGEX_PHONE_FR_WITH_SPACES = r"\\+33\\s?[1-9](?:\\s?\\d{{2}}){{4}}"  # +33 X XX XX XX XX
+
+# Dates
+REGEX_DATE_FR = r"\\d{{2}}/\\d{{2}}/\\d{{4}}"  # DD/MM/YYYY
+REGEX_DATE_ISO = r"\\d{{4}}-\\d{{2}}-\\d{{2}}"  # YYYY-MM-DD
+
+# Money amounts
+REGEX_AMOUNT_EUR = r"\\d{{1,10}}[.,]\\d{{2}}"  # Amount with 2 decimals
+REGEX_AMOUNT_EUR_WITH_SYMBOL = r"\\d{{1,10}}[.,]\\d{{2}}\\s?€"
+
+# Email
+REGEX_EMAIL = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{{2,}}"
+
+# Usage example in your workflow:
+# siret = await paradigm_client.chat_completion(
+#     prompt="Extrais le numéro SIRET",
+#     guided_regex=REGEX_SIRET
+# )
+
 class ParadigmClient:
     '''
     LightOn Paradigm API Client with session reuse for 5.55x performance improvement.
@@ -256,10 +285,33 @@ class ParadigmClient:
     - analyze_documents_with_polling  <-- CRITICAL: For comprehensive structured extraction!
     - document_analysis_start
     - document_analysis_get_result
-    - chat_completion
+    - chat_completion  <-- NOW SUPPORTS guided_choice and guided_regex!
     - upload_file  <-- CRITICAL: Always include this method!
     - get_file  <-- CRITICAL: Required for checking file status!
     - wait_for_embedding  <-- CRITICAL: Required for waiting until files are ready!
+
+    ⚠️ STRUCTURED DATA EXTRACTION:
+    When extracting SIRET, IBAN, phone numbers, or other structured data, USE guided_regex:
+
+    Example - Extract SIRET:
+        siret = await paradigm_client.chat_completion(
+            prompt="Extrais le numéro SIRET du document",
+            guided_regex=REGEX_SIRET
+        )
+
+    Example - Extract phone number:
+        phone = await paradigm_client.chat_completion(
+            prompt="Extrais le numéro de téléphone",
+            guided_regex=REGEX_PHONE_FR
+        )
+
+    Example - Classification with guided_choice:
+        status = await paradigm_client.chat_completion(
+            prompt="Le document est-il conforme ?",
+            guided_choice=["conforme", "non_conforme", "incomplet"]
+        )
+
+    This GUARANTEES correct formatting and avoids parsing errors!
 
     ⚠️ NOTE: ask_question() is NOT included due to server-side issues (HTTP 500).
     Use document_search(file_ids=[...]) or analyze_documents_with_polling() instead.
@@ -552,7 +604,9 @@ class ParadigmClient:
         self,
         prompt: str,
         model: str = "alfred-4.2",
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        guided_choice: Optional[List[str]] = None,
+        guided_regex: Optional[str] = None
     ) -> str:
         '''
         Get a chat completion response (like ChatGPT).
@@ -564,6 +618,10 @@ class ParadigmClient:
             model: Which AI model to use (default: alfred-4.2)
             system_prompt: Optional instructions for the AI's behavior and output format
                           Use this to enforce specific formats like JSON-only responses
+            guided_choice: Force model to choose one value from a predefined list
+                          Example: ["oui", "non"] or ["conforme", "non_conforme"]
+            guided_regex: Force model output to match a specific regex pattern
+                         Example: r"\\+33[1-9]\\d{{8}}" for French phone numbers
 
         Returns:
             str: The AI's response
@@ -579,10 +637,33 @@ class ParadigmClient:
             )
             # Returns: {"is_correct": true, "details": "Les noms sont identiques"}
 
-        Example without system prompt:
+        Example with guided_choice (classification):
             result = await paradigm_client.chat_completion(
-                prompt="Explique-moi ce qu'est un SIRET"
+                prompt="Le document est-il conforme ?",
+                guided_choice=["conforme", "non_conforme", "incomplet"]
             )
+            # Returns: exactly one of the three choices
+
+        Example with guided_regex (SIRET extraction):
+            result = await paradigm_client.chat_completion(
+                prompt="Extrais le numéro SIRET du document",
+                guided_regex=r"\\d{{14}}"
+            )
+            # Returns: a 14-digit SIRET number
+
+        Example with guided_regex (IBAN extraction):
+            result = await paradigm_client.chat_completion(
+                prompt="Extrais l'IBAN du document",
+                guided_regex=r"FR\\d{{2}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{3}}"
+            )
+            # Returns: a formatted French IBAN
+
+        Example with guided_regex (phone number):
+            result = await paradigm_client.chat_completion(
+                prompt="Normalise ce numéro de téléphone",
+                guided_regex=r"\\+33[1-9]\\d{{8}}"
+            )
+            # Returns: phone in format +33XXXXXXXXX
         '''
         endpoint = f"{self.base_url}/api/v2/chat/completions"
 
@@ -595,6 +676,15 @@ class ParadigmClient:
             "model": model,
             "messages": messages
         }
+
+        # Add guided parameters if provided
+        if guided_choice:
+            payload["guided_choice"] = guided_choice
+            logger.info(f"🎯 Using guided_choice: {guided_choice}")
+
+        if guided_regex:
+            payload["guided_regex"] = guided_regex
+            logger.info(f"🎯 Using guided_regex: {guided_regex}")
 
         try:
             logger.info(f"💬 Chat completion: {prompt[:50]}...")

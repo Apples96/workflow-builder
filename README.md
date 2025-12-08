@@ -165,7 +165,9 @@ Les workflows générés ont accès à un **ParadigmClient complet** avec toutes
 ### Recherche et Analyse
 - `document_search(query, file_ids=...)` - Recherche sémantique
 - `analyze_documents_with_polling(query, document_ids)` - Analyse approfondie
-- `chat_completion(prompt)` - Complétion de texte avec AI
+- `chat_completion(prompt, guided_choice=..., guided_regex=...)` - Complétion avec extraction structurée
+  - **guided_choice** : Force le choix parmi une liste (ex: ["oui", "non"])
+  - **guided_regex** : Force un format précis (SIRET, IBAN, téléphone, etc.)
 
 ### Gestion de Fichiers
 - `upload_file(file_content, filename)` - Upload de fichiers
@@ -177,6 +179,28 @@ Les workflows générés ont accès à un **ParadigmClient complet** avec toutes
 - `filter_chunks(query, chunk_ids, n=...)` - Filtrer les chunks par pertinence
 - `query(query, collection=...)` - Extraire chunks sans synthèse AI
 - `search_with_vision_fallback(query, file_ids)` - Recherche avec OCR automatique
+
+### Extraction de Données Structurées (NOUVEAU ✨)
+
+Les workflows peuvent utiliser **guided_choice** et **guided_regex** pour extraire des données avec garantie de format :
+
+```python
+# Extraction de SIRET avec format garanti (14 chiffres)
+siret = await paradigm_client.chat_completion(
+    prompt="Extrais le numéro SIRET",
+    guided_regex=r"\\d{14}"
+)
+
+# Classification stricte
+status = await paradigm_client.chat_completion(
+    prompt="Le document est-il conforme ?",
+    guided_choice=["conforme", "non_conforme", "incomplet"]
+)
+```
+
+**Patterns regex prédéfinis inclus** : SIRET, SIREN, IBAN, téléphone FR, dates, montants, emails.
+
+📖 **Guide complet** : Voir [GUIDED_FEATURES.md](GUIDED_FEATURES.md)
 
 ### Support de Session
 Toutes les méthodes supportent le `session` parameter pour réutiliser les connexions HTTP (5.55x plus rapide).
@@ -361,6 +385,10 @@ docker-compose down
 
 ## 🔄 Améliorations Récentes
 
+- ✨ **NOUVEAU** : Support de `guided_choice` et `guided_regex` pour extraction structurée
+  - Extraction garantie de SIRET, IBAN, téléphones avec format validé
+  - Classification stricte avec choix prédéfinis
+  - Patterns regex prédéfinis pour formats français
 - ✅ Post-validation automatique des f-strings générées
 - ✅ Support complet de toutes les APIs Paradigm (Vision OCR, filter chunks, etc.)
 - ✅ Retry automatique avec contexte d'erreur (3 tentatives)
