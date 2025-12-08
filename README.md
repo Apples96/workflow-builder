@@ -35,13 +35,36 @@ Double-cliquez sur **`test-docker.bat`**
 5. Déploiement       → Automatique sur Vercel
 ```
 
-## ✨ Fonctionnalités
+## ✨ Fonctionnalités Principales
 
+### 1. Création de Workflows IA
 - **Natural Language to Code**: Décrivez vos workflows en langage naturel
-- **LightOn Paradigm Integration**: Recherche et analyse de documents
-- **Safe Code Execution**: Environnement d'exécution sécurisé avec timeout
-- **RESTful API**: API FastAPI propre et bien documentée
-- **Async Support**: Opérations asynchrones pour de meilleures performances
+- **AI-Powered Generation**: Génération de code Python par Anthropic Claude
+- **Auto-Validation**: Validation automatique avec retry (jusqu'à 3 tentatives)
+- **Post-Processing**: Correction automatique des erreurs f-strings
+
+### 2. Intégration Complète LightOn Paradigm
+- **Document Search**: Recherche sémantique dans vos documents
+- **Document Analysis**: Analyse approfondie avec polling automatique
+- **Vision OCR**: Support de VisionDocumentSearch pour documents scannés
+- **File Management**: Upload, indexation automatique, gestion de fichiers
+- **Advanced Features**: Filter chunks, get file chunks, query sans AI
+
+### 3. Exécution Sécurisée et Performance
+- **Safe Execution**: Environnement sandboxé avec timeout (30 min par défaut)
+- **File Attachments**: Support de fichiers joints aux workflows
+- **Redis Storage**: Persistance avec Upstash Redis pour serverless
+- **Performance**: Session reuse HTTP (5.55x plus rapide)
+
+### 4. Export et Déploiement Client
+- **PDF Reports**: Génération de rapports professionnels
+- **Workflow Runner**: Package ZIP standalone avec frontend dynamique + backend complet
+  - Interface utilisateur générée automatiquement selon le workflow
+  - Documentation bilingue (FR/EN)
+  - Configuration Docker incluse
+  - Prêt pour déploiement client autonome
+  - ⚠️ Disponible en mode développement local uniquement (désactivé sur Vercel)
+- **RESTful API**: API FastAPI avec documentation OpenAPI automatique
 
 ## 🔧 Installation Manuelle (si besoin)
 
@@ -74,33 +97,45 @@ Double-cliquez sur **`test-docker.bat`**
    python -m uvicorn api.index:app --port 8000
    ```
 
-## API Usage
+## 📖 API Endpoints
 
-### 1. Create a Workflow
+### Workflows
+- `POST /api/workflows` - Créer un workflow depuis une description
+- `POST /api/workflows/enhance-description` - Améliorer une description avec l'IA
+- `GET /api/workflows/{id}` - Récupérer les détails d'un workflow
+- `POST /api/workflows/{id}/execute` - Exécuter un workflow
+- `GET /api/workflows/{id}/executions/{exec_id}` - Détails d'exécution
+- `GET /api/workflows/{id}/executions/{exec_id}/pdf` - Télécharger rapport PDF
+- `POST /api/workflow/generate-package/{id}` - Générer package ZIP (local uniquement)
+
+### Files
+- `POST /api/files/upload` - Uploader un fichier
+- `GET /api/files/{id}` - Info sur un fichier
+- `DELETE /api/files/{id}` - Supprimer un fichier
+
+### Usage Example
 
 ```bash
-curl -X POST "http://localhost:8000/workflows" \
+# 1. Créer un workflow
+curl -X POST "http://localhost:8000/api/workflows" \
   -H "Content-Type: application/json" \
   -d '{
-    "description": "For each sentence in user input, search using paradigm_search, then format as Question: [sentence] Answer: [result]",
-    "name": "Sentence Processing Workflow"
+    "description": "Analyser les CV uploadés et les comparer à une fiche de poste",
+    "name": "Analyse de CV"
   }'
-```
 
-### 2. Execute a Workflow
+# 2. Uploader des fichiers
+curl -X POST "http://localhost:8000/api/files/upload" \
+  -F "file=@cv1.pdf" \
+  -F "collection_type=private"
 
-```bash
-curl -X POST "http://localhost:8000/workflows/{workflow_id}/execute" \
+# 3. Exécuter le workflow avec fichiers attachés
+curl -X POST "http://localhost:8000/api/workflows/{workflow_id}/execute" \
   -H "Content-Type: application/json" \
   -d '{
-    "user_input": "What is machine learning? How does AI work?"
+    "user_input": "Analyser les CV",
+    "attached_file_ids": [123, 124, 125]
   }'
-```
-
-### 3. Get Workflow Details
-
-```bash
-curl -X GET "http://localhost:8000/workflows/{workflow_id}"
 ```
 
 ## Example Workflow
@@ -123,36 +158,137 @@ Question: What are the benefits of cloud computing?
 Answer: [Search result about cloud computing benefits]
 ```
 
-## Available Tools in Workflows
+## 🔧 APIs Disponibles dans les Workflows Générés
 
-Generated workflows have access to these tools:
+Les workflows générés ont accès à un **ParadigmClient complet** avec toutes les APIs LightOn :
 
-- `paradigm_search(query: str) -> str`: Search documents using LightOn Paradigm
-- `chat_completion(prompt: str) -> str`: Get AI responses using Anthropic API
+### Recherche et Analyse
+- `document_search(query, file_ids=...)` - Recherche sémantique
+- `analyze_documents_with_polling(query, document_ids)` - Analyse approfondie
+- `chat_completion(prompt)` - Complétion de texte avec AI
 
-## Testing
+### Gestion de Fichiers
+- `upload_file(file_content, filename)` - Upload de fichiers
+- `get_file(file_id)` - Informations sur un fichier
+- `wait_for_embedding(file_id)` - Attendre l'indexation
+- `get_file_chunks(file_id)` - Récupérer les chunks d'un fichier
 
-Run the example test to verify everything works:
+### APIs Avancées
+- `filter_chunks(query, chunk_ids, n=...)` - Filtrer les chunks par pertinence
+- `query(query, collection=...)` - Extraire chunks sans synthèse AI
+- `search_with_vision_fallback(query, file_ids)` - Recherche avec OCR automatique
+
+### Support de Session
+Toutes les méthodes supportent le `session` parameter pour réutiliser les connexions HTTP (5.55x plus rapide).
+
+## 📦 Workflow Runner - Package Standalone
+
+Le **Workflow Runner** permet d'exporter un workflow complet sous forme de package ZIP autonome, prêt à être déployé chez un client.
+
+### Génération d'un Package
+
+**En mode développement local uniquement** (endpoint désactivé sur Vercel) :
 
 ```bash
-python test_example.py
+# Via l'API
+curl -X POST "http://localhost:8000/api/workflow/generate-package/{workflow_id}" \
+  --output workflow-package.zip
+
+# Via l'interface web
+# Cliquer sur "Download Workflow Package" après création du workflow
+```
+
+### Contenu du Package
+
+Le ZIP généré contient une **application complète et autonome** :
+
+```
+workflow-{name}-{id}.zip
+├── frontend/
+│   ├── index.html              # Interface dynamique auto-générée
+│   ├── config.json             # Configuration UI (champs, types, etc.)
+│   └── styles intégrés         # CSS responsive
+├── backend/
+│   ├── main.py                 # Serveur FastAPI
+│   ├── workflow_code.py        # Code du workflow généré
+│   ├── paradigm_client.py      # Client Paradigm complet
+│   └── requirements.txt        # Dépendances Python
+├── docker-compose.yml          # Configuration Docker
+├── Dockerfile                  # Image Docker optimisée
+├── README.md (FR)              # Documentation française
+├── README_EN.md                # Documentation anglaise
+└── .env.example                # Template de configuration
+```
+
+### Caractéristiques
+
+- ✅ **UI Dynamique** : Interface générée automatiquement par analyse Claude du code
+- ✅ **Bilingue** : Documentation complète FR + EN
+- ✅ **Docker Ready** : `docker-compose up` et c'est prêt
+- ✅ **PDF Export** : Génération de rapports intégrée
+- ✅ **Standalone** : Aucune dépendance au système principal
+- ✅ **Production Ready** : Configuration Uvicorn optimisée
+
+### Déploiement Client
+
+```bash
+# 1. Extraire le ZIP
+unzip workflow-package.zip
+cd workflow-{name}-{id}
+
+# 2. Configurer les clés API
+cp .env.example .env
+nano .env  # Ajouter LIGHTON_API_KEY et ANTHROPIC_API_KEY
+
+# 3. Lancer avec Docker
+docker-compose up -d
+
+# 4. Accéder à l'interface
+# http://localhost:8080
+```
+
+### Note Importante
+
+⚠️ La génération de packages est **désactivée sur Vercel** pour rester dans la limite de 12 serverless functions. Utilisez le mode développement local pour générer des packages.
+
+## 🧪 Tests
+
+```bash
+# Tests unitaires
+pytest tests/
+
+# Tests d'intégration
+pytest tests/test_integration.py
+
+# Test Docker (avant commit)
+./test-docker.bat
 ```
 
 ## 📁 Structure du Projet
 
 ```
-├── api/                    # Backend FastAPI
-│   ├── config.py          # Configuration (charge .env)
-│   ├── main.py            # Application FastAPI
-│   ├── models.py          # Modèles de données
-│   ├── api_clients.py     # Clients API (Paradigm)
-│   └── workflow/          # Générateur et exécuteur de workflows
-├── index.html             # Frontend
-├── .env                   # Variables d'environnement (NE PAS commiter!)
-├── docker-compose.yml     # Configuration Docker
-├── Dockerfile             # Image Docker
-├── dev.bat               # Script de développement
-└── test-docker.bat       # Script de test Docker
+├── api/                          # Backend FastAPI
+│   ├── index.py                 # Point d'entrée
+│   ├── main.py                  # Application FastAPI principale
+│   ├── config.py                # Configuration et variables d'env
+│   ├── models.py                # Modèles Pydantic (requêtes/réponses)
+│   ├── api_clients.py           # Clients HTTP Anthropic + Paradigm
+│   ├── pdf_generator.py         # Génération de rapports PDF
+│   └── workflow/                # Module de workflows
+│       ├── generator.py         # Génération de code par IA
+│       ├── executor.py          # Exécution sécurisée
+│       ├── models.py            # Modèles de workflows
+│       ├── package_generator.py # Génération de packages ZIP
+│       └── workflow_analyzer.py # Analyse de workflows
+├── tests/                       # Tests unitaires et d'intégration
+├── index.html                   # Frontend (interface web)
+├── requirements.txt             # Dépendances Python
+├── .env                         # Variables d'environnement (NE PAS commiter!)
+├── docker-compose.yml           # Configuration Docker
+├── Dockerfile                   # Image Docker
+├── vercel.json                  # Configuration Vercel
+├── dev.bat                      # Script de développement Windows
+└── test-docker.bat              # Script de test Docker
 ```
 
 ## 🐳 Déploiement
@@ -201,13 +337,32 @@ docker-compose down
 
 **Problème : "API key not configured"**
 - Vérifiez que le fichier `.env` existe à la racine du projet
-- Vérifiez que les clés API sont correctes
+- Vérifiez que les clés API sont correctes et commencent par les bons préfixes
 - Redémarrez avec `dev.bat`
+
+**Problème : "File not embedded yet"**
+- Les fichiers uploadés doivent être indexés avant utilisation
+- Le workflow attend automatiquement jusqu'à 60s
+- Pour workflows personnalisés, utilisez `wait_for_embedding(file_id)`
+
+**Problème : "Workflow execution timeout"**
+- Timeout par défaut : 1800s (30 min) - configurable dans `config.py`
+- Pour workflows longs, augmentez `max_execution_time` dans les settings
+- Utilisez `asyncio.gather()` pour paralléliser les opérations indépendantes
 
 ## 📝 Technologies
 
-- **Backend** : FastAPI, Python 3.11+
+- **Backend** : FastAPI, Python 3.11+, aiohttp, Upstash Redis
 - **Frontend** : HTML/CSS/JavaScript vanilla
-- **AI** : Anthropic Claude API
-- **Document Processing** : LightOn Paradigm API
-- **Déploiement** : Vercel (prod), Docker (test)
+- **AI** : Anthropic Claude API (claude-sonnet-4-20250514)
+- **Document Processing** : LightOn Paradigm API (toutes les fonctionnalités)
+- **PDF Generation** : ReportLab
+- **Déploiement** : Vercel (prod), Docker (test/local)
+
+## 🔄 Améliorations Récentes
+
+- ✅ Post-validation automatique des f-strings générées
+- ✅ Support complet de toutes les APIs Paradigm (Vision OCR, filter chunks, etc.)
+- ✅ Retry automatique avec contexte d'erreur (3 tentatives)
+- ✅ Normalisation de données (IBAN, SIRET, téléphones)
+- ✅ Détection et correction des workflows complexes (>40 API calls)

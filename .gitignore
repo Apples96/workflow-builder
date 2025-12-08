@@ -77,3 +77,11 @@ start.bat
 # Workflow description files (contain business logic)
 workflow_ugap_description*.txt
 workflow_*_description*.txt
+workflow_*_description*.md
+
+# Temporary diagrams and analysis files
+_temp_diagrams/
+
+# Test files at root
+test_*.md
+test_*.pdf
