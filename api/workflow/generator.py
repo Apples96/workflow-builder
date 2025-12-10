@@ -205,27 +205,6 @@ CRITICAL INSTRUCTIONS:
 8. *** ALWAYS USE asyncio.gather() FOR INDEPENDENT PARALLEL TASKS - IMPROVES PERFORMANCE 3-10x ***
 9. *** ParadigmClient MUST ALWAYS INCLUDE upload_file() METHOD - REQUIRED FOR FILE UPLOADS ***
 
-*** CRITICAL PYTHON SYNTAX RULE - F-STRINGS ***
-
-When generating Python code with multiline f-strings, you MUST avoid nesting complex expressions with braces inside f-strings.
-
-INCORRECT - Causes unterminated triple-quoted f-string literal error:
-    report = f'''Score: {calculate_score({'tech': 85})}'''
-
-CORRECT APPROACH 1 - Use intermediate variables:
-    scores = {'tech': 85, 'exp': 90}
-    final_score = calculate_score(scores)
-    report = f'''Score: {final_score}'''
-
-CORRECT APPROACH 2 - Use .format() method:
-    report = '''Score: {}'''.format(calculate_score({'tech': 85}))
-
-GENERAL RULES:
-- For f-strings with triple quotes, keep expressions simple: variables, attributes, simple methods only
-- If you need dictionaries, lists, or complex function calls, calculate the result in an intermediate variable first
-- Avoid nested f-strings (f-string inside an f-string)
-- For long formatted strings with many complex variables, prefer .format() or string concatenation
-
 REQUIRED STRUCTURE:
 ```python
 import asyncio
@@ -240,35 +219,6 @@ LIGHTON_API_KEY = os.getenv("PARADIGM_API_KEY", "your_api_key_here")
 LIGHTON_BASE_URL = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
 
 logger = logging.getLogger(__name__)
-
-# ============================================================================
-# COMMON REGEX PATTERNS FOR GUIDED_REGEX
-# ============================================================================
-# Use these patterns with chat_completion(guided_regex=...) to extract structured data
-
-# French formats
-REGEX_SIRET = r"\\d{{14}}"  # 14 digits
-REGEX_SIREN = r"\\d{{9}}"   # 9 digits
-REGEX_IBAN_FR = r"FR\\d{{2}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{3}}"
-REGEX_PHONE_FR = r"\\+33[1-9]\\d{{8}}"  # +33XXXXXXXXX
-REGEX_PHONE_FR_WITH_SPACES = r"\\+33\\s?[1-9](?:\\s?\\d{{2}}){{4}}"  # +33 X XX XX XX XX
-
-# Dates
-REGEX_DATE_FR = r"\\d{{2}}/\\d{{2}}/\\d{{4}}"  # DD/MM/YYYY
-REGEX_DATE_ISO = r"\\d{{4}}-\\d{{2}}-\\d{{2}}"  # YYYY-MM-DD
-
-# Money amounts
-REGEX_AMOUNT_EUR = r"\\d{{1,10}}[.,]\\d{{2}}"  # Amount with 2 decimals
-REGEX_AMOUNT_EUR_WITH_SYMBOL = r"\\d{{1,10}}[.,]\\d{{2}}\\s?€"
-
-# Email
-REGEX_EMAIL = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{{2,}}"
-
-# Usage example in your workflow:
-# siret = await paradigm_client.chat_completion(
-#     prompt="Extrais le numéro SIRET",
-#     guided_regex=REGEX_SIRET
-# )
 
 class ParadigmClient:
     '''
@@ -285,33 +235,10 @@ class ParadigmClient:
     - analyze_documents_with_polling  <-- CRITICAL: For comprehensive structured extraction!
     - document_analysis_start
     - document_analysis_get_result
-    - chat_completion  <-- NOW SUPPORTS guided_choice and guided_regex!
+    - chat_completion
     - upload_file  <-- CRITICAL: Always include this method!
     - get_file  <-- CRITICAL: Required for checking file status!
     - wait_for_embedding  <-- CRITICAL: Required for waiting until files are ready!
-
-    ⚠️ STRUCTURED DATA EXTRACTION:
-    When extracting SIRET, IBAN, phone numbers, or other structured data, USE guided_regex:
-
-    Example - Extract SIRET:
-        siret = await paradigm_client.chat_completion(
-            prompt="Extrais le numéro SIRET du document",
-            guided_regex=REGEX_SIRET
-        )
-
-    Example - Extract phone number:
-        phone = await paradigm_client.chat_completion(
-            prompt="Extrais le numéro de téléphone",
-            guided_regex=REGEX_PHONE_FR
-        )
-
-    Example - Classification with guided_choice:
-        status = await paradigm_client.chat_completion(
-            prompt="Le document est-il conforme ?",
-            guided_choice=["conforme", "non_conforme", "incomplet"]
-        )
-
-    This GUARANTEES correct formatting and avoids parsing errors!
 
     ⚠️ NOTE: ask_question() is NOT included due to server-side issues (HTTP 500).
     Use document_search(file_ids=[...]) or analyze_documents_with_polling() instead.
@@ -604,29 +531,18 @@ class ParadigmClient:
         self,
         prompt: str,
         model: str = "alfred-4.2",
-        system_prompt: Optional[str] = None,
-        guided_choice: Optional[List[str]] = None,
-        guided_regex: Optional[str] = None
+        system_prompt: Optional[str] = None
     ) -> str:
         '''
         Get a chat completion response (like ChatGPT).
 
         No documents involved - just a conversation with the AI.
 
-        ⚠️ CRITICAL: This method does NOT accept max_wait_time parameter!
-        It's a simple, fast API call that returns immediately (typically < 10 seconds).
-        NEVER use max_wait_time with chat_completion() - it will cause errors.
-        Only analyze_documents_with_polling() accepts max_wait_time for long tasks.
-
         Args:
             prompt: Your question or instruction
             model: Which AI model to use (default: alfred-4.2)
             system_prompt: Optional instructions for the AI's behavior and output format
                           Use this to enforce specific formats like JSON-only responses
-            guided_choice: Force model to choose one value from a predefined list
-                          Example: ["oui", "non"] or ["conforme", "non_conforme"]
-            guided_regex: Force model output to match a specific regex pattern
-                         Example: r"\\+33[1-9]\\d{{8}}" for French phone numbers
 
         Returns:
             str: The AI's response
@@ -642,33 +558,10 @@ class ParadigmClient:
             )
             # Returns: {"is_correct": true, "details": "Les noms sont identiques"}
 
-        Example with guided_choice (classification):
+        Example without system prompt:
             result = await paradigm_client.chat_completion(
-                prompt="Le document est-il conforme ?",
-                guided_choice=["conforme", "non_conforme", "incomplet"]
+                prompt="Explique-moi ce qu'est un SIRET"
             )
-            # Returns: exactly one of the three choices
-
-        Example with guided_regex (SIRET extraction):
-            result = await paradigm_client.chat_completion(
-                prompt="Extrais le numéro SIRET du document",
-                guided_regex=r"\\d{{14}}"
-            )
-            # Returns: a 14-digit SIRET number
-
-        Example with guided_regex (IBAN extraction):
-            result = await paradigm_client.chat_completion(
-                prompt="Extrais l'IBAN du document",
-                guided_regex=r"FR\\d{{2}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{4}}\\s?\\d{{3}}"
-            )
-            # Returns: a formatted French IBAN
-
-        Example with guided_regex (phone number):
-            result = await paradigm_client.chat_completion(
-                prompt="Normalise ce numéro de téléphone",
-                guided_regex=r"\\+33[1-9]\\d{{8}}"
-            )
-            # Returns: phone in format +33XXXXXXXXX
         '''
         endpoint = f"{self.base_url}/api/v2/chat/completions"
 
@@ -681,15 +574,6 @@ class ParadigmClient:
             "model": model,
             "messages": messages
         }
-
-        # Add guided parameters if provided
-        if guided_choice:
-            payload["guided_choice"] = guided_choice
-            logger.info(f"🎯 Using guided_choice: {guided_choice}")
-
-        if guided_regex:
-            payload["guided_regex"] = guided_regex
-            logger.info(f"🎯 Using guided_regex: {guided_regex}")
 
         try:
             logger.info(f"💬 Chat completion: {prompt[:50]}...")
@@ -1188,73 +1072,6 @@ IMPORTANT LIBRARY RESTRICTIONS:
 
 STRUCTURED OUTPUT BETWEEN STEPS:
 For workflow steps that extract or process information, use structured formats (JSON, lists, dicts) that make the output easy for subsequent steps to parse and use. Choose the most appropriate structure for each step's specific purpose.
-
-⚠️ GUIDED_REGEX AND GUIDED_CHOICE - WHEN TO USE ⚠️
-
-IMPORTANT: chat_completion() with guided_regex/guided_choice works with TEXT ONLY.
-It CANNOT directly access uploaded documents (file_ids/document_ids).
-
-📋 TWO-STEP APPROACH FOR UPLOADED DOCUMENTS (PDFs, etc.):
-
-1. First, extract raw text from documents:
-   raw_text = await paradigm_client.analyze_documents_with_polling(
-       "Extraire le SIRET, l'IBAN et le téléphone",
-       document_ids=[dc4_id]
-   )
-
-2. Then, normalize/extract structured data with guided_regex:
-   siret = await paradigm_client.chat_completion(
-       prompt=f"Extrais uniquement le SIRET de ce texte: {raw_text}",
-       guided_regex=REGEX_SIRET
-   )
-
-✅ USE GUIDED_REGEX when:
-- User provides text input directly (not uploaded documents)
-- You already extracted raw text and need to normalize format
-- You need to format/validate a value extracted from analyze_documents_with_polling()
-
-Example - User provides text input:
-async def execute_workflow(user_input: str) -> str:
-    # User input: "Mon entreprise, SIRET 12345678901234, est basée à Paris"
-    siret = await paradigm_client.chat_completion(
-        prompt=f"Extrais le SIRET de: {user_input}",
-        guided_regex=REGEX_SIRET
-    )
-    # Returns: "12345678901234" (guaranteed 14 digits)
-
-Example - Post-processing after document extraction:
-async def execute_workflow(user_input: str) -> str:
-    # Step 1: Extract from uploaded document
-    raw_data = await paradigm_client.analyze_documents_with_polling(
-        "Extraire nom, SIRET, email du document",
-        document_ids=[file_id]
-    )
-
-    # Step 2: Normalize with guided_regex (only if needed for critical validation)
-    siret = await paradigm_client.chat_completion(
-        prompt=f"Extrais uniquement le SIRET (14 chiffres) de: {raw_data}",
-        guided_regex=REGEX_SIRET
-    )
-
-⚠️ ALTERNATIVE: Python normalization functions (often simpler for document workflows)
-For workflows with uploaded documents, you can also normalize AFTER extraction using Python:
-
-raw_siret = await paradigm_client.analyze_documents_with_polling(
-    "Extraire le SIRET",
-    document_ids=[file_id]
-)
-# Then normalize with Python
-cleaned_siret = re.sub(r'[^\d]', '', raw_siret)  # Remove non-digits
-if len(cleaned_siret) == 14:
-    siret = cleaned_siret
-
-✅ USE GUIDED_CHOICE for classifications/validations:
-status = await paradigm_client.chat_completion(
-    prompt="Le document est-il conforme ?",
-    guided_choice=["conforme", "non_conforme", "incomplet"]
-)
-
-This works regardless of whether the question comes from documents or user input.
 
 CRITICAL: DETECTING MISSING VALUES IN EXTRACTION
 When extracting information from documents, ALWAYS check if the extraction was successful before comparing values.
@@ -2273,10 +2090,7 @@ Generate a complete, self-contained workflow that:
 
             logger.info("🔄 POST-PROCESSING: Analyzing generated code...")
 
-            # Post-processing #1: Fix f-strings with complex expressions
-            code = self._fix_fstrings_in_code(code)
-
-            # Post-processing #2: Add staggering for complex workflows
+            # Post-processing #1: Add staggering for complex workflows
             code = add_staggering_to_workflow(code, description)
 
             logger.info("✅ POST-PROCESSING: Complete")
@@ -2296,117 +2110,15 @@ Generate a complete, self-contained workflow that:
             code = code.split("```python")[1].split("```")[0]
         elif "```" in code:
             code = code.split("```")[1].split("```")[0]
-
+        
         # Remove leading/trailing whitespace
         code = code.strip()
-
+        
         # Ensure execute_workflow is async
         if "def execute_workflow(" in code and "async def execute_workflow(" not in code:
             code = code.replace("def execute_workflow(", "async def execute_workflow(")
-
+        
         return code
-
-    def _fix_fstrings_in_code(self, code: str) -> str:
-        """
-        Post-validation: Fix f-strings with complex expressions that cause syntax errors.
-
-        Converts problematic f-strings with triple quotes and complex expressions
-        to use .format() method instead.
-
-        Example transformation:
-        FROM: report = f'''Score: {candidate['name']}'''
-        TO:   report = '''Score: {}'''.format(candidate['name'])
-        """
-        import re
-
-        logger.info("🔧 POST-VALIDATION: Checking for problematic f-strings...")
-
-        lines = code.split('\n')
-        fixed_lines = []
-        i = 0
-
-        while i < len(lines):
-            line = lines[i]
-
-            # Detect f-string with triple quotes: f""" or f'''
-            fstring_match = re.match(r'^(\s*)(\w+\s*=\s*)f(["\'])(["\'])\3', line)
-
-            if fstring_match:
-                indent = fstring_match.group(1)
-                var_assignment = fstring_match.group(2)
-                quote = fstring_match.group(3)
-
-                # Collect the full f-string (might span multiple lines)
-                fstring_lines = [line]
-                j = i + 1
-
-                # Find the closing triple quotes
-                triple_quote = quote * 3
-                while j < len(lines):
-                    fstring_lines.append(lines[j])
-                    if triple_quote in lines[j] and j != i:  # Found closing quotes
-                        break
-                    j += 1
-
-                # Join all lines of the f-string
-                full_fstring = '\n'.join(fstring_lines)
-
-                # Extract all {expression} patterns
-                expressions = re.findall(r'\{([^}]+)\}', full_fstring)
-
-                # Check if any expression contains dict access, list access, or complex calls
-                has_complex_expr = any(
-                    '[' in expr or '(' in expr and '{' in expr
-                    for expr in expressions
-                )
-
-                if has_complex_expr:
-                    logger.info(f"  Found problematic f-string at line {i+1}, converting to .format()")
-
-                    # Remove the 'f' prefix
-                    fixed_fstring = full_fstring.replace(f'f{triple_quote}', triple_quote, 1)
-
-                    # Replace {expr} with {} and collect expressions
-                    format_args = []
-                    def replace_expr(match):
-                        format_args.append(match.group(1))
-                        return '{}'
-
-                    fixed_fstring = re.sub(r'\{([^}]+)\}', replace_expr, fixed_fstring)
-
-                    # Add .format() call at the end
-                    # Find the closing triple quote line
-                    fixed_lines_split = fixed_fstring.split('\n')
-                    last_line_idx = len(fixed_lines_split) - 1
-
-                    # Add .format() after the closing quote
-                    fixed_lines_split[last_line_idx] = fixed_lines_split[last_line_idx].rstrip() + '.format(\n'
-
-                    # Add format arguments
-                    for idx, arg in enumerate(format_args):
-                        comma = ',' if idx < len(format_args) - 1 else ''
-                        fixed_lines_split.append(f'{indent}    {arg}{comma}')
-
-                    fixed_lines_split.append(f'{indent})')
-
-                    # Add all fixed lines
-                    fixed_lines.extend(fixed_lines_split)
-
-                    # Skip the lines we just processed
-                    i = j + 1
-                    continue
-
-            fixed_lines.append(line)
-            i += 1
-
-        fixed_code = '\n'.join(fixed_lines)
-
-        if fixed_code != code:
-            logger.info("✅ POST-VALIDATION: Fixed problematic f-strings")
-        else:
-            logger.info("✅ POST-VALIDATION: No problematic f-strings found")
-
-        return fixed_code
 
     async def enhance_workflow_description(self, raw_description: str) -> Dict[str, Any]:
         """

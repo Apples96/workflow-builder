@@ -66,9 +66,9 @@ test_workflow_dc4_simplifie.md
 TEST_UGAP_DC4_JANVIER_2025.md
 RAPPORT_TEST_UGAP_DC4.md
 
-# Test files (à la racine uniquement, pas dans tests/)
-/test_*.py
-/test_*.json
+# Test files
+test_*.py
+test_*.json
 
 # Startup scripts with API keys
 start.bat
@@ -77,12 +77,3 @@ start.bat
 # Workflow description files (contain business logic)
 workflow_ugap_description*.txt
 workflow_*_description*.txt
-workflow_*_description*.md
-workflow_description*.md
-
-# Temporary diagrams and analysis files
-_temp_diagrams/
-
-# Test files at root
-test_*.md
-test_*.pdf
