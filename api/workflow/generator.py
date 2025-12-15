@@ -530,8 +530,10 @@ class ParadigmClient:
     async def chat_completion(
         self,
         prompt: str,
-        model: str = "alfred-4.2",
-        system_prompt: Optional[str] = None
+        model: str = "alfred-sv5",
+        system_prompt: Optional[str] = None,
+        guided_choice: Optional[List[str]] = None,
+        guided_regex: Optional[str] = None
     ) -> str:
         '''
         Get a chat completion response (like ChatGPT).
@@ -540,12 +542,28 @@ class ParadigmClient:
 
         Args:
             prompt: Your question or instruction
-            model: Which AI model to use (default: alfred-4.2)
+            model: Which AI model to use (default: alfred-sv5)
             system_prompt: Optional instructions for the AI's behavior and output format
                           Use this to enforce specific formats like JSON-only responses
+            guided_choice: Optional list of allowed response values (forces AI to choose from list)
+            guided_regex: Optional regex pattern to enforce structured output format
 
         Returns:
             str: The AI's response
+
+        Example with guided_choice (classification):
+            status = await paradigm_client.chat_completion(
+                prompt=f"Is this document compliant? Context: {extracted_text}",
+                guided_choice=["conforme", "non_conforme", "incomplet"]
+            )
+            # Returns one of: "conforme", "non_conforme", or "incomplet"
+
+        Example with guided_regex (structured extraction):
+            siret = await paradigm_client.chat_completion(
+                prompt=f"Extract SIRET number from: {text}",
+                guided_regex=r"\\d{14}"
+            )
+            # Returns exactly 14 digits matching the pattern
 
         Example with JSON-only output:
             result = await paradigm_client.chat_completion(
@@ -574,6 +592,12 @@ class ParadigmClient:
             "model": model,
             "messages": messages
         }
+
+        # Add structured output parameters if provided
+        if guided_choice:
+            payload["guided_choice"] = guided_choice
+        if guided_regex:
+            payload["guided_regex"] = guided_regex
 
         try:
             logger.info(f"💬 Chat completion: {prompt[:50]}...")
@@ -1043,6 +1067,38 @@ class ParadigmClient:
             logger.error(f"❌ Image analysis error: {str(e)}")
             raise
 
+    async def delete_file(self, file_id: int) -> Dict[str, Any]:
+        """
+        Delete a file from Paradigm.
+
+        Args:
+            file_id: The ID of the file to delete
+
+        Returns:
+            Dict with success status and file_id
+
+        Example:
+            result = await paradigm_client.delete_file(12345)
+            # Returns: {"success": True, "file_id": 12345}
+        """
+        endpoint = f"{self.base_url}/api/v2/files/{file_id}"
+
+        try:
+            logger.info(f"🗑️ Deleting file: {file_id}")
+
+            session = await self._get_session()
+            async with session.delete(endpoint, headers=self.headers) as response:
+                if response.status in [200, 204]:
+                    logger.info(f"✅ File deleted: ID={file_id}")
+                    return {"success": True, "file_id": file_id}
+                else:
+                    error = await response.text()
+                    logger.error(f"❌ Delete file failed: {response.status}")
+                    raise Exception(f"Delete file failed: {response.status} - {error}")
+
+        except Exception as e:
+            logger.error(f"❌ Delete file error: {str(e)}")
+            raise
 
 
 # Initialize clients
@@ -1492,7 +1548,7 @@ AVAILABLE API METHODS:
    *** IMPORTANT: For document type identification, analyze documents ONE BY ONE to get clear ID-to-type mapping ***
    *** NOTE: The API uses your authentication token to access both uploaded files and workspace documents automatically ***
    ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter
-3. await paradigm_client.chat_completion(prompt: str, model: str = "Alfred 4.2")
+3. await paradigm_client.chat_completion(prompt: str, model: str = "alfred-sv5", system_prompt: Optional[str] = None, guided_choice: Optional[List[str]] = None, guided_regex: Optional[str] = None)
 4. await paradigm_client.analyze_image(query: str, document_ids: List[str], model=None) - Analyze images in documents with AI-powered visual analysis
    *** CRITICAL: document_ids can contain MAXIMUM 5 documents. If more than 5, use batching! ***
    *** NOTE: The API uses your authentication token to access both uploaded files and workspace documents automatically ***
@@ -1614,6 +1670,74 @@ result1, result2, result3 = await asyncio.gather(task1, task2, task3)
 result1 = await api_call_1()
 result2 = await api_call_2()
 result3 = await api_call_3()
+
+⚠️ PATTERN 11 - API RATE LIMITING: MAX 5 CALLS PER BATCH WITH DELAYS ⚠️
+
+CRITICAL: Paradigm API has rate limits. Follow this pattern EXACTLY to avoid 502 errors:
+
+# ❌ BAD: 12 parallel calls without batching (causes 502 errors)
+tasks = [
+    paradigm_client.document_search(q1, file_ids=[doc_id]),
+    paradigm_client.document_search(q2, file_ids=[doc_id]),
+    # ... 10 more queries
+]
+results = await asyncio.gather(*tasks)  # CRASHES WITH 502!
+
+# ✅ GOOD: Split into batches of 5 with delays
+# Batch 1: First 5 queries
+batch1_tasks = [
+    paradigm_client.document_search(q1, file_ids=[doc_id]),
+    paradigm_client.document_search(q2, file_ids=[doc_id]),
+    paradigm_client.document_search(q3, file_ids=[doc_id]),
+    paradigm_client.document_search(q4, file_ids=[doc_id]),
+    paradigm_client.document_search(q5, file_ids=[doc_id])
+]
+batch1_results = await asyncio.gather(*batch1_tasks)
+await asyncio.sleep(0.5)  # MANDATORY DELAY
+
+# Batch 2: Next 5 queries
+batch2_tasks = [
+    paradigm_client.document_search(q6, file_ids=[doc_id]),
+    paradigm_client.document_search(q7, file_ids=[doc_id]),
+    paradigm_client.document_search(q8, file_ids=[doc_id]),
+    paradigm_client.document_search(q9, file_ids=[doc_id]),
+    paradigm_client.document_search(q10, file_ids=[doc_id])
+]
+batch2_results = await asyncio.gather(*batch2_tasks)
+await asyncio.sleep(0.5)  # MANDATORY DELAY
+
+# Batch 3: Remaining queries
+batch3_tasks = [
+    paradigm_client.document_search(q11, file_ids=[doc_id]),
+    paradigm_client.document_search(q12, file_ids=[doc_id])
+]
+batch3_results = await asyncio.gather(*batch3_tasks)
+await asyncio.sleep(0.5)  # MANDATORY DELAY
+
+# Combine results
+all_results = batch1_results + batch2_results + batch3_results
+
+⚠️ IMPORTANT: For heavy operations (VisionDocumentSearch, embedding, file upload)
+Use asyncio.sleep(1) instead of 0.5 to allow more recovery time:
+
+# Example with VisionDocumentSearch (heavy operation)
+vision_tasks = [
+    paradigm_client.document_search(q1, file_ids=[doc_id], tool="VisionDocumentSearch"),
+    paradigm_client.document_search(q2, file_ids=[doc_id], tool="VisionDocumentSearch"),
+    paradigm_client.document_search(q3, file_ids=[doc_id], tool="VisionDocumentSearch")
+]
+vision_results = await asyncio.gather(*vision_tasks)
+await asyncio.sleep(1)  # LONGER DELAY for heavy operations
+
+# Example with file upload + embedding (heavy operation)
+uploaded_file = await paradigm_client.upload_file("document.pdf", file_content)
+await asyncio.sleep(1)  # LONGER DELAY after upload/embedding
+
+BATCHING RULES:
+1. MAX 5 parallel calls per batch for standard operations
+2. Use asyncio.sleep(0.5) between batches for standard operations
+3. Use asyncio.sleep(1) between batches for heavy operations (VisionDocumentSearch, file upload)
+4. ALWAYS batch when you have more than 5 parallel API calls
 
 CONTEXT PRESERVATION IN API PROMPTS:
 When creating prompts for API calls, include relevant context from the original workflow description: examples, formatting requirements, specific field names, and business rules mentioned by the user.
