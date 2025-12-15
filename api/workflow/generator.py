@@ -565,6 +565,56 @@ class ParadigmClient:
             )
             # Returns exactly 14 digits matching the pattern
 
+        ⚠️ CRITICAL - Extract numeric scores with guided_regex, then get detailed justifications:
+            When extracting numeric data (scores, ratings, evaluations) that will be used in
+            calculations, ALWAYS use this two-step approach to get both reliable numbers AND
+            detailed explanations in your final report.
+
+            # Step 1: Get structured numeric scores with guided_regex (RELIABLE)
+            scores_json = await paradigm_client.chat_completion(
+                prompt=f\'\'\'Evaluate this item on the following criteria. Return ONLY a JSON object.
+
+ITEM: {item_to_evaluate}
+REFERENCE CRITERIA: {evaluation_criteria}
+
+Return ONLY this JSON format (no other text):
+{{"criterion1": <score 0-100>, "criterion2": <score 0-100>, "criterion3": <score 0-100>}}\'\'\',
+                guided_regex=r'\\{{[^}}]+\\}}'
+            )
+            scores = json.loads(scores_json)  # {"criterion1": 85, "criterion2": 60, ...}
+
+            # Step 2: Get detailed justifications for each score
+            detailed_evaluation = await paradigm_client.chat_completion(
+                prompt=f\'\'\'Provide detailed justification for these evaluation scores:
+
+ITEM: {item_to_evaluate}
+SCORES GIVEN:
+- Criterion 1: {scores["criterion1"]}/100
+- Criterion 2: {scores["criterion2"]}/100
+- Criterion 3: {scores["criterion3"]}/100
+
+For EACH criterion, write:
+1. The score (X/100)
+2. Justification: 2-3 sentences explaining why this score was given
+
+Then add:
+- Points forts: 3-5 bullet points
+- Points faibles: 2-4 bullet points\'\'\',
+            )
+
+            # Step 3: Build final report with both scores and justifications
+            report = f\"\"\"
+### Evaluation Results
+
+**Criterion 1: {scores['criterion1']}/100**
+{detailed_evaluation}
+
+**Global Score: {sum(scores.values()) / len(scores)}/100**
+\"\"\"
+
+            # This gives you BOTH reliable numeric scores AND detailed explanations like the
+            # old working CV workflow (scores: 60, 85, 50, etc. with full justifications)
+
         Example with JSON-only output:
             result = await paradigm_client.chat_completion(
                 prompt="Vérifie que le nom de l'acheteur est identique dans les deux documents",
