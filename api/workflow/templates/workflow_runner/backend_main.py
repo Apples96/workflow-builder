@@ -96,6 +96,8 @@ async def execute(
         if files and files[0].filename:  # Check if files were actually uploaded
             logger.info(f"[{execution_id}] Uploading {len(files)} files to Paradigm...")
 
+            # Upload files in batches of 6 to respect API rate limits
+            BATCH_SIZE = 6
             for i, file in enumerate(files):
                 logger.info(f"[{execution_id}] Uploading: {file.filename}")
 
@@ -113,9 +115,14 @@ async def execute(
                 file_ids.append(file_id)
                 logger.info(f"[{execution_id}] File uploaded: {file.filename} -> ID: {file_id}")
 
-                # Add delay between uploads to respect rate limits (except after last file)
+                # Add delay based on position in batch
                 if i < len(files) - 1:
-                    await asyncio.sleep(0.5)  # 500ms delay between uploads
+                    # Every 6 files, add a longer pause to reset rate limit window
+                    if (i + 1) % BATCH_SIZE == 0:
+                        logger.info(f"[{execution_id}] Batch complete, waiting 60s for rate limit reset...")
+                        await asyncio.sleep(60.0)  # 60 seconds pause between batches
+                    else:
+                        await asyncio.sleep(0.5)  # Short delay within batch
 
             # Wait for files to be processed and indexed by Paradigm
             logger.info(f"[{execution_id}] Waiting for files to be indexed...")
