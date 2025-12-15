@@ -74,6 +74,20 @@ IMPORTANT ANALYSIS GUIDELINES:
     - false if workflow has fallback logic for missing files
     - true if workflow will fail without the file
 
+**MULTIPLE FILES DETECTION:**
+11. **CRITICAL**: Detect if the workflow expects MULTIPLE files of the same type:
+    - Look for `len(attached_files)` checks or loops like `for file_id in file_ids`
+    - Look for text like "plusieurs fichiers", "1 à 10 fichiers", "multiple files", "jusqu'à X fichiers"
+    - Look for error messages checking file count (e.g., "exactement 6 fichiers requis")
+    - If the workflow processes files in a loop or expects a variable number, set:
+      * "multiple": true
+      * "max_files": <number> (extract from description or code, e.g., "10", "5", "6")
+      * Update description to mention "(1 à X fichiers)" where X is max_files
+12. For workflows with multiple file uploads:
+    - Create ONE file field with multiple=true instead of multiple file fields
+    - Example: Instead of "Document 1", "Document 2", use "Factures fournisseurs (PDF)" with multiple=true
+    - Set max_files based on workflow requirements (default: 10 if not specified)
+
 Output format (JSON only, no markdown):
 {{
   "workflow_name": "{workflow_name}",
@@ -86,7 +100,9 @@ Output format (JSON only, no markdown):
     {{
       "label": "User-friendly name in French",
       "description": "What this file is for",
-      "required": true/false
+      "required": true/false,
+      "multiple": true/false,
+      "max_files": <number>  // Only if multiple=true
     }}
   ]
 }}
