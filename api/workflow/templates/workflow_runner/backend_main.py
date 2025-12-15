@@ -96,7 +96,7 @@ async def execute(
         if files and files[0].filename:  # Check if files were actually uploaded
             logger.info(f"[{execution_id}] Uploading {len(files)} files to Paradigm...")
 
-            for file in files:
+            for i, file in enumerate(files):
                 logger.info(f"[{execution_id}] Uploading: {file.filename}")
 
                 # Read file content
@@ -112,6 +112,10 @@ async def execute(
                 file_id = upload_result.get("id") or upload_result.get("file_id")
                 file_ids.append(file_id)
                 logger.info(f"[{execution_id}] File uploaded: {file.filename} -> ID: {file_id}")
+
+                # Add delay between uploads to respect rate limits (except after last file)
+                if i < len(files) - 1:
+                    await asyncio.sleep(0.5)  # 500ms delay between uploads
 
             # Wait for files to be processed and indexed by Paradigm
             logger.info(f"[{execution_id}] Waiting for files to be indexed...")
