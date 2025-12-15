@@ -1068,7 +1068,7 @@ class ParadigmClient:
             raise
 
     async def delete_file(self, file_id: int) -> Dict[str, Any]:
-        """
+        '''
         Delete a file from Paradigm.
 
         Args:
@@ -1080,7 +1080,7 @@ class ParadigmClient:
         Example:
             result = await paradigm_client.delete_file(12345)
             # Returns: {"success": True, "file_id": 12345}
-        """
+        '''
         endpoint = f"{self.base_url}/api/v2/files/{file_id}"
 
         try:
@@ -2735,24 +2735,34 @@ Now enhance this workflow description and return ONLY the plain text response:""
         try:
             # Check for syntax errors
             compile(code, '<string>', 'exec')
-            
+
             # Check for required function
             if 'def execute_workflow(' not in code:
                 return {"valid": False, "error": "Missing execute_workflow function"}
-            
+
             # Check for async definition
             if 'async def execute_workflow(' not in code:
                 return {"valid": False, "error": "execute_workflow must be async"}
-            
+
             # Check for required imports
             required_imports = ['import asyncio', 'import aiohttp']
             for imp in required_imports:
                 if imp not in code:
                     return {"valid": False, "error": f"Missing required import: {imp}"}
-            
+
             return {"valid": True, "error": None}
-            
+
         except SyntaxError as e:
+            # Save failed code for debugging
+            import tempfile
+            import os
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='_failed.py', delete=False, dir='.') as f:
+                    f.write(code)
+                    logger.error(f"❌ Syntax error - Failed code saved to: {f.name}")
+                    logger.error(f"   Error: {str(e)}")
+            except:
+                pass
             return {"valid": False, "error": f"Syntax error: {str(e)}"}
         except Exception as e:
             return {"valid": False, "error": f"Validation error: {str(e)}"}

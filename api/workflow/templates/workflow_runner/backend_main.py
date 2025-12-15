@@ -149,6 +149,24 @@ async def execute(
         )
 
 
+@app.delete("/files/{file_id}")
+async def delete_file(file_id: int):
+    """
+    Delete an uploaded file (cleanup after workflow execution).
+    This is called automatically by the frontend after workflow completion.
+    """
+    try:
+        result = await paradigm_client.delete_file(file_id)
+        # paradigm_client.delete_file() returns {"success": True, "file_id": file_id}
+        success = result.get("success", False) if isinstance(result, dict) else result
+        return {"success": success, "message": f"File {file_id} deleted"}
+
+    except Exception as e:
+        logger.warning(f"Failed to delete file {file_id}: {str(e)}")
+        # Return success even on error to not block cleanup
+        return {"success": False, "message": str(e)}
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
