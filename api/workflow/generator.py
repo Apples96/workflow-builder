@@ -215,14 +215,17 @@ CRITICAL INSTRUCTIONS:
 6. *** EVERY FUNCTION MUST BE FULLY IMPLEMENTED WITH WORKING CODE ***
 7. *** NO STUB FUNCTIONS - ALL CODE MUST BE EXECUTABLE AND FUNCTIONAL ***
 8. *** ALWAYS USE asyncio.gather() FOR INDEPENDENT PARALLEL TASKS - IMPROVES PERFORMANCE 3-10x ***
+   *** CRITICAL EXCEPTION: NEVER use asyncio.gather() with analyze_documents_with_polling()! ***
+   *** For analyze_documents_with_polling: ALWAYS process sequentially with for loop ***
+   *** Safe to parallelize: document_search(), chat_completion(), upload_file() ***
 9. *** ParadigmClient MUST ALWAYS INCLUDE upload_file() METHOD - REQUIRED FOR FILE UPLOADS ***
 10. *** CRITICAL STRING FORMATTING RULE - YOU MUST FOLLOW THIS EXACTLY:
-    - NEVER EVER use f-strings (f"..." or f'''...''') ANYWHERE in the code
+    - NEVER EVER use f-strings ("..." or '''...''') ANYWHERE in the code
     - ALWAYS use .format() method for ALL string interpolation
     - Example CORRECT: "Bearer {}".format(self.api_key)
-    - Example WRONG: f"Bearer {self.api_key}"
+    - Example WRONG: "Bearer {}".format(self.api_key)
     - Example CORRECT: "{}/api/v2/files".format(self.base_url)
-    - Example WRONG: f"{self.base_url}/api/v2/files"
+    - Example WRONG: "{}/api/v2/files".format(self.base_url)
     - This prevents ALL syntax errors with curly braces ***
 
 REQUIRED STRUCTURE:
@@ -269,10 +272,10 @@ class ParadigmClient:
         self.base_url = base_url
         self.headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Authorization": "Bearer {}".format(self.api_key)
         }
         self._session: Optional[aiohttp.ClientSession] = None
-        logger.info(f"✅ ParadigmClient initialized: {base_url}")
+        logger.info("✅ ParadigmClient initialized: {}".format(base_url))
 
     async def _get_session(self) -> aiohttp.ClientSession:
         '''
@@ -343,7 +346,7 @@ class ParadigmClient:
                 tool="VisionDocumentSearch"
             )
         '''
-        endpoint = f"{self.base_url}/api/v2/chat/document-search"
+        endpoint = "{}/api/v2/chat/document-search".format(self.base_url)
 
         payload = {
             "query": query,
@@ -363,7 +366,7 @@ class ParadigmClient:
             payload["model"] = model
 
         try:
-            logger.info(f"🔍 Document Search: {query[:50]}... (tool={tool})")
+            logger.info("🔍 Document Search: {}... (tool={})".format(query[:50], tool))
 
             session = await self._get_session()
             async with session.post(
@@ -373,15 +376,15 @@ class ParadigmClient:
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    logger.info(f"✅ Search completed: {len(result.get('documents', []))} documents")
+                    logger.info("✅ Search completed: {} documents".format(len(result.get('documents', []))))
                     return result
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Search failed: {response.status} - {error_text}")
-                    raise Exception(f"Document search failed: {response.status} - {error_text}")
+                    logger.error("❌ Search failed: {} - {}".format(response.status, error_text))
+                    raise Exception("Document search failed: {} - {}".format(response.status, error_text))
 
         except Exception as e:
-            logger.error(f"❌ Search error: {str(e)}")
+            logger.error("❌ Search error: {}".format(str(e)))
             raise
 
     async def search_with_vision_fallback(
@@ -424,7 +427,7 @@ class ParadigmClient:
             return vision_result
 
         except Exception as e:
-            logger.error(f"❌ Smart search failed: {str(e)}")
+            logger.error("❌ Smart search failed: {}".format(str(e)))
             raise
 
     async def document_analysis_start(
@@ -434,7 +437,7 @@ class ParadigmClient:
         model: Optional[str] = None,
         private: bool = True
     ) -> str:
-        endpoint = f"{self.base_url}/api/v2/chat/document-analysis"
+        endpoint = "{}/api/v2/chat/document-analysis".format(self.base_url)
 
         payload = {
             "query": query,
@@ -445,7 +448,7 @@ class ParadigmClient:
             payload["model"] = model
 
         try:
-            logger.info(f"📊 Starting analysis: {query[:50]}...")
+            logger.info("📊 Starting analysis: {}...".format(query[:50]))
 
             session = await self._get_session()
             async with session.post(
@@ -456,19 +459,19 @@ class ParadigmClient:
                 if response.status == 200:
                     result = await response.json()
                     chat_response_id = result.get("chat_response_id")
-                    logger.info(f"✅ Analysis started: {chat_response_id}")
+                    logger.info("✅ Analysis started: {}".format(chat_response_id))
                     return chat_response_id
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Analysis start failed: {response.status}")
-                    raise Exception(f"Failed to start analysis: {response.status} - {error_text}")
+                    logger.error("❌ Analysis start failed: {}".format(response.status))
+                    raise Exception("Failed to start analysis: {} - {}".format(response.status, error_text))
 
         except Exception as e:
-            logger.error(f"❌ Analysis start error: {str(e)}")
+            logger.error("❌ Analysis start error: {}".format(str(e)))
             raise
 
     async def document_analysis_get_result(self, chat_response_id: str) -> Dict[str, Any]:
-        endpoint = f"{self.base_url}/api/v2/chat/document-analysis/{chat_response_id}"
+        endpoint = "{}/api/v2/chat/document-analysis/{}".format(self.base_url, chat_response_id)
 
         try:
             session = await self._get_session()
@@ -479,10 +482,10 @@ class ParadigmClient:
                     return {"status": "processing"}
                 else:
                     error_text = await response.text()
-                    raise Exception(f"Failed to get analysis result: {response.status}")
+                    raise Exception("Failed to get analysis result: {}".format(response.status))
 
         except Exception as e:
-            logger.error(f"❌ Get result error: {str(e)}")
+            logger.error("❌ Get result error: {}".format(str(e)))
             raise
 
     async def analyze_documents_with_polling(
@@ -495,7 +498,7 @@ class ParadigmClient:
         poll_interval: int = 5
     ) -> str:
         try:
-            logger.info(f"📊 Analysis with polling: max={max_wait_time}s, interval={poll_interval}s")
+            logger.info("📊 Analysis with polling: max={}s, interval={}s".format(max_wait_time, poll_interval))
 
             # Start the analysis
             chat_response_id = await self.document_analysis_start(
@@ -509,21 +512,21 @@ class ParadigmClient:
                     result = await self.document_analysis_get_result(chat_response_id)
                     status = result.get("status", "").lower()
 
-                    logger.info(f"🔄 Polling: {status} (elapsed: {elapsed}s)")
+                    logger.info("🔄 Polling: {} (elapsed: {}s)".format(status, elapsed))
 
                     # Check if completed
                     if status in ["completed", "complete", "finished", "success"]:
                         analysis_result = result.get("result") or result.get("detailed_analysis")
                         if analysis_result:
-                            logger.info(f"✅ Analysis done! ({len(analysis_result)} chars)")
+                            logger.info("✅ Analysis done! ({} chars)".format(len(analysis_result)))
                             return analysis_result
                         else:
                             return "Analysis completed but no result was returned"
 
                     # Check if failed
                     elif status in ["failed", "error"]:
-                        logger.error(f"❌ Analysis failed: {status}")
-                        raise Exception(f"Analysis failed with status: {status}")
+                        logger.error("❌ Analysis failed: {}".format(status))
+                        raise Exception("Analysis failed with status: {}".format(status))
 
                     # Still processing
                     await asyncio.sleep(poll_interval)
@@ -532,7 +535,7 @@ class ParadigmClient:
                 except Exception as e:
                     if "not found" in str(e).lower() or "404" in str(e):
                         # Still processing
-                        logger.info(f"⏳ Still running... ({elapsed}s)")
+                        logger.info("⏳ Still running... ({}s)".format(elapsed))
                         await asyncio.sleep(poll_interval)
                         elapsed += poll_interval
                         continue
@@ -540,12 +543,12 @@ class ParadigmClient:
                         raise
 
             # Timeout
-            logger.error(f"⏰ Timeout after {max_wait_time}s")
-            raise Exception(f"Analysis timed out after {max_wait_time} seconds")
+            logger.error("⏰ Timeout after {}s".format(max_wait_time))
+            raise Exception("Analysis timed out after {} seconds".format(max_wait_time))
 
         except Exception as e:
-            logger.error(f"❌ Analysis with polling failed: {str(e)}")
-            return f"Document analysis failed: {str(e)}"
+            logger.error("❌ Analysis with polling failed: {}".format(str(e)))
+            return "Document analysis failed: {}".format(str(e))
 
     async def chat_completion(
         self,
@@ -553,6 +556,7 @@ class ParadigmClient:
         model: str = "alfred-sv5",
         system_prompt: Optional[str] = None,
         guided_choice: Optional[List[str]] = None,
+        guided_json: Optional[Dict[str, Any]] = None,
         guided_regex: Optional[str] = None
     ) -> str:
         '''
@@ -566,6 +570,7 @@ class ParadigmClient:
             system_prompt: Optional instructions for the AI's behavior and output format
                           Use this to enforce specific formats like JSON-only responses
             guided_choice: Optional list of allowed response values (forces AI to choose from list)
+            guided_json: Optional JSON schema to enforce structured JSON output format
             guided_regex: Optional regex pattern to enforce structured output format
 
         Returns:
@@ -573,14 +578,31 @@ class ParadigmClient:
 
         Example with guided_choice (classification):
             status = await paradigm_client.chat_completion(
-                prompt=f"Is this document compliant? Context: {extracted_text}",
+                prompt="Is this document compliant? Context: {}".format(extracted_text),
                 guided_choice=["conforme", "non_conforme", "incomplet"]
             )
             # Returns one of: "conforme", "non_conforme", or "incomplet"
 
+        Example with guided_json (guaranteed valid JSON):
+            invoice_data = await paradigm_client.chat_completion(
+                prompt="Extract invoice data from: {}".format(invoice_text),
+                guided_json={{
+                    "type": "object",
+                    "properties": {{
+                        "invoice_number": {{"type": "string"}},
+                        "date": {{"type": "string"}},
+                        "supplier": {{"type": "string"}},
+                        "amount_ht": {{"type": "number"}},
+                        "amount_ttc": {{"type": "number"}}
+                    }},
+                    "required": ["invoice_number", "date", "supplier"]
+                }}
+            )
+            # Returns valid JSON matching the schema - no need for json.loads() or regex fallback!
+
         Example with guided_regex (structured extraction):
             siret = await paradigm_client.chat_completion(
-                prompt=f"Extract SIRET number from: {text}",
+                prompt="Extract SIRET number from: {}".format(text),
                 guided_regex=r"\\d{14}"
             )
             # Returns exactly 14 digits matching the pattern
@@ -651,7 +673,7 @@ Then add:
                 prompt="Explique-moi ce qu'est un SIRET"
             )
         '''
-        endpoint = f"{self.base_url}/api/v2/chat/completions"
+        endpoint = "{}/api/v2/chat/completions".format(self.base_url)
 
         messages = []
         if system_prompt:
@@ -666,11 +688,13 @@ Then add:
         # Add structured output parameters if provided
         if guided_choice:
             payload["guided_choice"] = guided_choice
+        if guided_json:
+            payload["guided_json"] = guided_json
         if guided_regex:
             payload["guided_regex"] = guided_regex
 
         try:
-            logger.info(f"💬 Chat completion: {prompt[:50]}...")
+            logger.info("💬 Chat completion: {}...".format(prompt[:50]))
 
             session = await self._get_session()
             async with session.post(
@@ -681,15 +705,15 @@ Then add:
                 if response.status == 200:
                     result = await response.json()
                     answer = result["choices"][0]["message"]["content"]
-                    logger.info(f"✅ Chat completed ({len(answer)} chars)")
+                    logger.info("✅ Chat completed ({} chars)".format(len(answer)))
                     return answer
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Chat failed: {response.status}")
-                    raise Exception(f"Chat completion failed: {response.status}")
+                    logger.error("❌ Chat failed: {}".format(response.status))
+                    raise Exception("Chat completion failed: {}".format(response.status))
 
         except Exception as e:
-            logger.error(f"❌ Chat error: {str(e)}")
+            logger.error("❌ Chat error: {}".format(str(e)))
             raise
 
     async def upload_file(
@@ -698,31 +722,31 @@ Then add:
         filename: str,
         collection_type: str = "private"
     ) -> Dict[str, Any]:
-        endpoint = f"{self.base_url}/api/v2/files"
+        endpoint = "{}/api/v2/files".format(self.base_url)
 
         data = aiohttp.FormData()
         data.add_field('file', file_content, filename=filename)
         data.add_field('collection_type', collection_type)
 
-        headers = {"Authorization": f"Bearer {self.api_key}"}
+        headers = {"Authorization": "Bearer {}".format(self.api_key)}
 
         try:
-            logger.info(f"📁 Uploading: {filename} ({len(file_content)} bytes)")
+            logger.info("📁 Uploading: {} ({} bytes)".format(filename, len(file_content)))
 
             session = await self._get_session()
             async with session.post(endpoint, data=data, headers=headers) as response:
                 if response.status in [200, 201]:
                     result = await response.json()
                     file_id = result.get("id") or result.get("file_id")
-                    logger.info(f"✅ File uploaded: ID={file_id}")
+                    logger.info("✅ File uploaded: ID={}".format(file_id))
                     return result
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Upload failed: {response.status}")
-                    raise Exception(f"File upload failed: {response.status}")
+                    logger.error("❌ Upload failed: {}".format(response.status))
+                    raise Exception("File upload failed: {}".format(response.status))
 
         except Exception as e:
-            logger.error(f"❌ Upload error: {str(e)}")
+            logger.error("❌ Upload error: {}".format(str(e)))
             raise
 
     async def filter_chunks(
@@ -787,7 +811,7 @@ Then add:
                 n=10
             )
 
-            print(f"Filtered {len(chunk_uuids)} chunks down to {len(pricing_chunks['chunks'])}")
+            print("Filtered {} chunks down to {}".format(len(chunk_uuids), len(pricing_chunks['chunks'])))
 
         Example - Without session reuse (automatic):
             filtered = await paradigm.filter_chunks(
@@ -807,7 +831,7 @@ Then add:
             +20% precision on multi-document queries by removing irrelevant chunks
             and focusing on the most semantically similar content.
         '''
-        endpoint = f"{self.base_url}/api/v2/filter/chunks"
+        endpoint = "{}/api/v2/filter/chunks".format(self.base_url)
 
         payload = {
             "query": query,
@@ -820,8 +844,8 @@ Then add:
             payload["model"] = model
 
         try:
-            logger.info(f"🔍 Filtering {len(chunk_ids)} chunks")
-            logger.info(f"❓ QUERY: {query}")
+            logger.info("🔍 Filtering {} chunks".format(len(chunk_ids)))
+            logger.info("❓ QUERY: {}".format(query))
 
             session = await self._get_session()
             async with session.post(
@@ -832,15 +856,15 @@ Then add:
                 if response.status == 200:
                     result = await response.json()
                     num_filtered = len(result.get('chunks', []))
-                    logger.info(f"✅ Filter returned {num_filtered} chunks")
+                    logger.info("✅ Filter returned {} chunks".format(num_filtered))
                     return result
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Filter chunks failed: {response.status}")
-                    raise Exception(f"Filter chunks API error {response.status}: {error_text}")
+                    logger.error("❌ Filter chunks failed: {}".format(response.status))
+                    raise Exception("Filter chunks API error {}: {}".format(response.status, error_text))
 
         except Exception as e:
-            logger.error(f"❌ Filter chunks error: {str(e)}")
+            logger.error("❌ Filter chunks error: {}".format(str(e)))
             raise
 
     async def get_file_chunks(
@@ -860,15 +884,15 @@ Then add:
 
         Example:
             result = await paradigm.get_file_chunks(file_id=123)
-            print(f"Found {len(result.get('chunks', []))} chunks")
+            print("Found {} chunks".format(len(result.get('chunks', []))))
 
         Performance:
             Uses session reuse internally for 5.55x faster performance
         '''
-        endpoint = f"{self.base_url}/api/v2/files/{file_id}/chunks"
+        endpoint = "{}/api/v2/files/{}/chunks".format(self.base_url, file_id)
 
         try:
-            logger.info(f"📄 Getting chunks for file {file_id}")
+            logger.info("📄 Getting chunks for file {}".format(file_id))
 
             session = await self._get_session()
             async with session.get(
@@ -878,21 +902,21 @@ Then add:
                 if response.status == 200:
                     result = await response.json()
                     num_chunks = len(result.get('chunks', []))
-                    logger.info(f"✅ Retrieved {num_chunks} chunks from file {file_id}")
+                    logger.info("✅ Retrieved {} chunks from file {}".format(num_chunks, file_id))
                     return result
 
                 elif response.status == 404:
                     error_text = await response.text()
-                    logger.error(f"❌ File {file_id} not found")
-                    raise Exception(f"File {file_id} not found: {error_text}")
+                    logger.error("❌ File {} not found".format(file_id))
+                    raise Exception("File {} not found: {}".format(file_id, error_text))
 
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Get file chunks failed: {response.status}")
-                    raise Exception(f"Get file chunks API error {response.status}: {error_text}")
+                    logger.error("❌ Get file chunks failed: {}".format(response.status))
+                    raise Exception("Get file chunks API error {}: {}".format(response.status, error_text))
 
         except Exception as e:
-            logger.error(f"❌ Get file chunks error: {str(e)}")
+            logger.error("❌ Get file chunks error: {}".format(str(e)))
             raise
 
     async def query(
@@ -941,14 +965,14 @@ Then add:
             )
 
             for chunk in result['chunks']:
-                print(f"Score: {chunk['score']}")
-                print(f"Text: {chunk['text']}")
+                print("Score: {}".format(chunk['score']))
+                print("Text: {}".format(chunk['text']))
 
         Performance:
             Uses session reuse internally for 5.55x faster performance
             ~30% faster than document_search (no AI generation overhead)
         '''
-        endpoint = f"{self.base_url}/api/v2/query"
+        endpoint = "{}/api/v2/query".format(self.base_url)
 
         payload = {"query": query}
 
@@ -958,9 +982,9 @@ Then add:
             payload["n"] = n
 
         try:
-            logger.info(f"🔍 Querying knowledge base: {query}")
+            logger.info("🔍 Querying knowledge base: {}".format(query))
             if n:
-                logger.info(f"📊 Requesting top {n} chunks")
+                logger.info("📊 Requesting top {} chunks".format(n))
 
             session = await self._get_session()
             async with session.post(
@@ -971,16 +995,16 @@ Then add:
                 if response.status == 200:
                     result = await response.json()
                     num_chunks = len(result.get('chunks', []))
-                    logger.info(f"✅ Query returned {num_chunks} chunks")
+                    logger.info("✅ Query returned {} chunks".format(num_chunks))
                     return result
 
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Query failed: {response.status}")
-                    raise Exception(f"Query API error {response.status}: {error_text}")
+                    logger.error("❌ Query failed: {}".format(response.status))
+                    raise Exception("Query API error {}: {}".format(response.status, error_text))
 
         except Exception as e:
-            logger.error(f"❌ Query error: {str(e)}")
+            logger.error("❌ Query error: {}".format(str(e)))
             raise
 
     async def get_file(
@@ -1002,19 +1026,19 @@ Then add:
 
         Example:
             file_info = await paradigm.get_file(file_id=123)
-            print(f"Status: {file_info['status']}")
+            print("Status: {}".format(file_info['status']))
 
         Performance:
             Uses session reuse internally for 5.55x faster performance
         '''
-        endpoint = f"{self.base_url}/api/v2/files/{file_id}"
+        endpoint = "{}/api/v2/files/{}".format(self.base_url, file_id)
 
         params = {}
         if include_content:
             params["include_content"] = "true"
 
         try:
-            logger.info(f"📄 Getting file info for ID {file_id}")
+            logger.info("📄 Getting file info for ID {}".format(file_id))
 
             session = await self._get_session()
             async with session.get(
@@ -1026,21 +1050,21 @@ Then add:
                     result = await response.json()
                     status = result.get('status', 'unknown')
                     filename = result.get('filename', 'N/A')
-                    logger.info(f"✅ File {file_id} ({filename}): status={status}")
+                    logger.info("✅ File {} ({}): status={}".format(file_id, filename, status))
                     return result
 
                 elif response.status == 404:
                     error_text = await response.text()
-                    logger.error(f"❌ File {file_id} not found")
-                    raise Exception(f"File {file_id} not found: {error_text}")
+                    logger.error("❌ File {} not found".format(file_id))
+                    raise Exception("File {} not found: {}".format(file_id, error_text))
 
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Get file failed: {response.status}")
-                    raise Exception(f"Get file API error {response.status}: {error_text}")
+                    logger.error("❌ Get file failed: {}".format(response.status))
+                    raise Exception("Get file API error {}: {}".format(response.status, error_text))
 
         except Exception as e:
-            logger.error(f"❌ Get file error: {str(e)}")
+            logger.error("❌ Get file error: {}".format(str(e)))
             raise
 
     async def wait_for_embedding(
@@ -1062,13 +1086,13 @@ Then add:
 
         Example:
             file_info = await paradigm.wait_for_embedding(file_id=123)
-            print(f"File ready: {file_info['filename']}")
+            print("File ready: {}".format(file_info['filename']))
 
         Performance:
             Uses session reuse internally for efficient polling (5.55x faster)
         '''
         try:
-            logger.info(f"⏳ Waiting for file {file_id} to be embedded (max={max_wait_time}s, interval={poll_interval}s)")
+            logger.info("⏳ Waiting for file {} to be embedded (max={}s, interval={}s)".format(file_id, max_wait_time, poll_interval))
 
             elapsed = 0
             while elapsed < max_wait_time:
@@ -1076,24 +1100,24 @@ Then add:
                 status = file_info.get('status', '').lower()
                 filename = file_info.get('filename', 'N/A')
 
-                logger.info(f"🔄 File {file_id} ({filename}): status={status} (elapsed: {elapsed}s)")
+                logger.info("🔄 File {} ({}): status={} (elapsed: {}s)".format(file_id, filename, status, elapsed))
 
                 if status == 'embedded':
-                    logger.info(f"✅ File {file_id} is embedded and ready!")
+                    logger.info("✅ File {} is embedded and ready!".format(file_id))
                     return file_info
 
                 elif status == 'failed':
-                    logger.error(f"❌ File {file_id} embedding failed")
-                    raise Exception(f"File {file_id} embedding failed")
+                    logger.error("❌ File {} embedding failed".format(file_id))
+                    raise Exception("File {} embedding failed".format(file_id))
 
                 await asyncio.sleep(poll_interval)
                 elapsed += poll_interval
 
-            logger.error(f"⏰ Timeout waiting for file {file_id} after {max_wait_time}s")
-            raise Exception(f"Timeout waiting for file {file_id} to be embedded")
+            logger.error("⏰ Timeout waiting for file {} after {}s".format(file_id, max_wait_time))
+            raise Exception("Timeout waiting for file {} to be embedded".format(file_id))
 
         except Exception as e:
-            logger.error(f"❌ Wait for embedding error: {str(e)}")
+            logger.error("❌ Wait for embedding error: {}".format(str(e)))
             raise
 
     async def analyze_image(
@@ -1103,7 +1127,7 @@ Then add:
         model: Optional[str] = None,
         private: bool = False
     ) -> str:
-        endpoint = f"{self.base_url}/api/v2/chat/image-analysis"
+        endpoint = "{}/api/v2/chat/image-analysis".format(self.base_url)
 
         payload = {
             "query": query,
@@ -1115,7 +1139,7 @@ Then add:
             payload["private"] = private
 
         try:
-            logger.info(f"🖼️ Image analysis: {query[:50]}...")
+            logger.info("🖼️ Image analysis: {}...".format(query[:50]))
 
             session = await self._get_session()
             async with session.post(
@@ -1126,15 +1150,15 @@ Then add:
                 if response.status == 200:
                     result = await response.json()
                     answer = result.get("answer", "No analysis result provided")
-                    logger.info(f"✅ Image analysis completed")
+                    logger.info("✅ Image analysis completed")
                     return answer
                 else:
                     error_text = await response.text()
-                    logger.error(f"❌ Image analysis failed: {response.status}")
-                    raise Exception(f"Image analysis failed: {response.status}")
+                    logger.error("❌ Image analysis failed: {}".format(response.status))
+                    raise Exception("Image analysis failed: {}".format(response.status))
 
         except Exception as e:
-            logger.error(f"❌ Image analysis error: {str(e)}")
+            logger.error("❌ Image analysis error: {}".format(str(e)))
             raise
 
     async def delete_file(self, file_id: int) -> Dict[str, Any]:
@@ -1151,23 +1175,23 @@ Then add:
             result = await paradigm_client.delete_file(12345)
             # Returns: {"success": True, "file_id": 12345}
         '''
-        endpoint = f"{self.base_url}/api/v2/files/{file_id}"
+        endpoint = "{}/api/v2/files/{}".format(self.base_url, file_id)
 
         try:
-            logger.info(f"🗑️ Deleting file: {file_id}")
+            logger.info("🗑️ Deleting file: {}".format(file_id))
 
             session = await self._get_session()
             async with session.delete(endpoint, headers=self.headers) as response:
                 if response.status in [200, 204]:
-                    logger.info(f"✅ File deleted: ID={file_id}")
+                    logger.info("✅ File deleted: ID={}".format(file_id))
                     return {"success": True, "file_id": file_id}
                 else:
                     error = await response.text()
-                    logger.error(f"❌ Delete file failed: {response.status}")
-                    raise Exception(f"Delete file failed: {response.status} - {error}")
+                    logger.error("❌ Delete file failed: {}".format(response.status))
+                    raise Exception("Delete file failed: {} - {}".format(response.status, error))
 
         except Exception as e:
-            logger.error(f"❌ Delete file error: {str(e)}")
+            logger.error("❌ Delete file error: {}".format(str(e)))
             raise
 
 
@@ -1276,7 +1300,7 @@ When extracting information from documents, ALWAYS check if the extraction was s
    ❌ WRONG: Sending missing values to chat_completion
    ```python
    # If both contain "Je n'ai pas...", chat will say they're similar!
-   comparison = await chat_completion(f"Compare: '{value_dc4}' vs '{value_avis}'")
+   comparison = await chat_completion("Compare: '{}' vs '{}'".format(value_dc4, value_avis))
    ```
 
 5. **Apply to Comparison Workflows**:
@@ -1362,7 +1386,7 @@ REMEMBER: Check for missing FIRST on raw values, THEN normalize/compare only if 
    - "date du contrat" → Returns: "La date du contrat est le 15 janvier 2024"
 
    ✅ CORRECT queries that return clean values:
-   - "Extraire uniquement le numéro de référence, sans texte explicatif" → Returns: "21U031"
+   - "Extraire uniquement le numéro de référence, sans texte explicati" → Returns: "21U031"
    - "Quelle est la date ? Répondre au format JJ/MM/AAAA uniquement" → Returns: "15/01/2024"
 
    When comparing extracted values, they should be directly comparable. If the API returns "Le numéro est 21U031" from one doc and "21U031" from another, they will incorrectly appear as different.
@@ -1402,7 +1426,7 @@ if attached_files:
     # 🚨 STEP 1: WAIT FOR FILE EMBEDDING (MANDATORY - DO NOT SKIP!)
     # PDF files need 30-120 seconds OCR processing before they can be queried
     file_id = int(attached_files[0])
-    logger.info(f"⏳ Waiting for file {file_id} to be fully embedded and ready...")
+    logger.info("⏳ Waiting for file {} to be fully embedded and ready...".format(file_id))
 
     try:
         # Actively poll file status every 2 seconds (max 300 seconds)
@@ -1411,10 +1435,10 @@ if attached_files:
             max_wait_time=300,  # Wait up to 5 minutes for large PDFs
             poll_interval=2      # Check status every 2 seconds
         )
-        logger.info(f"✅ File {file_id} is ready! Status: {file_info.get('status')}")
+        logger.info("✅ File {} is ready! Status: {}".format(file_id, file_info.get('status')))
     except Exception as e:
         # If wait_for_embedding fails, fall back to fixed wait
-        logger.warning(f"⚠️ Could not verify file status: {e}")
+        logger.warning("⚠️ Could not verify file status: {}".format(e))
         logger.info("⏳ Falling back to 90-second wait...")
         await asyncio.sleep(90)
         logger.info("✅ Proceeding after fallback wait...")
@@ -1516,7 +1540,7 @@ if attached_files:
         max_wait_time=300,
         poll_interval=2
     )
-    logger.info(f"✅ File ready! Proceeding with comprehensive extraction...")
+    logger.info("✅ File ready! Proceeding with comprehensive extraction...")
 
     document_ids = [str(file_id)]
     cv_data = await paradigm_client.analyze_documents_with_polling(
@@ -1615,6 +1639,33 @@ AVAILABLE API METHODS:
    ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter
 2. await paradigm_client.analyze_documents_with_polling(query: str, document_ids: List[str], model=None)
    *** CRITICAL: document_ids can contain MAXIMUM 5 documents. If more than 5, use batching! ***
+
+   ⚠️ ⚠️ ⚠️ CRITICAL CONCURRENCY RULE - READ THIS CAREFULLY ⚠️ ⚠️ ⚠️
+   *** NEVER EVER use asyncio.gather() with multiple analyze_documents_with_polling() calls! ***
+   *** This endpoint is HEAVY (does summarization/deep analysis) and WILL TIMEOUT if run in parallel! ***
+   *** SOLUTION: Always process documents SEQUENTIALLY using a for loop ***
+   *** CORRECT: for doc_id in document_ids: result = await analyze_documents_with_polling(...) ***
+   *** WRONG: await asyncio.gather(*[analyze_documents_with_polling(...) for doc in docs]) ***
+
+   💡 BETTER ALTERNATIVE FOR SIMPLE EXTRACTION (invoices, forms, single-page docs):
+   *** For SHORT documents with STRUCTURED data, use document_search + chat_completion instead! ***
+   *** This is 3-5x FASTER and MORE RELIABLE than analyze_documents_with_polling for simple extraction ***
+
+   ⚠️ ⚠️ ⚠️ CRITICAL SCOPE PARAMETERS - YOU MUST SET THESE CORRECTLY ⚠️ ⚠️ ⚠️
+   *** When targeting a SPECIFIC file with file_ids=[...], you MUST ALWAYS set: ***
+   ***   company_scope=False, private_scope=False ***
+   *** Otherwise the API returns ALL documents from your private collection, not just the specified file! ***
+
+   *** CORRECT PATTERN: ***
+   *** content = await document_search(query, file_ids=[doc_id], company_scope=False, private_scope=False) ***
+   *** then: data = await chat_completion("Extract fields from: " + content) ***
+
+   *** WRONG PATTERN (DO NOT USE): ***
+   *** content = await document_search(query, file_ids=[doc_id]) ***
+   *** ^ This returns ALL private collection docs + specified file, causing data mixing! ***
+
+   *** Use guided_json with chat_completion to guarantee valid JSON output ***
+
    *** IMPORTANT: For document type identification, analyze documents ONE BY ONE to get clear ID-to-type mapping ***
    *** NOTE: The API uses your authentication token to access both uploaded files and workspace documents automatically ***
    ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter
@@ -1649,39 +1700,60 @@ AVAILABLE API METHODS:
 🚀 PARALLELIZATION: WHEN AND HOW TO USE asyncio.gather()
 
 WHEN TO PARALLELIZE:
-- ✅ Multiple INDEPENDENT tasks (tasks that don't depend on each other's results)
-- ✅ Multiple document searches on different topics
-- ✅ Multiple document analyses on different documents
+- ✅ Multiple document_search() calls (lightweight, fast)
+- ✅ Multiple chat_completion() calls (lightweight, fast)
 - ✅ Multiple validation checks that can run simultaneously
+- ❌ NEVER parallelize analyze_documents_with_polling() - it WILL timeout!
 - ❌ DON'T parallelize tasks where one depends on the output of another
 
-CORRECT PARALLEL EXECUTION (using asyncio.gather()):
-# Example: Checking 3 different fields in parallel
-name_check, address_check, phone_check = await asyncio.gather(
-    paradigm_client.document_search("Extract company name", file_ids=document_ids),
-    paradigm_client.document_search("Extract company address", file_ids=document_ids),
-    paradigm_client.document_search("Extract company phone", file_ids=document_ids)
+✅ CORRECT PARALLEL EXECUTION (using asyncio.gather()):
+
+# Example 1: Extract multiple fields from SAME document in parallel (FAST!)
+# Use document_search to get document content, then multiple chat_completions
+content = await paradigm_client.document_search("", file_ids=[doc_id], company_scope=False, private_scope=False, k=1)
+doc_text = content.get("answer", "")
+
+# Now extract different fields in parallel with chat_completion
+basic_info, amounts, classification = await asyncio.gather(
+    paradigm_client.chat_completion("Extract from invoice: invoice_number, date, supplier\n\n{}".format(doc_text)),
+    paradigm_client.chat_completion("Extract from invoice: amount_ht, vat, amount_ttc\n\n{}".format(doc_text)),
+    paradigm_client.chat_completion("Classify invoice category", guided_choice=["Fournitures", "Services", "Matériel"])
 )
 
-# Example: Analyzing multiple documents in parallel (respecting 5-doc limit per call)
-doc_analyses = await asyncio.gather(
-    paradigm_client.analyze_documents_with_polling("Summarize document", [document_ids[0]]),
-    paradigm_client.analyze_documents_with_polling("Extract key dates", [document_ids[1]]),
-    paradigm_client.analyze_documents_with_polling("Find signatures", [document_ids[2]])
+# Example 2: Process multiple documents in parallel using document_search (FAST!)
+doc_contents = await asyncio.gather(
+    paradigm_client.document_search("", file_ids=[doc_id1], company_scope=False, private_scope=False, k=1),
+    paradigm_client.document_search("", file_ids=[doc_id2], company_scope=False, private_scope=False, k=1),
+    paradigm_client.document_search("", file_ids=[doc_id3], company_scope=False, private_scope=False, k=1)
 )
 
-# Example: Multiple comparison checks in parallel
+# Example 3: Multiple chat_completion calls in parallel (FAST!)
 checks = await asyncio.gather(
-    paradigm_client.chat_completion(f"Compare name: Doc1={name1} vs Doc2={name2}. Are they identical?"),
-    paradigm_client.chat_completion(f"Compare address: Doc1={addr1} vs Doc2={addr2}. Are they identical?"),
-    paradigm_client.chat_completion(f"Compare phone: Doc1={phone1} vs Doc2={phone2}. Are they identical?")
+    paradigm_client.chat_completion("Compare name: Doc1={} vs Doc2={}. Are they identical?".format(name1, name2)),
+    paradigm_client.chat_completion("Compare address: Doc1={} vs Doc2={}. Are they identical?".format(addr1, addr2)),
+    paradigm_client.chat_completion("Compare phone: Doc1={} vs Doc2={}. Are they identical?".format(phone1, phone2))
 )
 
 PERFORMANCE BENEFITS:
 - Sequential: 3 tasks × 5 seconds each = 15 seconds total
 - Parallel: max(5, 5, 5) seconds = 5 seconds total (3x faster!)
 
-INCORRECT PARALLELIZATION (DON'T DO THIS):
+❌ INCORRECT PARALLELIZATION (DON'T DO THIS):
+
+# ❌ WRONG: Parallelizing analyze_documents_with_polling - WILL TIMEOUT!
+doc_analyses = await asyncio.gather(
+    paradigm_client.analyze_documents_with_polling("Summarize", [doc_id1]),
+    paradigm_client.analyze_documents_with_polling("Summarize", [doc_id2]),
+    paradigm_client.analyze_documents_with_polling("Summarize", [doc_id3])
+)
+# This WILL fail with timeouts! Use sequential for loop instead.
+
+# ✅ CORRECT: Sequential processing for analyze_documents_with_polling
+doc_analyses = []
+for doc_id in [doc_id1, doc_id2, doc_id3]:
+    result = await paradigm_client.analyze_documents_with_polling("Summarize", [doc_id])
+    doc_analyses.append(result)
+
 # ❌ Task 2 depends on Task 1's result - MUST be sequential
 result1 = await task1()
 result2 = await task2(result1)  # Needs result1, can't parallelize
@@ -1702,7 +1774,7 @@ doc1_info, doc2_info, doc3_info = await asyncio.gather(
 
 # Step 2: Sequential comparison using extracted data
 comparison = await paradigm_client.chat_completion(
-    f"Compare these documents: {doc1_info}, {doc2_info}, {doc3_info}"
+    "Compare these documents: {}, {}, {}".format(doc1_info, doc2_info, doc3_info)
 )
 
 🎯 INTELLIGENT PARALLELIZATION DETECTION:
@@ -1725,14 +1797,16 @@ DETECTION RULES:
 LANGUAGE-AGNOSTIC DETECTION (works in French, English, etc.):
 
 EXAMPLE 1 - French: "Extraire le nom, l'adresse et le téléphone du document"
-→ ANALYSIS: User wants 3 fields (nom, adresse, téléphone)
+→ ANALYSIS: User wants 3 fields (nom, adresse, téléphone) from ONE document
 → DETECTION: 3 independent extraction tasks
-→ CODE: Use asyncio.gather() with 3 document_search or analyze_documents_with_polling calls
+→ CODE METHOD 1 (FASTEST): Get content with document_search, then asyncio.gather() with 3 chat_completion calls
+→ CODE METHOD 2 (ALTERNATIVE): asyncio.gather() with 3 document_search calls (NOT analyze_documents_with_polling!)
 
 EXAMPLE 2 - French: "Extraire le nom et l'adresse de 5 documents différents"
 → ANALYSIS: Same operation (extract name+address) on 5 documents
 → DETECTION: 5 independent document analyses
-→ CODE: Use asyncio.gather() to process 5 documents in parallel
+→ CODE FOR SHORT DOCS (invoices, forms): asyncio.gather() with 5 document_search calls (FAST!)
+→ CODE FOR LONG DOCS (reports): Sequential for loop with analyze_documents_with_polling (NEVER gather!)
 
 EXAMPLE 3 - English: "Compare company name from Doc A with Doc B"
 → ANALYSIS: Extract from A → Extract from B → Compare (sequential dependency)
@@ -1814,9 +1888,9 @@ Use asyncio.sleep(1) instead of 0.5 to allow more recovery time:
 
 # Example with VisionDocumentSearch (heavy operation)
 vision_tasks = [
-    paradigm_client.document_search(q1, file_ids=[doc_id], tool="VisionDocumentSearch"),
-    paradigm_client.document_search(q2, file_ids=[doc_id], tool="VisionDocumentSearch"),
-    paradigm_client.document_search(q3, file_ids=[doc_id], tool="VisionDocumentSearch")
+    paradigm_client.document_search(q1, file_ids=[doc_id], company_scope=False, private_scope=False, tool="VisionDocumentSearch"),
+    paradigm_client.document_search(q2, file_ids=[doc_id], company_scope=False, private_scope=False, tool="VisionDocumentSearch"),
+    paradigm_client.document_search(q3, file_ids=[doc_id], company_scope=False, private_scope=False, tool="VisionDocumentSearch")
 ]
 vision_results = await asyncio.gather(*vision_tasks)
 await asyncio.sleep(1)  # LONGER DELAY for heavy operations
@@ -1830,6 +1904,90 @@ BATCHING RULES:
 2. Use asyncio.sleep(0.5) between batches for standard operations
 3. Use asyncio.sleep(1) between batches for heavy operations (VisionDocumentSearch, file upload)
 4. ALWAYS batch when you have more than 5 parallel API calls
+
+⚠️ CRITICAL: FILE_ID MAPPING PRESERVATION
+When processing multiple uploaded files, you MUST preserve the file_id → result mapping throughout the workflow!
+
+WRONG APPROACH (causes all files to extract same document):
+```python
+# ❌ BAD: Lost the mapping between file_id and results
+basic_info_tasks = []
+for file_id in attached_files:
+    task = paradigm_client.document_search(query, file_ids=[int(file_id)], company_scope=False, private_scope=False)
+    basic_info_tasks.append(task)
+
+basic_search_results = await asyncio.gather(*basic_info_tasks)
+
+# Later: enumerate results but no way to know which file_id!
+for i, result in enumerate(basic_search_results):
+    # ❌ WRONG: Using 'i' index but no file_id associated
+    extraction_prompt = "Extract from: {}".format(result['answer'])
+```
+
+CORRECT APPROACH (preserves file_id throughout):
+```python
+# ✅ GOOD: Store tuples of (file_id, task) to preserve mapping
+file_search_tasks = []
+for file_id in attached_files:
+    task = paradigm_client.document_search(query, file_ids=[int(file_id)], company_scope=False, private_scope=False)
+    file_search_tasks.append((file_id, task))  # ✅ Keep the file_id!
+
+# Execute tasks in batches while preserving file_id
+file_search_results = []
+for i in range(0, len(file_search_tasks), 5):
+    batch = file_search_tasks[i:i+5]
+    # Extract just the tasks for gather
+    batch_tasks = [task for file_id, task in batch]
+    batch_results = await asyncio.gather(*batch_tasks)
+    # Re-associate file_ids with results
+    for j, result in enumerate(batch_results):
+        file_id = batch[j][0]  # Get the file_id from tuple
+        file_search_results.append((file_id, result))  # ✅ Keep mapping!
+    if i + 5 < len(file_search_tasks):
+        await asyncio.sleep(0.5)
+
+# Later: iterate with explicit file_id
+for file_id, search_result in file_search_results:
+    content = search_result.get('answer', '')
+    # ✅ CORRECT: We know exactly which file_id this content came from
+    extraction_prompt = "Extract from document {}: {}".format(file_id, content)
+```
+
+ALTERNATIVE: Use dictionaries for clarity
+```python
+# ✅ ALSO GOOD: Use dict to map file_id to results
+search_results_by_file = {}
+search_tasks = []
+for file_id in attached_files:
+    task = paradigm_client.document_search(query, file_ids=[int(file_id)])
+    search_tasks.append((file_id, task))
+
+# Execute and map back to file_id
+for i in range(0, len(search_tasks), 5):
+    batch = search_tasks[i:i+5]
+    batch_task_list = [task for fid, task in batch]
+    batch_results = await asyncio.gather(*batch_task_list)
+    for j, result in enumerate(batch_results):
+        file_id = batch[j][0]
+        search_results_by_file[file_id] = result
+    if i + 5 < len(search_tasks):
+        await asyncio.sleep(0.5)
+
+# Later: explicit file_id access
+for file_id in attached_files:
+    search_result = search_results_by_file[file_id]
+    content = search_result.get('answer', '')
+    # ✅ CORRECT: Clear which file we're processing
+```
+
+KEY PRINCIPLE: Never lose track of which file_id produced which result!
+When you create parallel tasks for multiple files, store (file_id, task) tuples or use dictionaries.
+This prevents the catastrophic bug where all files extract data from the same document.
+
+PARADIGM API ERROR HANDLING:
+Always wrap critical API calls (document_search, wait_for_embedding, chat_completion) in try-except blocks.
+For 502/503/504 errors, return clear user message: "❌ ERREUR: API Paradigm indisponible. Réessayez dans 10-15 minutes."
+For batch processing, track failures and report partial success if some files succeed.
 
 CONTEXT PRESERVATION IN API PROMPTS:
 When creating prompts for API calls, include relevant context from the original workflow description: examples, formatting requirements, specific field names, and business rules mentioned by the user.
@@ -1883,7 +2041,7 @@ expected_document_types = ["DC4", "BOAMP", "JOUE", "RIB", "Acte d'engagement"]  
 doc_type_mapping = {}
 for doc_id in document_ids:
     # Use specific prompt that asks for precise identification
-    identification_prompt = f"Identifiez précisément le type de ce document. Répondez uniquement par le type exact parmi ces options : {', '.join(expected_document_types)}"
+    identification_prompt = "Identifiez précisément le type de ce document. Répondez uniquement par le type exact parmi ces options : {}".format(', '.join(expected_document_types))
     
     type_analysis = await paradigm_client.analyze_documents_with_polling(
         identification_prompt, 
@@ -2064,7 +2222,7 @@ else:
 for doc in documents:
     if isinstance(doc, dict):
         doc_id = doc.get('id', 'unknown')
-        doc_name = doc.get('filename', f'Document {doc_id}')
+        doc_name = doc.get('filename', 'Document {}'.format(doc_id))
 ```
 
 Always wrap risky operations in try/except:
@@ -2077,7 +2235,7 @@ try:
     else:
         return str(result)
 except Exception as e:
-    return f"Analysis failed: {str(e)}. Please verify documents are uploaded correctly."
+    return "Analysis failed: {}. Please verify documents are uploaded correctly.".format(str(e))
 ```
 
 **IMPLEMENTATION CHECKLIST:**
@@ -2274,7 +2432,7 @@ Generate a complete, self-contained workflow that:
 4. Handles the workflow requirements exactly as specified
 5. MANDATORY: If the workflow uses documents, implement the if/else pattern for attached_file_ids as shown in the CORRECT PATTERN section above
 """
-        
+
         try:
             response = self.anthropic_client.messages.create(
                 model="claude-sonnet-4-20250514",
@@ -2314,7 +2472,7 @@ Generate a complete, self-contained workflow that:
             return code
             
         except Exception as e:
-            raise Exception(f"Code generation failed: {str(e)}")
+            raise Exception("Code generation failed: {}".format(str(e)))
 
 
     def _clean_generated_code(self, code: str) -> str:
@@ -2365,22 +2523,35 @@ AVAILABLE PARADIGM API TOOLS AND WHEN TO USE THEM:
 
 📁 FOR WORKFLOWS WITH UPLOADED FILES (user provides documents):
 
-1. Document Analysis (paradigm_client.analyze_documents_with_polling) ⭐ PREFERRED FOR COMPREHENSIVE EXTRACTION
-   - USE FOR: Extracting COMPLETE structured data (CV, comprehensive forms)
-   - USE FOR: Need ALL fields extracted automatically (skills, experience, education, etc.)
-   - USE FOR: Summarizing long documents (>5 pages)
-   - USE FOR: Complex analysis across MULTIPLE documents
-   - Performance: ~20-30 seconds for extraction, 2-5 minutes for long document analysis
-   - Returns: Comprehensive structured AI analysis in Markdown format
-   - Example: Extract all CV information, analyze complete forms, synthesize multiple documents
-   - ✅ USE THIS when workflow description mentions: "CV", "analyse", "extract all", "comprehensive"
+1. Document Search + Chat Completion (RECOMMENDED FOR SIMPLE EXTRACTION) ⭐⭐⭐
+   - USE FOR: Short documents (invoices, forms, 1-2 pages)
+   - USE FOR: Structured data extraction (multiple fields from simple documents)
+   - USE FOR: When you need JSON output with multiple fields
+   - Pattern: content = document_search("", file_ids=[doc_id], k=1)
+             then: data = chat_completion("Extract fields from: " + content, guided_json=schema)
+   - Performance: FAST (5-10 seconds total) and RELIABLE
+   - Can process MULTIPLE documents in PARALLEL with asyncio.gather()
+   - Returns: Clean JSON data ready to use
+   - Example: Extract invoice fields (number, date, amounts), parse forms, classify documents
+   - ✅ USE THIS when workflow mentions: "facture", "invoice", "formulaire", "form", "extract fields"
+   - ⚠️ CRITICAL: Use guided_json parameter to guarantee valid JSON output!
 
-2. Document Search (paradigm_client.document_search with file_ids) ⭐ FOR QUICK SINGLE FIELD
+2. Document Analysis (paradigm_client.analyze_documents_with_polling) - USE SPARINGLY
+   - USE FOR: Long documents (>5 pages) requiring deep summarization
+   - USE FOR: Complex multi-document synthesis
+   - Performance: SLOW (~20-30 seconds per document, 2-5 minutes for long docs)
+   - ⚠️ WARNING: Can TIMEOUT if multiple calls run in parallel!
+   - ⚠️ CRITICAL: ALWAYS process documents SEQUENTIALLY (for loop, NOT asyncio.gather)
+   - Returns: Comprehensive structured AI analysis in Markdown format
+   - Example: Summarize research reports, synthesize multiple long documents
+   - ✅ USE THIS when workflow mentions: "summarize", "résumer", "long document", "rapport"
+
+3. Document Search (paradigm_client.document_search with file_ids) - FOR SINGLE FIELD
    - USE FOR: Extracting ONE specific field quickly ("What is the name?")
    - USE FOR: Simple questions about ONE specific value
-   - Performance: Fast (2-5 seconds)
+   - Performance: FAST (2-5 seconds)
    - Returns: Direct AI answer
-   - Example: Get name from document, find total in invoice, extract one specific date
+   - Example: Get name from document, find total quickly, extract one specific date
    - ✅ USE THIS when workflow description mentions: "find", "get", "what is", single field extraction
 
 ⚠️ NOTE: ask_question() API is currently unavailable due to server-side issues.
@@ -2545,6 +2716,162 @@ ENHANCEMENT GUIDELINES:
    - Add BOLD (**) for important information
    - Group related data under meaningful sections
    - The output should look PROFESSIONAL, not like raw bullet points
+
+   ⚠️ ⚠️ ⚠️ CRITICAL FINAL REPORT GENERATION RULES ⚠️ ⚠️ ⚠️
+
+   When generating a FINAL REPORT using chat_completion() at the end of a workflow:
+
+   **❌ NEVER DO THIS - PLACEHOLDER PROMPTS:**
+   ```python
+   # WRONG - This creates incomplete reports with [À DÉTERMINER] everywhere!
+   final_report = await paradigm_client.chat_completion(
+       '''Generate a report with this structure:
+
+       ### ZONE A - BUYER
+       [Analyze buyer comparison result]    # ❌ PLACEHOLDER!
+
+       ### ZONE B - MARKET
+       [Analyze market comparison result]   # ❌ PLACEHOLDER!
+
+       DONNÉES: {}'''.format(" | ".join(comparisons[:200]))  # ❌ TRUNCATED!
+   )
+   ```
+   **Why this fails:** The AI receives INSTRUCTIONS instead of DATA, and truncated data cannot produce a complete report!
+
+   **✅ ALWAYS DO THIS - DATA-DRIVEN PROMPTS:**
+   ```python
+   # CORRECT - Provide FULL data directly in the prompt
+   final_report = await paradigm_client.chat_completion(
+       prompt='''Génère un rapport final professionnel au format Markdown COMPLET.
+
+       Voici les résultats de TOUS les contrôles (utilise ces données pour remplir chaque section):
+
+       ZONE A - IDENTIFICATION ACHETEUR:
+       {}
+
+       ZONE B - OBJET DU MARCHÉ:
+       {}
+
+       ZONE C - DÉCLARATION SOUS-TRAITANT:
+       {}
+
+       [... tous les autres contrôles avec données complètes ...]
+
+       INSTRUCTIONS:
+       - Pour chaque zone, analyse le résultat fourni et indique CONFORME ou NON CONFORME
+       - Ajoute une explication détaillée pour CHAQUE zone (pourquoi conforme/non conforme)
+       - Calcule les statistiques: X contrôles conformes sur Y total (Z%)
+       - Détermine le statut global: ACCEPTÉ ou REJETÉ selon les règles métier
+       - Format: Markdown professionnel avec ### pour chaque zone
+       - Langue: 100% FRANÇAIS (aucun mot anglais)
+       '''.format(
+           comparison_buyer_full,      # ❌ NO [:200] truncation!
+           comparison_market_full,
+           comparison_declaration_full,
+           # ... all other complete results
+       ),
+       system_prompt='''Tu es un assistant qui génère des rapports professionnels COMPLETS.
+       Tu DOIS analyser TOUTES les données fournies et remplir TOUTES les sections du rapport.
+       AUCUNE section ne doit contenir [À DÉTERMINER] ou [À COMPLÉTER].
+       Réponds UNIQUEMENT en FRANÇAIS, AUCUN mot anglais.'''
+   )
+   ```
+
+   **🎯 MANDATORY RULES FOR FINAL REPORT GENERATION:**
+
+   1. **✅ PROVIDE COMPLETE DATA** - Include ALL analysis results in the prompt (no truncation!)
+   2. **✅ EXPLICIT INSTRUCTIONS** - Tell the AI exactly what to analyze and how to format each section
+   3. **✅ CALCULATE STATISTICS** - Count conformities/non-conformities in Python BEFORE calling chat_completion
+   4. **✅ MAKE DECISIONS** - Determine final status (ACCEPT/REJECT) based on business rules in Python code
+   5. **✅ ENFORCE LANGUAGE** - Use system_prompt to force 100% French output (no English mixing)
+   6. **✅ NO PLACEHOLDERS** - Every section must be filled with actual analysis, never "[À DÉTERMINER]"
+
+   **📊 RECOMMENDED PATTERN FOR COMPLEX REPORTS:**
+
+   ```python
+   # Step 1: Collect all analysis results (no truncation!)
+   analysis_results = {
+       "zone_a": comparison_buyer_result,     # Full text
+       "zone_b": comparison_market_result,    # Full text
+       "zone_c": validation_declaration_result,
+       # ... all other zones
+   }
+
+   # Step 2: Calculate statistics in Python (don't rely on AI to count!)
+   total_checks = len(analysis_results)
+   conforming_checks = sum(1 for result in analysis_results.values()
+                          if "CONFORME" in result.upper() and "NON CONFORME" not in result.upper())
+   conformity_percentage = round((conforming_checks / total_checks) * 100, 1)
+
+   # Step 3: Determine final decision based on business rules
+   blocking_failures = sum(1 for key, result in analysis_results.items()
+                          if key in ["zone_c", "zone_h"] and "NON CONFORME" in result.upper())
+   final_decision = "DC4 REJETÉ" if blocking_failures > 0 else "DC4 ACCEPTÉ"
+
+   # Step 4: Generate report with ALL data and pre-calculated values
+   final_report = await paradigm_client.chat_completion(
+       prompt='''Génère un rapport final professionnel au format Markdown.
+
+       STATISTIQUES CALCULÉES:
+       - Total contrôles: {}
+       - Contrôles conformes: {}
+       - Taux de conformité: {}%
+       - Contrôles bloquants échoués: {}
+       - DÉCISION FINALE: {}
+
+       RÉSULTATS DES CONTRÔLES (analyse et explique chaque résultat):
+
+       ### ZONE A - IDENTIFICATION ACHETEUR
+       Résultat brut: {}
+       → Analyse ce résultat et indique si CONFORME ou NON CONFORME avec explication
+
+       ### ZONE B - OBJET DU MARCHÉ
+       Résultat brut: {}
+       → Analyse ce résultat et indique si CONFORME ou NON CONFORME avec explication
+
+       [... continue for ALL zones with FULL data ...]
+
+       INSTRUCTIONS DE FORMATAGE:
+       - Utilise les statistiques calculées ci-dessus dans la section RÉSUMÉ EXÉCUTIF
+       - Pour chaque zone, analyse le résultat fourni et détermine conformité
+       - Ajoute une explication détaillée pour chaque zone
+       - Utilise la décision finale calculée ci-dessus
+       - Format: Markdown professionnel avec ### pour chaque zone
+       - Langue: 100% FRANÇAIS uniquement
+       '''.format(
+           total_checks,
+           conforming_checks,
+           conformity_percentage,
+           blocking_failures,
+           final_decision,
+           analysis_results["zone_a"],  # Full text, no truncation
+           analysis_results["zone_b"],
+           # ... all other zones with full data
+       ),
+       system_prompt='''Tu es un assistant qui génère des rapports de conformité professionnels COMPLETS.
+       Tu DOIS remplir TOUTES les sections avec les données fournies.
+       AUCUNE section ne peut contenir [À DÉTERMINER], [À COMPLÉTER], ou [À VÉRIFIER].
+       Réponds UNIQUEMENT en FRANÇAIS. AUCUN mot, phrase ou note en anglais.
+       N'ajoute AUCUN commentaire de type "Here's the report" ou "Note: Some sections...".'''
+   )
+   ```
+
+   **🚨 COMMON MISTAKES TO AVOID:**
+
+   ❌ Truncating data with `[:200]` - This loses critical information!
+   ❌ Using template instructions like "[Analyze X]" - AI cannot fill placeholders!
+   ❌ Not providing system_prompt - AI may respond in English or incomplete format
+   ❌ Asking AI to calculate statistics - Do it in Python for accuracy!
+   ❌ Not pre-determining final decision - Business logic should be in code, not AI interpretation!
+   ❌ Mixing languages - Always enforce single language with system_prompt
+
+   **✅ BENEFITS OF THIS APPROACH:**
+
+   ✓ Every section is filled with actual analysis (no placeholders)
+   ✓ Statistics are accurate (calculated in Python, not estimated by AI)
+   ✓ Final decision follows exact business rules (code logic, not AI interpretation)
+   ✓ Output is 100% in requested language (enforced by system_prompt)
+   ✓ Report is complete and ready for end-user consumption
 
    **DETECTION EXAMPLES** (recognize automatically):
    User: "Extraire le nom, l'adresse et le téléphone"
