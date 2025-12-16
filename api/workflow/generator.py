@@ -78,6 +78,15 @@ def count_api_calls(code: str) -> int:
     return total_calls
 
 
+def fix_fstring_with_braces(code: str) -> str:
+    """
+    Disabled - too complex to fix f-strings reliably with regex.
+    Rely on improved instructions to Claude instead.
+    """
+    # Do nothing - let validation catch errors and retry with context
+    return code
+
+
 def add_staggering_to_workflow(code: str, description: str) -> str:
     """
     Add staggering (delays) between API calls for complex workflows.
@@ -150,6 +159,9 @@ class WorkflowGenerator:
                     # Generate the code using Anthropic API
                     generated_code = await self._generate_code(description, context)
 
+                    # Fix f-strings with curly braces BEFORE validation
+                    generated_code = fix_fstring_with_braces(generated_code)
+
                     # Validate the generated code
                     validation_result = await self._validate_code(generated_code)
 
@@ -204,6 +216,14 @@ CRITICAL INSTRUCTIONS:
 7. *** NO STUB FUNCTIONS - ALL CODE MUST BE EXECUTABLE AND FUNCTIONAL ***
 8. *** ALWAYS USE asyncio.gather() FOR INDEPENDENT PARALLEL TASKS - IMPROVES PERFORMANCE 3-10x ***
 9. *** ParadigmClient MUST ALWAYS INCLUDE upload_file() METHOD - REQUIRED FOR FILE UPLOADS ***
+10. *** CRITICAL STRING FORMATTING RULE - YOU MUST FOLLOW THIS EXACTLY:
+    - NEVER EVER use f-strings (f"..." or f'''...''') ANYWHERE in the code
+    - ALWAYS use .format() method for ALL string interpolation
+    - Example CORRECT: "Bearer {}".format(self.api_key)
+    - Example WRONG: f"Bearer {self.api_key}"
+    - Example CORRECT: "{}/api/v2/files".format(self.base_url)
+    - Example WRONG: f"{self.base_url}/api/v2/files"
+    - This prevents ALL syntax errors with curly braces ***
 
 REQUIRED STRUCTURE:
 ```python
@@ -1598,6 +1618,28 @@ AVAILABLE API METHODS:
    *** IMPORTANT: For document type identification, analyze documents ONE BY ONE to get clear ID-to-type mapping ***
    *** NOTE: The API uses your authentication token to access both uploaded files and workspace documents automatically ***
    ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter
+
+   🔥 CRITICAL FOR STRUCTURED DATA EXTRACTION (invoices, CVs, forms, contracts):
+   When extracting multiple fields from documents, use JSON parsing with regex fallback.
+
+   ⚠️ CRITICAL: NEVER use f-strings for queries that contain JSON examples or curly braces!
+   Always use regular strings (with single or triple quotes) to avoid syntax errors.
+
+   IMPORTANT: Always try json.loads() FIRST, then fallback to regex if parsing fails.
+   This gives 90% reliability (JSON) with graceful degradation (regex fallback).
+
+   Pattern to follow:
+   1. Query should mention "JSON" and list the fields to extract (use regular string, NOT f-string)
+   2. Try parsing result with json.loads() after cleaning markdown blocks
+   3. If JSONDecodeError occurs, use regex to extract fields from text
+   4. Always provide default values like "Non trouvé" for missing data
+
+   Example approach (adapt to your specific fields):
+   - Query: "Extract invoice data as JSON: invoice_number, date, supplier, amounts"
+   - Parse: Try json.loads(result) after removing markdown code blocks
+   - Fallback: If JSON fails, use re.search() patterns to extract each field
+   - Default: Use .get("field", "Non trouvé") to handle missing values
+
 3. await paradigm_client.chat_completion(prompt: str, model: str = "alfred-sv5", system_prompt: Optional[str] = None, guided_choice: Optional[List[str]] = None, guided_regex: Optional[str] = None)
 4. await paradigm_client.analyze_image(query: str, document_ids: List[str], model=None) - Analyze images in documents with AI-powered visual analysis
    *** CRITICAL: document_ids can contain MAXIMUM 5 documents. If more than 5, use batching! ***
@@ -2264,7 +2306,7 @@ Generate a complete, self-contained workflow that:
 
             logger.info("🔄 POST-PROCESSING: Analyzing generated code...")
 
-            # Post-processing #1: Add staggering for complex workflows
+            # Post-processing: Add staggering for complex workflows
             code = add_staggering_to_workflow(code, description)
 
             logger.info("✅ POST-PROCESSING: Complete")
@@ -2806,13 +2848,23 @@ Now enhance this workflow description and return ONLY the plain text response:""
             # Save failed code for debugging
             import tempfile
             import os
+            from datetime import datetime
             try:
-                with tempfile.NamedTemporaryFile(mode='w', suffix='_failed.py', delete=False, dir='.') as f:
+                # Save to /tmp or current directory with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"workflow_failed_{timestamp}.py"
+                filepath = os.path.join("/tmp" if os.path.exists("/tmp") else ".", filename)
+
+                with open(filepath, 'w') as f:
                     f.write(code)
-                    logger.error(f"❌ Syntax error - Failed code saved to: {f.name}")
+                    error_msg = f"❌ Syntax error - Failed code saved to: {filepath}"
+                    print(error_msg)  # Force print to stdout
+                    logger.error(error_msg)
                     logger.error(f"   Error: {str(e)}")
-            except:
-                pass
+                    logger.error(f"   Line {e.lineno}: {e.text if e.text else 'N/A'}")
+                    print(f"   Line {e.lineno}: {e.text if e.text else 'N/A'}")
+            except Exception as save_error:
+                logger.error(f"Could not save failed code: {save_error}")
             return {"valid": False, "error": f"Syntax error: {str(e)}"}
         except Exception as e:
             return {"valid": False, "error": f"Validation error: {str(e)}"}

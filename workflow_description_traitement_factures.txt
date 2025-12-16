@@ -1,0 +1,41 @@
+# Traitement automatisé de factures fournisseurs
+
+Ce workflow permet de traiter automatiquement un ou plusieurs fichiers PDF de factures fournisseurs. L'objectif est d'extraire les informations essentielles de chaque facture, de les classifier par type de dépense et service destinataire, puis de générer un tableau récapitulatif complet avec toutes les données structurées.
+
+## Ce que l'utilisateur fournit
+
+L'utilisateur doit uploader un ou plusieurs fichiers PDF contenant des factures fournisseurs, avec un maximum de 10 factures par exécution. Le workflow peut traiter aussi bien une seule facture que jusqu'à 10 factures en une seule exécution. Chaque fichier PDF doit contenir une facture complète avec les informations standards comme le numéro de facture, la date d'émission, le nom du fournisseur, et les montants détaillés.
+
+## Comment le workflow fonctionne
+
+D'abord, le workflow attend que tous les fichiers PDF uploadés soient correctement indexés par le système. Cette étape d'indexation est cruciale car les documents doivent être traités et préparés avant que leur contenu puisse être analysé. Le workflow vérifie le statut de chaque fichier en effectuant des requêtes de polling avec un délai maximum de 2 minutes par fichier. Si certains fichiers ne sont pas prêts après ce délai, le workflow utilise un mécanisme de fallback en attendant 90 secondes supplémentaires avant de poursuivre le traitement.
+
+Une fois tous les fichiers indexés, le workflow lance l'extraction des données en parallèle pour optimiser les performances. Pour chaque fichier PDF de facture, le workflow extrait systématiquement le numéro de facture qui identifie de manière unique le document, la date d'émission de la facture au format standard, le nom complet du fournisseur émetteur, le montant hors taxes en euros, le montant de la TVA appliquée, et le montant toutes taxes comprises. Cette extraction utilise l'API d'analyse de documents qui permet de récupérer toutes ces informations structurées même si elles sont présentées dans des formats variés selon les fournisseurs.
+
+Après l'extraction des données brutes, le workflow procède à une classification intelligente de chaque facture selon deux dimensions. D'abord, il catégorise la facture par type de dépense en choisissant parmi six catégories prédéfinies : Fournitures pour les achats de consommables et matériel de bureau, Services externes pour les prestations de conseil ou sous-traitance, Matériel pour les équipements et machines, Logiciels pour les licences et abonnements informatiques, Frais généraux pour les dépenses courantes comme l'énergie ou les télécommunications, et Déplacements pour les frais de transport et d'hébergement. Ensuite, le workflow identifie le service destinataire de la dépense parmi six services : IT pour les services informatiques, RH pour les ressources humaines, Marketing pour le service marketing et communication, Finance pour la direction financière et comptable, Commercial pour les équipes de vente, et Opérations pour les services de production ou logistique. Pour chaque classification, le workflow calcule également un score de confiance exprimé en pourcentage qui indique le niveau de certitude de la catégorisation basé sur le contenu de la facture et les patterns identifiés.
+
+Enfin, le workflow compile toutes les informations extraites et les classifications effectuées pour générer un tableau récapitulatif complet. Ce tableau présente une ligne par facture traitée avec toutes les colonnes demandées, permettant ainsi une vue d'ensemble claire et exploitable de l'ensemble des factures analysées.
+
+## Le tableau final généré
+
+Le workflow produit un tableau au format Markdown professionnel avec des colonnes bien alignées et facilement lisibles. Le tableau commence par une ligne d'en-tête définissant toutes les colonnes : Nom du fichier, N° Facture, Date, Fournisseur, Montant HT, TVA, Montant TTC, Catégorie, Service, et Confiance.
+
+Pour chaque facture traitée, le tableau affiche une ligne complète avec le nom du fichier PDF d'origine pour permettre la traçabilité, le numéro de facture extrait tel qu'il apparaît sur le document, la date d'émission au format JJ/MM/AAAA, le nom du fournisseur, le montant hors taxes avec deux décimales et le symbole euro, le montant de la TVA également avec deux décimales, le montant TTC calculé, la catégorie de dépense identifiée, le service destinataire identifié, et le score de confiance en pourcentage pour la classification.
+
+Si des informations n'ont pas pu être extraites d'une facture, le tableau affiche clairement "Non trouvé" ou "Erreur" dans les cellules concernées pour signaler les problèmes d'extraction. Le tableau se termine par une ligne de totaux indiquant le nombre total de factures traitées, la somme totale des montants HT, la somme des TVA, et la somme des montants TTC, permettant ainsi d'avoir une vision financière globale immédiate.
+
+Le tableau est précédé d'un titre clair et d'un résumé indiquant le nombre de factures traitées avec succès et d'éventuelles erreurs rencontrées. Il se termine par un horodatage précis indiquant la date et l'heure de génération du rapport.
+
+## Points techniques importants pour la génération
+
+Le workflow doit traiter tous les fichiers PDF en parallèle en utilisant asyncio.gather pour maximiser les performances et réduire le temps d'exécution total. Chaque fichier uploadé doit d'abord être vérifié avec la méthode wait_for_embedding pour s'assurer qu'il est complètement indexé avant d'être analysé.
+
+L'extraction des données de chaque facture doit obligatoirement utiliser la méthode analyze_documents_with_polling avec un timeout de 120 secondes et un intervalle de polling de 3 secondes. Le prompt d'extraction doit être très précis et demander explicitement chaque champ dans un format structuré pour faciliter le parsing ultérieur.
+
+Pour la classification par catégorie de dépense et par service destinataire, le workflow doit utiliser la méthode chat_completion avec le paramètre guided_choice qui force le modèle à choisir exactement l'une des options prédéfinies dans les listes fermées. Cela garantit que les classifications sont toujours valides et cohérentes. Les listes guided_choice doivent contenir exactement : pour les catégories ["Fournitures", "Services externes", "Matériel", "Logiciels", "Frais généraux", "Déplacements"], et pour les services ["IT", "RH", "Marketing", "Finance", "Commercial", "Opérations"].
+
+Le score de confiance doit être calculé en analysant la clarté et la complétude des informations extraites de la facture. Un score proche de 100% indique une haute confiance dans la classification, tandis qu'un score plus bas suggère une ambiguïté dans le contenu de la facture.
+
+Le tableau final doit être généré en Markdown avec des séparateurs de colonnes clairs et un alignement approprié. Les montants numériques doivent être formatés avec exactement deux décimales et le symbole euro. La gestion des erreurs est essentielle : si l'extraction échoue pour un champ, le code doit insérer "Non trouvé" plutôt que de planter, permettant ainsi de générer un tableau complet même en cas de problèmes partiels.
+
+Le workflow ne doit faire aucune hypothèse sur le nombre de factures à traiter. Il doit être entièrement dynamique et capable de traiter aussi bien 1 que 10 factures en adaptant automatiquement le traitement parallèle et la génération du tableau.
