@@ -75,18 +75,33 @@ IMPORTANT ANALYSIS GUIDELINES:
     - true if workflow will fail without the file
 
 **MULTIPLE FILES DETECTION:**
-11. **CRITICAL**: Detect if the workflow expects MULTIPLE files of the same type:
-    - Look for `len(attached_files)` checks or loops like `for file_id in file_ids`
-    - Look for text like "plusieurs fichiers", "1 à 10 fichiers", "multiple files", "jusqu'à X fichiers"
-    - Look for error messages checking file count (e.g., "exactement 6 fichiers requis")
-    - If the workflow processes files in a loop or expects a variable number, set:
-      * "multiple": true
-      * "max_files": <number> (extract from description or code, e.g., "10", "5", "6")
-      * Update description to mention "(1 à X fichiers)" where X is max_files
-12. For workflows with multiple file uploads:
-    - Create ONE file field with multiple=true instead of multiple file fields
-    - Example: Instead of "Document 1", "Document 2", use "Factures fournisseurs (PDF)" with multiple=true
-    - Set max_files based on workflow requirements (default: 10 if not specified)
+11. **CRITICAL**: Detect if the workflow expects MULTIPLE DIFFERENT TYPES of documents:
+    - Look for descriptions like "1 fiche de poste + 5 CV", "DC4 + RIB + BOAMP", "facture + bon de commande"
+    - Look for array indexing with different semantic meanings:
+      * `attached_files[0]` = first document (e.g., job description)
+      * `attached_files[1:6]` = next 5 documents (e.g., CVs)
+    - Look for variable names suggesting different types: `job_description_file_id`, `cv_file_ids`
+    - Look for comments describing different document types per position
+
+12. **WHEN TO CREATE MULTIPLE SEPARATE FILE FIELDS:**
+    - If workflow mentions DIFFERENT document types at SPECIFIC positions, create SEPARATE fields:
+      * Example: "exactement 6 fichiers : 1 fiche de poste + 5 CV"
+        → Create 2 fields:
+           1. "Fiche de poste" (required=true, multiple=false)
+           2. "CV des candidats" (required=true, multiple=true, max_files=5)
+      * Example: "DC4, RIB, BOAMP, Acte d'engagement, JOUE"
+        → Create 5 separate fields, one for each document type
+
+13. **WHEN TO CREATE ONE FIELD WITH multiple=true:**
+    - If workflow processes SAME type of documents (no specific positions):
+      * Example: "plusieurs factures fournisseurs" → ONE field "Factures" with multiple=true
+      * Example: "1 à 10 documents PDF à analyser" → ONE field with multiple=true, max_files=10
+
+14. **HOW TO DETECT DOCUMENT TYPES:**
+    - Search workflow description for document type names (facture, CV, RIB, DC4, BOAMP, etc.)
+    - Look for array slicing patterns: `attached_files[0]` vs `attached_files[1:]` = 2 types
+    - Check for len() requirements: `len(attached_files) != 6` = expects specific count
+    - Extract document names from error messages and descriptions
 
 Output format (JSON only, no markdown):
 {{
