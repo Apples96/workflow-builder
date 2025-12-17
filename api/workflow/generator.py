@@ -2997,6 +2997,39 @@ STEP 3: Extract amounts from all invoices and return structured comparison data
 2. View the chart/table for visual analysis
 3. Download PDF with both text and visualizations
 
+**HOW TO RETURN STRUCTURED DATA:**
+When your workflow produces tabular data (invoices, comparisons, statistics), you MUST return JSON instead of plain text:
+
+```python
+import json
+
+# Build your data structure
+result_data = {
+    "summary": "Processed 10 invoices successfully",
+    "visualization": {
+        "type": "table",
+        "data": [
+            {"Invoice": "INV-001", "Amount": "1500.00 €", "Supplier": "ACME Corp"},
+            {"Invoice": "INV-002", "Amount": "2300.00 €", "Supplier": "TechCo"}
+        ]
+    },
+    "details": "Full markdown report with all details..."
+}
+
+# Return as JSON string (NOT dict!)
+return json.dumps(result_data, ensure_ascii=False)
+```
+
+⚠️ CRITICAL: Use `json.dumps()` to convert dict to JSON string before returning!
+❌ WRONG: `return result_data` (returns dict, breaks frontend)
+✅ CORRECT: `return json.dumps(result_data, ensure_ascii=False)` (returns JSON string)
+
+The frontend will automatically:
+- Display the table in a beautiful HTML format
+- Show the summary text
+- Include the details in an expandable section
+- Generate a professional PDF with the table properly formatted
+
 LIMITATIONS TO CHECK FOR:
 - Web searching is NOT available - only document searching within Paradigm
 - External API calls (except Paradigm) are NOT available, unless full documentation for these is provided by the user in their initial description
