@@ -898,6 +898,7 @@ async def generate_mcp_package(workflow_id: str):
 
     try:
         from .workflow.mcp_package_generator import MCPPackageGenerator, extract_workflow_parameters_simple
+        from .workflow.workflow_analyzer import generate_simple_description
 
         logger.info("Generating MCP package for workflow: {}".format(workflow_id))
 
@@ -909,6 +910,18 @@ async def generate_mcp_package(workflow_id: str):
                 detail="Workflow not found: {}".format(workflow_id)
             )
 
+        # Generate a simple, user-friendly description (1-3 lines)
+        logger.info("Generating simple description...")
+        try:
+            simple_description = await generate_simple_description(
+                workflow_description=workflow.description or "",
+                workflow_name=workflow.name or "Unnamed Workflow"
+            )
+            logger.info("Simple description generated: {}".format(simple_description))
+        except Exception as e:
+            logger.warning("Failed to generate simple description: {}. Using original.".format(e))
+            simple_description = workflow.description or "Generated workflow"
+
         # Extract workflow parameters (for now, use simple extraction)
         # Later, we can use Claude to analyze the code and extract parameters automatically
         workflow_parameters = extract_workflow_parameters_simple(workflow.name or "Unnamed Workflow")
@@ -919,7 +932,7 @@ async def generate_mcp_package(workflow_id: str):
         # Generate the MCP package
         mcp_generator = MCPPackageGenerator(
             workflow_name=workflow.name or "Unnamed Workflow",
-            workflow_description=workflow.description or "Generated workflow",
+            workflow_description=simple_description,
             workflow_code=workflow.generated_code,
             workflow_parameters=workflow_parameters,
             workflow_output_format=workflow_output_format
