@@ -863,6 +863,95 @@ async def generate_workflow_package(workflow_id: str):
         )
 
 
+@api_router.post("/workflow/generate-mcp-package/{workflow_id}", tags=["Workflow Runner"])
+async def generate_mcp_package(workflow_id: str):
+    """
+    Generate an MCP (Model Context Protocol) server package as a ZIP file.
+
+    This endpoint creates a complete MCP server package containing:
+    - MCP server with tool definitions
+    - Workflow execution code
+    - Paradigm API client
+    - Python package configuration
+    - Claude Desktop integration instructions
+
+    The generated package can be used directly in Claude Desktop or any MCP-compatible client.
+
+    NOTE: This endpoint is disabled on Vercel (production) to stay within
+    the 12 Serverless Functions limit. Use it in local development only.
+
+    Args:
+        workflow_id: The ID of the workflow to package
+
+    Returns:
+        StreamingResponse: ZIP file download
+
+    Raises:
+        HTTPException: If workflow not found or generation fails
+    """
+    # Disable on Vercel to stay within function limit
+    if settings.is_vercel:
+        raise HTTPException(
+            status_code=503,
+            detail="MCP package generation is only available in local development. Please run the Workflow Builder locally to generate packages."
+        )
+
+    try:
+        from .workflow.mcp_package_generator import MCPPackageGenerator, extract_workflow_parameters_simple
+
+        logger.info("Generating MCP package for workflow: {}".format(workflow_id))
+
+        # Get the workflow from executor
+        workflow = workflow_executor.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="Workflow not found: {}".format(workflow_id)
+            )
+
+        # Extract workflow parameters (for now, use simple extraction)
+        # Later, we can use Claude to analyze the code and extract parameters automatically
+        workflow_parameters = extract_workflow_parameters_simple(workflow.name or "Unnamed Workflow")
+
+        # Define output format description
+        workflow_output_format = "JSON object containing the workflow results, including any analysis, extracted data, or generated content."
+
+        # Generate the MCP package
+        mcp_generator = MCPPackageGenerator(
+            workflow_name=workflow.name or "Unnamed Workflow",
+            workflow_description=workflow.description or "Generated workflow",
+            workflow_code=workflow.generated_code,
+            workflow_parameters=workflow_parameters,
+            workflow_output_format=workflow_output_format
+        )
+
+        zip_buffer = mcp_generator.generate_zip()
+
+        # Create filename
+        workflow_name_slug = (workflow.name or "workflow").lower().replace(' ', '-').replace('_', '-')
+        filename = "mcp-{}-{}.zip".format(workflow_name_slug, workflow_id[:8])
+
+        logger.info("MCP package generated successfully: {}".format(filename))
+
+        # Return as downloadable ZIP
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename={}".format(filename)
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to generate MCP package: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate MCP package: {}".format(str(e))
+        )
+
+
 # Include the API router in the main app
 app.include_router(api_router, prefix="/api")
 
