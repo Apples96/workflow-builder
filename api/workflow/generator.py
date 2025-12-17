@@ -1718,13 +1718,17 @@ AVAILABLE API METHODS:
 
        📝 RÈGLES DE FORMATAGE:
        - Utilise Markdown propre: ## pour titres, - pour listes, ** pour gras
-       - NE PAS montrer les balises markdown (pas de blocs de code visibles, pas de [TAGS])
+       - NE PAS montrer les balises markdown (pas de blocs de code visibles, AUCUN [TAGS])
+       - INTERDICTION ABSOLUE de balises entre crochets comme [ATTENTION], [ANALYSE], [DATE], [NOTE]
+       - Écris "Points d'attention:" et NON "Points d'attention [ATTENTION]:"
+       - Écris "Statistiques:" et NON "Statistiques [ANALYSE]:"
        - Pas de préambule ("Here's the report", "Voici le rapport")
        - Écris directement le contenu sans commentaire
 
        👤 RÈGLES POUR LES NOMS:
        - TOUJOURS afficher les NOMS COMPLETS (Prénom NOM)
        - NE JAMAIS utiliser uniquement prénoms ou identifiants
+       - NE JAMAIS tronquer les noms (pas de "P" pour "Pierre", écrire le nom entier)
        - Si nom complet introuvable, utiliser "Personne [numéro]"'''
    )
 
@@ -1740,13 +1744,17 @@ AVAILABLE API METHODS:
 
        📝 FORMATTING RULES:
        - Use clean Markdown: ## for titles, - for lists, ** for bold
-       - Do NOT show markdown tags (no visible code blocks, no [TAGS])
+       - Do NOT show markdown tags (no visible code blocks, NO [TAGS])
+       - ABSOLUTE PROHIBITION of bracket tags like [ATTENTION], [ANALYSIS], [DATE], [NOTE]
+       - Write "Key points:" NOT "Key points [ATTENTION]:"
+       - Write "Statistics:" NOT "Statistics [ANALYSIS]:"
        - No preamble ("Here's the report")
        - Write content directly without comments
 
        👤 NAME RULES:
        - ALWAYS display FULL NAMES (First LAST)
        - NEVER use only first names or identifiers
+       - NEVER truncate names (not "P" for "Pierre", write full name)
        - If full name unavailable, use "Person [number]"'''
    )
    ```
@@ -2986,16 +2994,20 @@ ENHANCEMENT GUIDELINES:
 
        📝 RÈGLES DE FORMATAGE PROFESSIONNEL:
        - Utilise Markdown propre: titres ##, listes à puces -, gras **, italique *
-       - NE PAS montrer les balises markdown (pas de blocs de code visibles, pas de [TAGS])
+       - NE PAS montrer les balises markdown (pas de blocs de code visibles, AUCUN [TAGS])
+       - INTERDICTION ABSOLUE de balises entre crochets: pas de [ATTENTION], [ANALYSE], [DATE], [NOTE], etc.
        - N'utilise PAS de blocs de code markdown dans le rapport final
        - Pas de préambule ("Here's the report", "Voici le rapport")
        - Écris directement le contenu sans commentaire
+       - Utilise des titres simples sans balises: "Points d'attention:" au lieu de "Points d'attention [ATTENTION]:"
 
        👤 RÈGLES POUR LES NOMS ET IDENTIFIANTS:
        - TOUJOURS extraire et afficher les NOMS COMPLETS (Prénom NOM)
        - NE JAMAIS utiliser uniquement des prénoms isolés ou identifiants
-       - Exemple: "Martin DUBOIS" et non "Martin" ou "Dubois" seul
-       - Si le nom complet n'est pas trouvé, écrire "Candidat [numéro]" ou "Person [number]"'''
+       - NE JAMAIS tronquer les noms dans les listes (écrire le nom complet, pas juste la première lettre)
+       - Exemple: "Martin DUBOIS" et non "Martin" ou "Dubois" seul ou "M"
+       - Si le nom complet n'est pas trouvé, écrire "Candidat [numéro]" ou "Person [number]"
+       - Dans les statistiques finales, TOUJOURS écrire les noms complets sans abréviation'''
    )
    ```
 
