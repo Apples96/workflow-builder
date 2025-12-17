@@ -1692,6 +1692,71 @@ AVAILABLE API METHODS:
    - Default: Use .get("field", "Non trouvé") to handle missing values
 
 3. await paradigm_client.chat_completion(prompt: str, model: str = "alfred-sv5", system_prompt: Optional[str] = None, guided_choice: Optional[List[str]] = None, guided_regex: Optional[str] = None)
+
+   🌍 CRITICAL: ALWAYS USE LANGUAGE-SPECIFIC SYSTEM PROMPTS FOR USER-FACING OUTPUTS
+
+   When using chat_completion() to generate reports, summaries, or any text the user will see,
+   ALWAYS include a system_prompt that enforces consistent language and professional formatting.
+
+   **DETERMINE THE TARGET LANGUAGE:**
+   - Check the workflow description for language indicators (French terms → French output)
+   - If description is in French → use French system prompt
+   - If description is in English → use English system prompt
+   - If unclear, default to French for European contexts
+
+   **RECOMMENDED SYSTEM PROMPT TEMPLATE (adapt language as needed):**
+   ```python
+   # For French workflows:
+   report = await paradigm_client.chat_completion(
+       prompt="Génère un rapport d'analyse avec ces données: ...",
+       system_prompt='''Tu es un assistant professionnel qui génère des rapports.
+
+       🌍 RÈGLES DE LANGUE (CRITIQUE):
+       - Réponds UNIQUEMENT dans la langue demandée (ici: FRANÇAIS)
+       - N'utilise AUCUN mot d'une autre langue
+       - Pas de mélange de langues dans le rapport
+
+       📝 RÈGLES DE FORMATAGE:
+       - Utilise Markdown propre: ## pour titres, - pour listes, ** pour gras
+       - NE PAS montrer les balises markdown (pas de ``` visible, pas de [TAGS])
+       - Pas de préambule ("Here's the report", "Voici le rapport")
+       - Écris directement le contenu sans commentaire
+
+       👤 RÈGLES POUR LES NOMS:
+       - TOUJOURS afficher les NOMS COMPLETS (Prénom NOM)
+       - NE JAMAIS utiliser uniquement prénoms ou identifiants
+       - Si nom complet introuvable, utiliser "Personne [numéro]"'''
+   )
+
+   # For English workflows:
+   report = await paradigm_client.chat_completion(
+       prompt="Generate an analysis report with this data: ...",
+       system_prompt='''You are a professional assistant generating reports.
+
+       🌍 LANGUAGE RULES (CRITICAL):
+       - Respond ONLY in the requested language (here: ENGLISH)
+       - Do NOT use words from other languages
+       - No language mixing in the report
+
+       📝 FORMATTING RULES:
+       - Use clean Markdown: ## for titles, - for lists, ** for bold
+       - Do NOT show markdown tags (no visible ```, no [TAGS])
+       - No preamble ("Here's the report")
+       - Write content directly without comments
+
+       👤 NAME RULES:
+       - ALWAYS display FULL NAMES (First LAST)
+       - NEVER use only first names or identifiers
+       - If full name unavailable, use "Person [number]"'''
+   )
+   ```
+
+   **WHY THIS MATTERS:**
+   - Without system_prompt, LLM may respond in unexpected language or mix languages
+   - Without format rules, output may contain visible markdown tags like ```markdown
+   - Without name rules, reports may show incomplete identifiers
+   - Professional, consistent output is CRITICAL for user satisfaction
+
 4. await paradigm_client.analyze_image(query: str, document_ids: List[str], model=None) - Analyze images in documents with AI-powered visual analysis
    *** CRITICAL: document_ids can contain MAXIMUM 5 documents. If more than 5, use batching! ***
    *** NOTE: The API uses your authentication token to access both uploaded files and workspace documents automatically ***
@@ -2717,6 +2782,57 @@ ENHANCEMENT GUIDELINES:
    - Group related data under meaningful sections
    - The output should look PROFESSIONAL, not like raw bullet points
 
+   🔧 CRITICAL: HANDLING EXTRACTION FAILURES (PDFs with poor text extraction) 🔧
+
+   Sometimes analyze_documents_with_polling or document_search may return very short content (<500 chars)
+   when the actual document has much more information. This happens with:
+   - Scanned PDFs with poor OCR
+   - PDFs with complex layouts
+   - Image-heavy documents
+
+   **DETECTION AND FALLBACK PATTERN:**
+   ```python
+   # Step 1: Try standard extraction
+   extracted_content = await paradigm_client.analyze_documents_with_polling(
+       query="Extract all information from this CV: name, experience, skills, education",
+       document_ids=[doc_id],
+       max_wait_time=180,
+       poll_interval=3
+   )
+
+   # Step 2: Detect if extraction is insufficient
+   if len(extracted_content) < 500:
+       logger.warning(f"⚠️ Short extraction detected ({len(extracted_content)} chars), using vision fallback")
+
+       # Fallback to vision_search which uses OCR + vision
+       extracted_content = await paradigm_client.document_search(
+           query="Extract all text and information from this document using vision analysis",
+           file_ids=[doc_id],
+           company_scope=False,
+           private_scope=False,
+           tool="VisionDocumentSearch",  # Use vision-based extraction
+           k=10  # Get more context chunks
+       )
+
+       # Combine all chunks if answer is still short
+       if 'chunks' in extracted_content:
+           full_text = "\n\n".join([chunk.get('text', '') for chunk in extracted_content.get('chunks', [])])
+           extracted_content = full_text if len(full_text) > len(extracted_content.get('answer', '')) else extracted_content.get('answer', '')
+
+   # Step 3: Log extraction quality
+   logger.info(f"✅ Final extraction: {len(extracted_content)} characters")
+
+   # Step 4: Handle cases where extraction still fails
+   if len(extracted_content) < 200:
+       extracted_content = "⚠️ ERREUR D'EXTRACTION: Le document n'a pas pu être lu correctement. Contenu insuffisant pour analyse."
+   ```
+
+   **WHY THIS MATTERS:**
+   - Ensures robust extraction even with problematic PDFs
+   - Provides clear error messages when extraction truly fails
+   - Uses vision-based fallback for scanned/image PDFs
+   - Prevents incomplete analysis due to extraction issues
+
    ⚠️ ⚠️ ⚠️ CRITICAL FINAL REPORT GENERATION RULES ⚠️ ⚠️ ⚠️
 
    When generating a FINAL REPORT using chat_completion() at the end of a workflow:
@@ -2851,8 +2967,24 @@ ENHANCEMENT GUIDELINES:
        system_prompt='''Tu es un assistant qui génère des rapports de conformité professionnels COMPLETS.
        Tu DOIS remplir TOUTES les sections avec les données fournies.
        AUCUNE section ne peut contenir [À DÉTERMINER], [À COMPLÉTER], ou [À VÉRIFIER].
-       Réponds UNIQUEMENT en FRANÇAIS. AUCUN mot, phrase ou note en anglais.
-       N'ajoute AUCUN commentaire de type "Here's the report" ou "Note: Some sections...".'''
+
+       🌍 RÈGLES DE LANGUE (CRITIQUE):
+       - Réponds UNIQUEMENT dans la langue demandée (détectée depuis le prompt)
+       - N'utilise AUCUN mot d'une autre langue (pas de mélange anglais/français)
+       - Exemples à éviter: "match", "score" en français OU "analyse", "rapport" en anglais
+
+       📝 RÈGLES DE FORMATAGE PROFESSIONNEL:
+       - Utilise Markdown propre: titres ##, listes à puces -, gras **, italique *
+       - NE PAS montrer les balises markdown (pas de ``` visible, pas de [TAGS])
+       - N'utilise PAS de blocs de code markdown (```) dans le rapport final
+       - Pas de préambule ("Here's the report", "Voici le rapport")
+       - Écris directement le contenu sans commentaire
+
+       👤 RÈGLES POUR LES NOMS ET IDENTIFIANTS:
+       - TOUJOURS extraire et afficher les NOMS COMPLETS (Prénom NOM)
+       - NE JAMAIS utiliser uniquement des prénoms isolés ou identifiants
+       - Exemple: "Martin DUBOIS" et non "Martin" ou "Dubois" seul
+       - Si le nom complet n'est pas trouvé, écrire "Candidat [numéro]" ou "Person [number]"'''
    )
    ```
 
