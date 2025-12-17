@@ -371,6 +371,7 @@
                                 data-key="${file.key}"
                                 accept="${file.accept || '.pdf,.doc,.docx,.txt'}"
                                 ${file.required ? 'required' : ''}
+                                ${file.multiple ? 'multiple' : ''}
                                 onchange="handleFileSelect(${index})"
                             />
                             <div id="filename-${index}" class="file-name"></div>
@@ -421,8 +422,11 @@
             const filenameDiv = document.getElementById(`filename-${index}`);
 
             if (input.files.length > 0) {
-                const file = input.files[0];
-                filenameDiv.textContent = `✓ ${file.name}`;
+                if (input.files.length === 1) {
+                    filenameDiv.textContent = `✓ ${input.files[0].name}`;
+                } else {
+                    filenameDiv.textContent = `✓ ${input.files.length} fichiers sélectionnés`;
+                }
                 box.classList.add('has-file');
             }
         }
@@ -452,8 +456,9 @@
 
                 const fileInputs = document.querySelectorAll('input[type="file"]');
                 fileInputs.forEach(input => {
-                    if (input.files.length > 0) {
-                        formData.append('files', input.files[0]);
+                    // Handle multiple files from the same input
+                    for (let i = 0; i < input.files.length; i++) {
+                        formData.append('files', input.files[i]);
                     }
                 });
 

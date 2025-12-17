@@ -96,7 +96,9 @@ async def execute(
         if files and files[0].filename:  # Check if files were actually uploaded
             logger.info(f"[{execution_id}] Uploading {len(files)} files to Paradigm...")
 
-            for file in files:
+            # Upload files in batches of 6 to respect API rate limits
+            BATCH_SIZE = 6
+            for i, file in enumerate(files):
                 logger.info(f"[{execution_id}] Uploading: {file.filename}")
 
                 # Read file content
@@ -112,6 +114,15 @@ async def execute(
                 file_id = upload_result.get("id") or upload_result.get("file_id")
                 file_ids.append(file_id)
                 logger.info(f"[{execution_id}] File uploaded: {file.filename} -> ID: {file_id}")
+
+                # Add delay based on position in batch
+                if i < len(files) - 1:
+                    # Every 6 files, add a longer pause to reset rate limit window
+                    if (i + 1) % BATCH_SIZE == 0:
+                        logger.info(f"[{execution_id}] Batch complete, waiting 60s for rate limit reset...")
+                        await asyncio.sleep(60.0)  # 60 seconds pause between batches
+                    else:
+                        await asyncio.sleep(0.5)  # Short delay within batch
 
             # Wait for files to be processed and indexed by Paradigm
             logger.info(f"[{execution_id}] Waiting for files to be indexed...")
@@ -147,6 +158,24 @@ async def execute(
             execution_time=execution_time,
             execution_id=execution_id
         )
+
+
+@app.delete("/files/{file_id}")
+async def delete_file(file_id: int):
+    """
+    Delete an uploaded file (cleanup after workflow execution).
+    This is called automatically by the frontend after workflow completion.
+    """
+    try:
+        result = await paradigm_client.delete_file(file_id)
+        # paradigm_client.delete_file() returns {"success": True, "file_id": file_id}
+        success = result.get("success", False) if isinstance(result, dict) else result
+        return {"success": success, "message": f"File {file_id} deleted"}
+
+    except Exception as e:
+        logger.warning(f"Failed to delete file {file_id}: {str(e)}")
+        # Return success even on error to not block cleanup
+        return {"success": False, "message": str(e)}
 
 
 @app.get("/health")

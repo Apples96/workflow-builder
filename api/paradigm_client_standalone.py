@@ -520,7 +520,10 @@ class ParadigmClient:
         self,
         prompt: str,
         model: str = "alfred-4.2",
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        guided_choice: Optional[List[str]] = None,
+        guided_json: Optional[Dict[str, Any]] = None,
+        guided_regex: Optional[str] = None
     ) -> str:
         """
         Get a chat completion response (like ChatGPT).
@@ -532,6 +535,9 @@ class ParadigmClient:
             model: Which AI model to use (default: alfred-4.2)
             system_prompt: Optional instructions for the AI's behavior and output format
                           Use this to enforce specific formats like JSON-only responses
+            guided_choice: Optional list of allowed response values (forces AI to choose from list)
+            guided_json: Optional JSON schema to enforce structured JSON output format
+            guided_regex: Optional regex pattern to enforce structured output format
 
         Returns:
             str: The AI's response
@@ -546,6 +552,27 @@ class ParadigmClient:
                 '''
             )
             # Returns: {"is_correct": true, "details": "Les noms sont identiques"}
+
+        Example with guided_choice (force specific values):
+            category = await client.chat_completion(
+                prompt="Classify this invoice: " + invoice_text,
+                guided_choice=["Fournitures", "Services", "Matériel", "Logiciels"]
+            )
+            # Returns one of: "Fournitures", "Services", "Matériel", or "Logiciels"
+
+        Example with guided_json (guarantee valid JSON):
+            data = await client.chat_completion(
+                prompt="Extract invoice data from: " + invoice_text,
+                guided_json={
+                    "type": "object",
+                    "properties": {
+                        "invoice_number": {"type": "string"},
+                        "date": {"type": "string"},
+                        "amount": {"type": "number"}
+                    }
+                }
+            )
+            # Returns valid JSON matching the schema
 
         Example without system prompt:
             result = await client.chat_completion(
@@ -563,6 +590,14 @@ class ParadigmClient:
             "model": model,
             "messages": messages
         }
+
+        # Add guided parameters if provided
+        if guided_choice:
+            payload["guided_choice"] = guided_choice
+        if guided_json:
+            payload["guided_json"] = guided_json
+        if guided_regex:
+            payload["guided_regex"] = guided_regex
 
         try:
             logger.info(f"💬 Chat completion: {prompt[:50]}...")
