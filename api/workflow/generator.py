@@ -1718,7 +1718,7 @@ AVAILABLE API METHODS:
 
        📝 RÈGLES DE FORMATAGE:
        - Utilise Markdown propre: ## pour titres, - pour listes, ** pour gras
-       - NE PAS montrer les balises markdown (pas de ``` visible, pas de [TAGS])
+       - NE PAS montrer les balises markdown (pas de blocs de code visibles, pas de [TAGS])
        - Pas de préambule ("Here's the report", "Voici le rapport")
        - Écris directement le contenu sans commentaire
 
@@ -1740,7 +1740,7 @@ AVAILABLE API METHODS:
 
        📝 FORMATTING RULES:
        - Use clean Markdown: ## for titles, - for lists, ** for bold
-       - Do NOT show markdown tags (no visible ```, no [TAGS])
+       - Do NOT show markdown tags (no visible code blocks, no [TAGS])
        - No preamble ("Here's the report")
        - Write content directly without comments
 
@@ -1753,7 +1753,7 @@ AVAILABLE API METHODS:
 
    **WHY THIS MATTERS:**
    - Without system_prompt, LLM may respond in unexpected language or mix languages
-   - Without format rules, output may contain visible markdown tags like ```markdown
+   - Without format rules, output may contain visible markdown formatting tags
    - Without name rules, reports may show incomplete identifiers
    - Professional, consistent output is CRITICAL for user satisfaction
 
@@ -2975,8 +2975,8 @@ ENHANCEMENT GUIDELINES:
 
        📝 RÈGLES DE FORMATAGE PROFESSIONNEL:
        - Utilise Markdown propre: titres ##, listes à puces -, gras **, italique *
-       - NE PAS montrer les balises markdown (pas de ``` visible, pas de [TAGS])
-       - N'utilise PAS de blocs de code markdown (```) dans le rapport final
+       - NE PAS montrer les balises markdown (pas de blocs de code visibles, pas de [TAGS])
+       - N'utilise PAS de blocs de code markdown dans le rapport final
        - Pas de préambule ("Here's the report", "Voici le rapport")
        - Écris directement le contenu sans commentaire
 
