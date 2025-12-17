@@ -3342,10 +3342,12 @@ Now enhance this workflow description and return ONLY the plain text response:""
             import os
             from datetime import datetime
             try:
-                # Save to /tmp or current directory with timestamp
+                # Save to temp directory or current directory with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"workflow_failed_{timestamp}.py"
-                filepath = os.path.join("/tmp" if os.path.exists("/tmp") else ".", filename)
+                # Use tempfile.gettempdir() which works on Windows and Unix
+                temp_dir = tempfile.gettempdir()
+                filepath = os.path.join(temp_dir, filename)
 
                 with open(filepath, 'w') as f:
                     f.write(code)
