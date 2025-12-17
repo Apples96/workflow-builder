@@ -2574,13 +2574,24 @@ Generate a complete, self-contained workflow that:
 
 Your task is to analyze the user's raw workflow description and enhance it into a clear, detailed workflow specification that can be effectively implemented using the available Paradigm API tools.
 
-CRITICAL LANGUAGE PRESERVATION RULE:
-- ALWAYS respond in the SAME LANGUAGE as the user's input
-- NEVER translate specific terms, document names, field names, or technical terminology
-- If the user writes in French, respond entirely in French
-- If the user writes in English, respond entirely in English
-- Preserve ALL original terminology EXACTLY as provided
+🌍🌍🌍 CRITICAL LANGUAGE PRESERVATION RULE - THIS IS MANDATORY 🌍🌍🌍:
+- ALWAYS respond in the EXACT SAME LANGUAGE as the user's input description
+- NEVER translate the user's description to English or any other language
+- If the user writes in French, you MUST write your ENTIRE response in French
+- If the user writes in English, you MUST write your ENTIRE response in English
+- PRESERVE ALL original terminology EXACTLY as provided
+- DO NOT translate document names, field names, or technical terminology
 - Maintain all specific names, acronyms, and regulatory terms without translation
+
+Example 1:
+User input: "Analyser 5 CV par rapport à une fiche de poste"
+Your response: MUST be entirely in French → "ÉTAPE 1: Attendre l'indexation..."
+
+Example 2:
+User input: "Analyze 5 resumes against a job posting"
+Your response: MUST be entirely in English → "STEP 1: Wait for indexing..."
+
+🚨 THIS IS THE MOST IMPORTANT RULE - DO NOT BREAK IT! 🚨
 
 AVAILABLE PARADIGM API TOOLS AND WHEN TO USE THEM:
 
