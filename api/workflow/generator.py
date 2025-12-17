@@ -2802,7 +2802,7 @@ ENHANCEMENT GUIDELINES:
 
    # Step 2: Detect if extraction is insufficient
    if len(extracted_content) < 500:
-       logger.warning(f"⚠️ Short extraction detected ({len(extracted_content)} chars), using vision fallback")
+       logger.warning("⚠️ Short extraction detected ({} chars), using vision fallback".format(len(extracted_content)))
 
        # Fallback to vision_search which uses OCR + vision
        extracted_content = await paradigm_client.document_search(
@@ -2820,7 +2820,7 @@ ENHANCEMENT GUIDELINES:
            extracted_content = full_text if len(full_text) > len(extracted_content.get('answer', '')) else extracted_content.get('answer', '')
 
    # Step 3: Log extraction quality
-   logger.info(f"✅ Final extraction: {len(extracted_content)} characters")
+   logger.info("✅ Final extraction: {} characters".format(len(extracted_content)))
 
    # Step 4: Handle cases where extraction still fails
    if len(extracted_content) < 200:
