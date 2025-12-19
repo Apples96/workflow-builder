@@ -36,9 +36,35 @@ Créez un fichier `.env` à la racine du package:
 ```bash
 PARADIGM_API_KEY=votre_clé_api_ici
 PARADIGM_BASE_URL=https://paradigm.lighton.ai
+# Optionnel : Bearer token pour sécuriser le serveur HTTP MCP (Paradigm)
+MCP_BEARER_TOKEN=votre_token_secret
 ```
 
-### 3. Configuration pour Claude Desktop
+### 3. Configuration pour LightOn Paradigm (Recommandé)
+
+Pour utiliser ce workflow dans LightOn Paradigm via MCP :
+
+**Étape 1 : Démarrer le serveur HTTP**
+
+```bash
+python -m http_server --port 8080
+```
+
+Le bearer token sera lu depuis le fichier `.env` (variable `MCP_BEARER_TOKEN`). Si aucun token n'est configuré, le serveur démarrera en mode développement sans authentification.
+
+**Étape 2 : Enregistrer le serveur dans Paradigm**
+
+En tant qu'administrateur système dans Paradigm :
+1. Allez dans **Admin > MCP Servers**
+2. Ajoutez un nouveau serveur :
+   - **Name**: `{WORKFLOW_NAME_SLUG}`
+   - **URL**: `http://votre-serveur:8080` (ou l'URL où le serveur est accessible)
+   - **Bearer Token**: La valeur de `MCP_BEARER_TOKEN` (si configuré)
+3. Activez le serveur dans **Chat Settings > Agent Tools**
+
+Le workflow sera alors disponible comme outil dans vos conversations Paradigm avec le mode Agent activé.
+
+### 4. Configuration pour Claude Desktop (Optionnel)
 
 Ajoutez cette configuration dans le fichier de configuration de Claude Desktop:
 
@@ -72,9 +98,9 @@ Ou via l'explorateur Windows :
 - La commande `command` doit pointer vers votre exécutable Python 3.10+ (sous Windows, utilisez le chemin complet comme `C:\\Users\\VotreNom\\AppData\\Local\\Programs\\Python\\Python310\\python.exe`)
 - Le fichier `.env` dans le dossier `cwd` contient déjà les variables d'environnement (pas besoin de les mettre dans `env`)
 
-### 4. Redémarrer Claude Desktop
+### 5. Redémarrer Claude Desktop
 
-Fermez complètement Claude Desktop et relancez-le. Le nouvel outil MCP sera disponible.
+Si vous utilisez Claude Desktop, fermez-le complètement et relancez-le. Le nouvel outil MCP sera disponible.
 
 ## Utilisation
 
@@ -98,7 +124,8 @@ Le serveur démarre et attend les commandes MCP via stdin/stdout.
 
 ```
 {WORKFLOW_NAME_SLUG}/
-├── server.py              # Serveur MCP principal
+├── server.py              # Serveur MCP stdio (Claude Desktop)
+├── http_server.py         # Serveur MCP HTTP (Paradigm)
 ├── workflow.py            # Logique du workflow
 ├── paradigm_client.py     # Client API Paradigm
 ├── pyproject.toml         # Configuration Python

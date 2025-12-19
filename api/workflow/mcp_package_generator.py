@@ -68,8 +68,11 @@ class MCPPackageGenerator:
         zip_buffer = io.BytesIO()
 
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # MCP server file
+            # MCP server file (stdio for Claude Desktop)
             self._add_server_file(zip_file)
+
+            # HTTP MCP server file (for Paradigm)
+            self._add_http_server_file(zip_file)
 
             # Workflow code
             self._add_workflow_file(zip_file)
@@ -115,6 +118,33 @@ class MCPPackageGenerator:
         server_py = server_py.replace('{TOOL_INPUT_JSON_SCHEMA}', json.dumps(tool_input_schema, ensure_ascii=False))
 
         zip_file.writestr('server.py', server_py)
+
+    def _add_http_server_file(self, zip_file: zipfile.ZipFile):
+        """Add the HTTP MCP server (http_server.py) file to the ZIP for Paradigm integration"""
+
+        # Read http_server.py template
+        http_server_py_path = self.templates_dir / "http_server.py"
+        with open(http_server_py_path, 'r', encoding='utf-8') as f:
+            http_server_py = f.read()
+
+        # Generate workflow name slug
+        workflow_name_slug = self.workflow_name.lower().replace(' ', '-').replace('_', '-')
+
+        # Generate tool input schema
+        tool_input_schema = self._generate_tool_input_schema()
+
+        # Generate parameters description for the API docs
+        parameters_description = self._generate_tool_input_description()
+
+        # Replace placeholders
+        http_server_py = http_server_py.replace('{WORKFLOW_NAME}', self.workflow_name)
+        http_server_py = http_server_py.replace('{WORKFLOW_NAME_SLUG}', workflow_name_slug)
+        http_server_py = http_server_py.replace('{WORKFLOW_DESCRIPTION}', self.workflow_description)
+        http_server_py = http_server_py.replace('{WORKFLOW_PARAMETERS_DESCRIPTION}', parameters_description)
+        http_server_py = http_server_py.replace('{WORKFLOW_OUTPUT_DESCRIPTION}', self.workflow_output_format)
+        http_server_py = http_server_py.replace('{WORKFLOW_INPUT_SCHEMA}', json.dumps(tool_input_schema, ensure_ascii=False))
+
+        zip_file.writestr('http_server.py', http_server_py)
 
     def _add_workflow_file(self, zip_file: zipfile.ZipFile):
         """Add the workflow.py file to the ZIP"""
