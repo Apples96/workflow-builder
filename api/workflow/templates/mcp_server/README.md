@@ -19,11 +19,15 @@ Ce serveur MCP permet d'utiliser ce workflow directement depuis:
 
 ## Installation
 
-### 1. Installer le package
+### 1. Installer les dépendances communes (une seule fois)
+
+**IMPORTANT:** N'installez les dépendances qu'une seule fois, pas pour chaque workflow !
 
 ```bash
-pip install -e .
+pip install mcp aiohttp python-dotenv
 ```
+
+⚠️ **NE FAITES PAS** `pip install -e .` dans ce dossier ! Cela créerait des conflits si vous avez plusieurs workflows MCP.
 
 ### 2. Configurer les variables d'environnement
 
@@ -39,28 +43,34 @@ PARADIGM_BASE_URL=https://paradigm.lighton.ai
 Ajoutez cette configuration dans le fichier de configuration de Claude Desktop:
 
 **macOS/Linux:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+**Windows:**
+```powershell
+# Ouvrir directement le fichier avec l'explorateur
+start "" "%APPDATA%\Claude"
+# Puis ouvrir claude_desktop_config.json avec un éditeur de texte
+```
+
+Ou via l'explorateur Windows :
+1. Tapez `%APPDATA%\Claude` dans la barre d'adresse de l'explorateur
+2. Ouvrez le fichier `claude_desktop_config.json` avec un éditeur de texte
 
 ```json
 {{
   "mcpServers": {{
     "{WORKFLOW_NAME_SLUG}": {{
       "command": "python",
-      "args": [
-        "-m",
-        "server"
-      ],
-      "cwd": "/chemin/absolu/vers/ce/dossier",
-      "env": {{
-        "PARADIGM_API_KEY": "votre_clé_api_ici",
-        "PARADIGM_BASE_URL": "https://paradigm.lighton.ai"
-      }}
+      "args": ["-m", "server"],
+      "cwd": "/chemin/absolu/vers/ce/dossier"
     }}
   }}
 }}
 ```
 
-**Important:** Remplacez `/chemin/absolu/vers/ce/dossier` par le chemin complet vers ce dossier.
+**Notes:**
+- Le chemin `cwd` doit pointer vers le dossier où se trouve ce package
+- La commande `command` doit pointer vers votre exécutable Python 3.10+ (sous Windows, utilisez le chemin complet comme `C:\\Users\\VotreNom\\AppData\\Local\\Programs\\Python\\Python310\\python.exe`)
+- Le fichier `.env` dans le dossier `cwd` contient déjà les variables d'environnement (pas besoin de les mettre dans `env`)
 
 ### 4. Redémarrer Claude Desktop
 
@@ -79,7 +89,7 @@ Une fois configuré, vous pouvez utiliser le workflow directement dans vos conve
 Pour tester le serveur MCP en ligne de commande:
 
 ```bash
-python server.py
+python -m server
 ```
 
 Le serveur démarre et attend les commandes MCP via stdin/stdout.

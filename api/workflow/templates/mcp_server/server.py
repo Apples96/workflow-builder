@@ -11,14 +11,19 @@ This server exposes the workflow as an MCP tool that can be used in:
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
+from dotenv import load_dotenv
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 from workflow import WorkflowExecutor
 from paradigm_client import ParadigmClient
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -71,8 +76,15 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     try:
         logger.info("Starting workflow execution with arguments: {}".format(json.dumps(arguments, ensure_ascii=False)))
 
+        # Get API key from environment
+        api_key = os.getenv("PARADIGM_API_KEY")
+        if not api_key:
+            raise ValueError("PARADIGM_API_KEY not found in environment variables. Please check your .env file.")
+
+        base_url = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
+
         # Initialize Paradigm client
-        paradigm_client = ParadigmClient()
+        paradigm_client = ParadigmClient(api_key=api_key, base_url=base_url)
 
         # Initialize workflow executor
         executor = WorkflowExecutor(paradigm_client)
@@ -95,10 +107,10 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         return [
             TextContent(
                 type="text",
-                text=json.dumps({{
+                text=json.dumps({
                     "error": str(e),
                     "status": "failed"
-                }}, ensure_ascii=False, indent=2)
+                }, ensure_ascii=False, indent=2)
             )
         ]
 
