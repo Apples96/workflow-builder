@@ -388,13 +388,42 @@ Architecture:
         </div>
     </div>
 
-    <!-- Step 5: Deploy Workflow API -->
+    <!-- Step 5: Deploy Workflow -->
     <div class="container">
-        <h2>5. Deploy your workflow API endpoint</h2>
-        <p>Deploy your workflow as a standalone API endpoint that can be called from external applications.</p>
-        
+        <h2>5. Deploy your workflow</h2>
+        <p>Choose your deployment method based on your infrastructure and requirements.</p>
+
         <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
-            <h3>Option A: Deploy on Vercel (Recommended for quick setup)</h3>
+            <h3>✅ Option A: Docker (Recommended - Easiest)</h3>
+            <p>Deploy the workflow builder with Docker for a complete, ready-to-use solution.</p>
+            <ol style="margin-left: 20px;">
+                <li><strong>Prerequisites:</strong> Install <a href="https://www.docker.com/get-started" target="_blank">Docker Desktop</a></li>
+                <li><strong>Clone the repository:</strong>
+                    <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>git clone https://github.com/Isydoria/lighton-workflow-generator-.git
+cd lighton-workflow-generator-</code></pre>
+                </li>
+                <li><strong>Configure environment:</strong> Create <code>.env</code> file with your Paradigm API key:
+                    <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>LIGHTON_API_KEY=your_paradigm_api_key_here
+LIGHTON_BASE_URL=https://paradigm.lighton.ai</code></pre>
+                </li>
+                <li><strong>Start with Docker Compose:</strong>
+                    <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>docker compose up -d</code></pre>
+                </li>
+                <li><strong>Access the interface:</strong> Open <code>http://localhost:8000</code> in your browser</li>
+            </ol>
+
+            <div style="background: #d4edda; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #28a745;">
+                <strong>✅ Benefits:</strong>
+                <ul style="margin: 5px 0 0 20px;">
+                    <li>Complete workflow builder UI included</li>
+                    <li>No complex configuration needed</li>
+                    <li>Includes API endpoints, MCP package generation, and execution</li>
+                    <li>Easy to scale and deploy on any Docker-compatible infrastructure</li>
+                </ul>
+            </div>
+
+            <h3>💰 Option B: Vercel Serverless</h3>
+            <p><strong>⚠️ Requires Vercel Pro Plan</strong> - Free tier doesn't support Python serverless functions.</p>
             <ol style="margin-left: 20px;">
                 <li><strong>Create a new directory for your API:</strong> Create a new folder on your computer for this deployment</li>
                 <li><strong>Install Vercel CLI:</strong> If you haven't already, install Vercel CLI by running: <code>npm install -g vercel</code></li>
@@ -451,10 +480,21 @@ class handler(BaseHTTPRequestHandler):
             </div>
             
             <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
-                <strong> Important:</strong> Make sure to add your Paradigm API key as an environment variable in the Vercel dashboard for security. Never commit API keys to your code.
+                <strong>⚠️ Important:</strong> Make sure to add your Paradigm API key as an environment variable in the Vercel dashboard for security. Never commit API keys to your code.
             </div>
-            
-            <h3>Option B: Deploy on your own infrastructure</h3>
+
+            <div style="background: #fff8e1; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ff9800;">
+                <strong>💰 Why Vercel Pro is Required:</strong>
+                <ul style="margin: 5px 0 0 20px;">
+                    <li><strong>Python Runtime:</strong> Free tier only supports Node.js serverless functions</li>
+                    <li><strong>Execution Time:</strong> Free tier has 10s timeout, workflows often need 30-60s+</li>
+                    <li><strong>Function Size:</strong> Workflow code with dependencies can exceed free tier limits</li>
+                </ul>
+                <p style="margin: 10px 0 0 0;"><strong>Cost:</strong> Vercel Pro starts at $20/month. Consider Docker or Python manual deployment for cost-free alternatives.</p>
+            </div>
+
+            <h3>🐍 Option C: Manual Python Deployment</h3>
+            <p>Deploy on your own infrastructure (VPS, cloud VM, or on-premises server).</p>
             <ol style="margin-left: 20px;">
                 <li>Create a new Python file (e.g., <code>workflow_api.py</code>)</li>
                 <li>Add these dependencies to your <code>requirements.txt</code>:</li>
@@ -509,13 +549,66 @@ if __name__ == "__main__":
         </div>
     </div>
 
-    <!-- Step 6: Add to Paradigm -->
+    <!-- Step 6: Integrate with Paradigm or Claude -->
     <div class="container">
-        <h2>6. Add your workflow to Paradigm</h2>
-        <p>Paradigm has a feature called "Third Party Tools" that allows you to create custom tools within the Paradigm UI. When you use the tool, it will execute your deployed workflow.</p>
-        
+        <h2>6. Integrate your workflow with AI assistants</h2>
+        <p>Choose how to make your workflow accessible to AI assistants like Paradigm or Claude Desktop.</p>
+
         <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
-            <h3>Step-by-step instructions:</h3>
+            <h3>🎯 Option A: MCP Server (Recommended for Claude Desktop)</h3>
+            <p><strong>⚠️ Status: Integration in Progress with Paradigm</strong></p>
+
+            <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
+                <strong>🐛 Known Issue with Paradigm:</strong> When uploading files in Paradigm's interface and using an MCP server, the <code>file_ids</code> are not correctly transmitted to the workflow. This bug is currently being investigated by the Paradigm team.
+                <p style="margin: 10px 0 0 0;"><strong>Workaround:</strong> Use Claude Desktop locally (fully functional) until the Paradigm bug is fixed.</p>
+            </div>
+
+            <h4>✅ Works Perfectly with Claude Desktop:</h4>
+            <ol style="margin-left: 20px;">
+                <li><strong>Download MCP Package:</strong> After generating your workflow, click the "Download MCP Package" button to get a ZIP file containing the MCP server</li>
+                <li><strong>Extract the Package:</strong> Unzip the downloaded file to a location on your computer (e.g., <code>C:\mcp-servers\your-workflow\</code>)</li>
+                <li><strong>Install Dependencies:</strong> Open a terminal in the extracted folder and run:
+                    <pre style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 4px; margin: 10px 0;">pip install -r requirements.txt</pre>
+                </li>
+                <li><strong>Configure Claude Desktop:</strong> Edit your Claude Desktop config file:
+                    <ul style="margin-left: 20px;">
+                        <li><strong>Windows:</strong> <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+                        <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+                    </ul>
+                    Add your MCP server configuration:
+                    <pre style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 4px; margin: 10px 0; overflow-x: auto;">{
+  "mcpServers": {
+    "your-workflow-name": {
+      "command": "python",
+      "args": ["C:\\path\\to\\mcp-server\\server.py"],
+      "cwd": "C:\\path\\to\\mcp-server",
+      "env": {
+        "PARADIGM_API_KEY": "your_paradigm_api_key",
+        "PARADIGM_BASE_URL": "https://paradigm.lighton.ai"
+      }
+    }
+  }
+}</pre>
+                </li>
+                <li><strong>Restart Claude Desktop:</strong> Close and reopen Claude Desktop to load the MCP server</li>
+                <li><strong>Test Your Workflow:</strong> In Claude Desktop, you should see your workflow tool available. Try asking Claude to use it!</li>
+            </ol>
+
+            <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
+                <strong>⏱️ Important - Timeout Limitation:</strong> Claude Desktop has a 4-minute timeout for MCP requests. Keep your workflows simple:
+                <ul style="margin-left: 20px; margin-top: 5px;">
+                    <li>Limit to 3-5 documents maximum per request</li>
+                    <li>Avoid complex multi-step workflows that take too long</li>
+                    <li>For longer workflows, consider using Option B (Third Party Tools)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
+            <h3>📡 Option B: Third Party Tools (Current Working Method)</h3>
+            <p>This option works reliably with Paradigm and has no timeout limitations. Best for production workflows.</p>
+
+            <h4>Setup Instructions:</h4>
             <ol style="margin-left: 20px;">
                 <li><strong>Access Third Party Tools:</strong> In your Paradigm admin interface, navigate to the Third Party Tools section</li>
                 <li><strong>Create New Tool:</strong> Click "Add Third Party Tool"</li>
@@ -544,8 +637,9 @@ if __name__ == "__main__":
                 <li><strong>Creation Method:</strong> Select "Parameters/URL"</li>
                 <li><strong>URL:</strong> Enter your deployed API endpoint URL:
                     <ul style="margin-left: 20px;">
+                        <li>For Docker: <code>http://your-server:8000/workflow</code></li>
                         <li>For Vercel: <code>https://your-project.vercel.app/api/workflow</code></li>
-                        <li>For custom infrastructure: <code>http://your-server:8000/workflow</code></li>
+                        <li>For manual deployment: <code>http://your-server:8000/workflow</code></li>
                     </ul>
                 </li>
                 <li><strong>Parameters:</strong> Configure the parameters your API expects:
