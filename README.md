@@ -23,9 +23,82 @@ docker-compose up --build
 # API Backend : http://localhost:8000/docs
 ```
 
+**✅ Avantages Docker** :
+- Configuration minimale
+- Environnement isolé et reproductible
+- Prêt pour production (déployable sur n'importe quel serveur avec Docker)
+- Pas de limite de functions serverless
+
+## 🔧 Autres Options de Déploiement
+
+### Option Vercel (Requires Pro Plan)
+
+⚠️ **Attention** : Le workflow builder nécessite Vercel Pro ($20/mois) pour fonctionner correctement.
+
+**Pourquoi Pro est requis** :
+- **Python Runtime** : Le workflow builder utilise Python/FastAPI (pas disponible en free tier)
+- **Execution Time** : La génération de workflows peut prendre 30-60s+ (free tier limité à 10s)
+- **Function Count** : Le builder utilise plusieurs endpoints API (limite atteinte rapidement en free tier)
+
+**Déploiement Vercel** :
+1. Connectez votre repo GitHub/GitLab à Vercel
+2. Ajoutez les variables d'environnement dans Vercel :
+   - `ANTHROPIC_API_KEY`
+   - `LIGHTON_API_KEY`
+3. Liez Vercel KV (Storage) :
+   - Les variables `KV_REST_API_URL` et `KV_REST_API_TOKEN` sont créées automatiquement
+   - Le code détecte et utilise ces variables automatiquement
+4. Déployez : `git push` (automatique)
+
+**Note** : Le code supporte automatiquement les deux conventions :
+- Variables Vercel KV (créées automatiquement lors du linking)
+- Variables Upstash directes (configuration manuelle)
+
+### Option Python Manuel
+
+Déployer sur votre propre infrastructure (VPS, cloud VM, serveur on-premises).
+
+```bash
+# 1. Cloner et installer
+git clone https://github.com/Isydoria/lighton-workflow-generator-.git
+cd lighton-workflow-generator-
+pip install -r requirements.txt
+
+# 2. Configurer les variables d'environnement
+cp .env.example .env
+nano .env  # Ajouter ANTHROPIC_API_KEY et LIGHTON_API_KEY
+
+# 3. Démarrer le serveur
+python -m uvicorn api.index:app --host 0.0.0.0 --port 8000
+
+# Ou avec plus d'options de production
+uvicorn api.index:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --workers 4 \
+  --log-level info
+```
+
+**Configuration Nginx (optionnel)** :
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
 ## 📋 Prérequis
 
-1. **Docker Desktop** installé
+1. **Docker Desktop** installé (pour démarrage rapide)
 2. **Clés API** :
    - Anthropic API key (pour la génération de workflows)
    - LightOn Paradigm API key (pour l'exécution des workflows)
@@ -128,12 +201,20 @@ docker-compose up --build
 - `POST /api/workflows/{id}/execute` - Exécuter un workflow
 - `GET /api/workflows/{id}/executions/{exec_id}` - Détails d'exécution
 - `GET /api/workflows/{id}/executions/{exec_id}/pdf` - Télécharger rapport PDF
-- `POST /api/workflow/generate-package/{id}` - Générer package ZIP (local uniquement)
+- `POST /api/workflows-with-files` - Créer un workflow avec accès à des fichiers spécifiques
+
+### Packages (Local uniquement)
+- `POST /api/workflow/generate-package/{id}` - Générer Workflow Runner Package (ZIP)
+- `POST /api/workflow/generate-mcp-package/{id}` - Générer MCP Server Package (ZIP)
 
 ### Files
-- `POST /api/files/upload` - Uploader un fichier
-- `GET /api/files/{id}` - Info sur un fichier
+- `POST /api/files/upload` - Uploader un fichier vers Paradigm
+- `GET /api/files/{id}` - Info sur un fichier (status, taille, etc.)
 - `DELETE /api/files/{id}` - Supprimer un fichier
+
+### Health
+- `GET /health` - Health check pour monitoring
+- `GET /` - Interface web (frontend)
 
 ### Usage Example
 
@@ -182,50 +263,64 @@ Answer: [Search result about cloud computing benefits]
 
 ## 🔧 APIs Disponibles dans les Workflows Générés
 
-Les workflows générés ont accès à un **ParadigmClient complet** avec toutes les APIs LightOn :
+Les workflows générés ont accès à un **ParadigmClient complet** avec toutes les APIs LightOn Paradigm :
 
-### Recherche et Analyse
-- `document_search(query, file_ids=...)` - Recherche sémantique
-- `analyze_documents_with_polling(query, document_ids)` - Analyse approfondie
-- `chat_completion(prompt, guided_choice=..., guided_regex=...)` - Complétion avec extraction structurée
-  - **guided_choice** : Force le choix parmi une liste (ex: ["oui", "non"])
-  - **guided_regex** : Force un format précis (SIRET, IBAN, téléphone, etc.)
+### Recherche et Analyse de Documents
+- `document_search(query, file_ids=...)` - Recherche sémantique dans vos documents
+- `search_with_vision_fallback(query, file_ids)` - Recherche avec OCR automatique pour documents scannés
+- `analyze_documents_with_polling(query, document_ids)` - Analyse approfondie avec récupération auto des résultats
+- `chat_completion(prompt, guided_choice=..., guided_regex=..., guided_json=...)` - Complétion avec extraction structurée
+  - **guided_choice** : Sélection forcée parmi liste prédéfinie (classification)
+  - **guided_regex** : Format garanti (SIRET, IBAN, téléphone, dates, montants)
+  - **guided_json** : Extraction JSON structurée avec schéma
 
 ### Gestion de Fichiers
-- `upload_file(file_content, filename)` - Upload de fichiers
-- `get_file(file_id)` - Informations sur un fichier
-- `wait_for_embedding(file_id)` - Attendre l'indexation
-- `get_file_chunks(file_id)` - Récupérer les chunks d'un fichier
+- `upload_file(file_content, filename, collection_type=...)` - Upload vers Paradigm avec indexation auto
+- `wait_for_embedding(file_id, timeout=300)` - Attente auto de l'indexation (timeout 5min)
+- `get_file(file_id)` / `delete_file(file_id)` - Gestion complète du cycle de vie
+- `get_file_chunks(file_id)` - Récupération des chunks de documents
 
 ### APIs Avancées
-- `filter_chunks(query, chunk_ids, n=...)` - Filtrer les chunks par pertinence
-- `query(query, collection=...)` - Extraire chunks sans synthèse AI
-- `search_with_vision_fallback(query, file_ids)` - Recherche avec OCR automatique
+- `filter_chunks(query, chunk_ids, n=...)` - Filtrage par pertinence (+20% précision)
+- `query(query, collection=...)` - Extraction de chunks sans synthèse AI (30% plus rapide)
+- `analyze_image(image_path_or_url, prompt)` - Analyse d'images avec IA
 
-### Extraction de Données Structurées (NOUVEAU ✨)
+### Extraction de Données Structurées
 
-Les workflows peuvent utiliser **guided_choice** et **guided_regex** pour extraire des données avec garantie de format :
+Les workflows peuvent extraire des données avec **garantie de format** :
 
 ```python
 # Extraction de SIRET avec format garanti (14 chiffres)
 siret = await paradigm_client.chat_completion(
-    prompt="Extrais le numéro SIRET",
-    guided_regex=r"\\d{14}"
+    prompt="Extrais le numéro SIRET du document",
+    guided_regex=r"\d{14}"
 )
 
-# Classification stricte
+# Classification stricte parmi choix prédéfinis
 status = await paradigm_client.chat_completion(
-    prompt="Le document est-il conforme ?",
+    prompt="Le document est-il conforme aux exigences ?",
     guided_choice=["conforme", "non_conforme", "incomplet"]
+)
+
+# Extraction JSON structurée
+invoice_data = await paradigm_client.chat_completion(
+    prompt="Extrais les données de la facture",
+    guided_json={
+        "type": "object",
+        "properties": {
+            "numero": {"type": "string"},
+            "montant": {"type": "number"},
+            "date": {"type": "string"}
+        }
+    }
 )
 ```
 
-**Patterns regex prédéfinis inclus** : SIRET, SIREN, IBAN, téléphone FR, dates, montants, emails.
+**Patterns regex prédéfinis inclus** : SIRET (14 chiffres), SIREN (9 chiffres), IBAN, téléphone FR, dates ISO, montants EUR, emails.
 
-📖 **Guide complet** : Voir [GUIDED_FEATURES.md](GUIDED_FEATURES.md)
-
-### Support de Session
-Toutes les méthodes supportent le `session` parameter pour réutiliser les connexions HTTP (5.55x plus rapide).
+### Performance
+- Session HTTP réutilisable pour toutes les méthodes (5.55x plus rapide)
+- Support complet des opérations async/await
 
 ## 📦 Workflow Runner - Package Standalone
 
@@ -419,105 +514,6 @@ docker-compose up --build
 └── vercel.json                  # Configuration Vercel
 ```
 
-## 🐳 Déploiement du Workflow Builder
-
-### Option A : Docker (Recommandé - Le plus simple)
-
-Déployer le workflow builder complet avec Docker pour un environnement prêt à l'emploi.
-
-```bash
-# 1. Cloner le repository
-git clone https://github.com/Isydoria/lighton-workflow-generator-.git
-cd lighton-workflow-generator-
-
-# 2. Configurer les clés API
-cp .env.example .env
-# Éditer .env et ajouter :
-# ANTHROPIC_API_KEY=your_anthropic_key
-# LIGHTON_API_KEY=your_lighton_key
-
-# 3. Démarrer avec Docker Compose
-docker-compose up --build
-
-# 4. Accéder à l'interface
-# Frontend : http://localhost:3000
-# API Backend : http://localhost:8000/docs
-
-# Arrêt
-docker-compose down
-```
-
-**✅ Avantages** :
-- Configuration minimale
-- Environnement isolé et reproductible
-- Prêt pour production (déployable sur n'importe quel serveur avec Docker)
-- Pas de limite de functions serverless
-
-### Option B : Vercel (Requires Pro Plan)
-
-⚠️ **Attention** : Le workflow builder nécessite Vercel Pro ($20/mois) pour fonctionner correctement.
-
-**Pourquoi Pro est requis** :
-- **Python Runtime** : Le workflow builder utilise Python/FastAPI (pas disponible en free tier)
-- **Execution Time** : La génération de workflows peut prendre 30-60s+ (free tier limité à 10s)
-- **Function Count** : Le builder utilise plusieurs endpoints API (limite atteinte rapidement en free tier)
-
-**Déploiement Vercel** :
-1. Connectez votre repo GitHub/GitLab à Vercel
-2. Ajoutez les variables d'environnement dans Vercel :
-   - `ANTHROPIC_API_KEY`
-   - `LIGHTON_API_KEY`
-3. Liez Vercel KV (Storage) :
-   - Les variables `KV_REST_API_URL` et `KV_REST_API_TOKEN` sont créées automatiquement
-   - Le code détecte et utilise ces variables automatiquement
-4. Déployez : `git push` (automatique)
-
-**Note** : Le code supporte automatiquement les deux conventions :
-- Variables Vercel KV (créées automatiquement lors du linking)
-- Variables Upstash directes (configuration manuelle)
-
-### Option C : Déploiement Python Manuel
-
-Déployer sur votre propre infrastructure (VPS, cloud VM, serveur on-premises).
-
-```bash
-# 1. Cloner et installer
-git clone https://github.com/Isydoria/lighton-workflow-generator-.git
-cd lighton-workflow-generator-
-pip install -r requirements.txt
-
-# 2. Configurer les variables d'environnement
-cp .env.example .env
-nano .env  # Ajouter ANTHROPIC_API_KEY et LIGHTON_API_KEY
-
-# 3. Démarrer le serveur
-python -m uvicorn api.index:app --host 0.0.0.0 --port 8000
-
-# Ou avec plus d'options de production
-uvicorn api.index:app \
-  --host 0.0.0.0 \
-  --port 8000 \
-  --workers 4 \
-  --log-level info
-```
-
-**Configuration Nginx (optionnel)** :
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
 ## 📚 Documentation
 
 - **API Backend** : http://localhost:8000/docs (quand le serveur tourne)
@@ -555,21 +551,54 @@ server {
 
 ## 📝 Technologies
 
-- **Backend** : FastAPI, Python 3.11+, aiohttp, Upstash Redis
-- **Frontend** : HTML/CSS/JavaScript vanilla
-- **AI** : Anthropic Claude API (claude-sonnet-4-20250514)
-- **Document Processing** : LightOn Paradigm API (toutes les fonctionnalités)
-- **PDF Generation** : ReportLab
-- **Déploiement** : Vercel (prod), Docker (test/local)
+**Backend** :
+- FastAPI (API REST avec documentation automatique)
+- Python 3.11+
+- Pydantic 2.0+ (validation de données)
+- aiohttp (client HTTP async)
+- Upstash Redis / Vercel KV (persistance)
+
+**Frontend** :
+- HTML/CSS/JavaScript vanilla (pas de framework)
+- Interface responsive avec drag-and-drop
+- jsPDF (export PDF côté client dans packages)
+
+**IA & Document Processing** :
+- Anthropic Claude API (claude-sonnet-4-20250514)
+- LightOn Paradigm API (recherche, analyse, extraction structurée)
+
+**Génération de Packages** :
+- ReportLab (rapports PDF serveur)
+- Workflow Package Generator (UI dynamique auto-générée)
+- MCP Package Generator (protocole Anthropic)
+
+**Déploiement** :
+- Docker + Docker Compose (recommandé)
+- Vercel (Pro requis)
+- Python/Uvicorn manuel
 
 ## 🔄 Améliorations Récentes
 
-- ✨ **NOUVEAU** : Support de `guided_choice` et `guided_regex` pour extraction structurée
-  - Extraction garantie de SIRET, IBAN, téléphones avec format validé
+**v1.1.0-mcp (Janvier 2025)** :
+- ✨ **MCP Server Package** : Intégration Claude Desktop et Paradigm via protocole MCP
+  - Serveur dual-mode (stdio local + HTTP remote)
+  - Support multi-formats d'entrée (paths, file IDs, auto-upload)
+  - Configuration Docker avec bearer token auth
+- ✨ **Workflow Runner Package** : Package standalone avec UI auto-générée
+  - Analyse Claude du code pour génération UI intelligente
+  - Support drag-and-drop fichiers
+  - Export PDF intégré côté client
+  - Documentation bilingue (FR/EN)
+
+**Fonctionnalités Principales** :
+- ✅ **Extraction Structurée** : `guided_choice`, `guided_regex`, `guided_json`
+  - Formats garantis : SIRET, SIREN, IBAN, téléphones FR, dates, montants
   - Classification stricte avec choix prédéfinis
-  - Patterns regex prédéfinis pour formats français
-- ✅ Post-validation automatique des f-strings générées
-- ✅ Support complet de toutes les APIs Paradigm (Vision OCR, filter chunks, etc.)
-- ✅ Retry automatique avec contexte d'erreur (3 tentatives)
-- ✅ Normalisation de données (IBAN, SIRET, téléphones)
-- ✅ Détection et correction des workflows complexes (>40 API calls)
+  - Extraction JSON avec schéma
+- ✅ **Description Enhancement** : Amélioration auto des descriptions utilisateur
+- ✅ **Auto-Validation** : Retry automatique (3 tentatives) avec feedback d'erreur
+- ✅ **Post-Processing** : Correction auto des erreurs de syntaxe f-strings
+- ✅ **Complexity Detection** : Identification workflows complexes (>40 API calls)
+- ✅ **Performance** : Parallelisation auto via asyncio.gather()
+- ✅ **APIs Paradigm** : Support complet (Vision OCR, filter_chunks, analyze_image, etc.)
+- ✅ **Session Reuse** : Client HTTP réutilisable (5.55x plus rapide)
