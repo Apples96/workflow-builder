@@ -89,6 +89,7 @@ def verify_bearer_token(authorization: Optional[str]) -> bool:
 
 
 @app.get("/")
+@app.post("/")
 async def root():
     """Health check endpoint"""
     return {{
@@ -99,6 +100,7 @@ async def root():
 
 
 @app.get("/health")
+@app.post("/health")
 async def health():
     """Health check endpoint"""
     return {{"status": "healthy"}}
@@ -120,7 +122,15 @@ async def list_tools(authorization: Optional[str] = Header(None)) -> ToolListRes
     tools = [
         {{
             "name": "{WORKFLOW_NAME_SLUG}",
-            "description": "{WORKFLOW_DESCRIPTION}\\n\\nThis tool executes a complete workflow using the LightOn Paradigm API.\\n\\nInput parameters:\\n{WORKFLOW_PARAMETERS_DESCRIPTION}\\n\\nOutput format:\\n{WORKFLOW_OUTPUT_DESCRIPTION}",
+            "description": """{WORKFLOW_DESCRIPTION}
+
+This tool executes a complete workflow using the LightOn Paradigm API.
+
+Input parameters:
+{WORKFLOW_PARAMETERS_DESCRIPTION}
+
+Output format:
+{WORKFLOW_OUTPUT_DESCRIPTION}""",
             "inputSchema": {WORKFLOW_INPUT_SCHEMA}
         }}
     ]
@@ -149,16 +159,16 @@ async def call_tool(
     if not verify_bearer_token(authorization):
         raise HTTPException(status_code=401, detail="Invalid or missing bearer token")
 
-    logger.info("Tool call request: {{}}".format(json.dumps({{
+    logger.info("Tool call request: {}".format(json.dumps({
         "name": request.name,
         "arguments": request.arguments
-    }}, ensure_ascii=False)))
+    }, ensure_ascii=False)))
 
     # Verify tool name
     if request.name != "{WORKFLOW_NAME_SLUG}":
         raise HTTPException(
             status_code=404,
-            detail="Unknown tool: {{}}".format(request.name)
+            detail="Unknown tool: {}".format(request.name)
         )
 
     try:
@@ -176,7 +186,7 @@ async def call_tool(
         executor = WorkflowExecutor(paradigm_client)
 
         # Execute workflow
-        logger.info("Executing workflow with arguments: {{}}".format(
+        logger.info("Executing workflow with arguments: {}".format(
             json.dumps(request.arguments, ensure_ascii=False)
         ))
 
@@ -197,17 +207,17 @@ async def call_tool(
         return response
 
     except Exception as e:
-        logger.error("Workflow execution failed: {{}}".format(str(e)))
+        logger.error("Workflow execution failed: {}".format(str(e)))
 
         # Return error as MCP response
         error_response = ToolCallResponse(
             content=[
                 {{
                     "type": "text",
-                    "text": json.dumps({{
+                    "text": json.dumps({
                         "error": str(e),
                         "status": "failed"
-                    }}, ensure_ascii=False, indent=2)
+                    }, ensure_ascii=False, indent=2)
                 }}
             ]
         )
@@ -218,7 +228,7 @@ async def call_tool(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler"""
-    logger.error("Unhandled exception: {{}}".format(str(exc)))
+    logger.error("Unhandled exception: {}".format(str(exc)))
     return JSONResponse(
         status_code=500,
         content={{
@@ -263,9 +273,9 @@ def main():
 
     # Log server configuration
     logger.info("Starting HTTP MCP Server for {WORKFLOW_NAME}")
-    logger.info("Host: {{}}".format(args.host))
-    logger.info("Port: {{}}".format(args.port))
-    logger.info("Paradigm API URL: {{}}".format(PARADIGM_BASE_URL))
+    logger.info("Host: {}".format(args.host))
+    logger.info("Port: {}".format(args.port))
+    logger.info("Paradigm API URL: {}".format(PARADIGM_BASE_URL))
 
     # Start server
     uvicorn.run(

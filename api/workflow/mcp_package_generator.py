@@ -195,9 +195,9 @@ class WorkflowExecutor:
             Exception: If upload fails
         \"\"\"
         if not os.path.exists(file_path):
-            raise FileNotFoundError("File not found: {{}}".format(file_path))
+            raise FileNotFoundError("File not found: {}".format(file_path))
 
-        logger.info("Uploading file: {{}}".format(file_path))
+        logger.info("Uploading file: {}".format(file_path))
 
         # Read file content
         with open(file_path, 'rb') as f:
@@ -213,16 +213,16 @@ class WorkflowExecutor:
         )
 
         file_id = result.get('id') or result.get('file_id')
-        logger.info("File uploaded successfully: {{}} (ID: {{}})".format(filename, file_id))
+        logger.info("File uploaded successfully: {} (ID: {})".format(filename, file_id))
 
         # Wait for file to be embedded/indexed
-        logger.info("Waiting for file {{}} to be indexed...".format(file_id))
+        logger.info("Waiting for file {} to be indexed...".format(file_id))
         await self.paradigm_client.wait_for_embedding(
             file_id=file_id,
             max_wait_time=300,
             poll_interval=2
         )
-        logger.info("File {{}} is ready".format(file_id))
+        logger.info("File {} is ready".format(file_id))
 
         return file_id
 
@@ -280,7 +280,7 @@ class WorkflowExecutor:
                 logger.warning("No file inputs found")
                 file_ids = []
 
-        logger.info("Processed file inputs: {{}} file(s)".format(len(file_ids)))
+        logger.info("Processed file inputs: {} file(s)".format(len(file_ids)))
         return file_ids
 
     async def execute(self, **kwargs) -> Dict[str, Any]:
@@ -309,22 +309,24 @@ class WorkflowExecutor:
             result = await execute_workflow(user_input)
 
             # Return structured result with file information
-            return {{
+            return {
                 "status": "success",
                 "result": result,
                 "files_processed": len(file_ids)
-            }}
+            }
 
         except Exception as e:
-            logger.error("Workflow execution failed: {{}}".format(str(e)))
+            logger.error("Workflow execution failed: {}".format(str(e)))
             raise
 
 
 # Generated workflow code
-{}
-""".format(self.workflow_code)
+"""
 
-        zip_file.writestr('workflow.py', workflow_wrapper)
+        # Append the workflow code directly (avoid .format() issues with braces in workflow code)
+        workflow_file_content = workflow_wrapper + self.workflow_code
+
+        zip_file.writestr('workflow.py', workflow_file_content)
 
     def _add_paradigm_client(self, zip_file: zipfile.ZipFile):
         """Add the standalone Paradigm client to the ZIP"""

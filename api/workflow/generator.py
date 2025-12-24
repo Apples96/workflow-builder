@@ -215,9 +215,11 @@ CRITICAL INSTRUCTIONS:
 6. *** EVERY FUNCTION MUST BE FULLY IMPLEMENTED WITH WORKING CODE ***
 7. *** NO STUB FUNCTIONS - ALL CODE MUST BE EXECUTABLE AND FUNCTIONAL ***
 8. *** ALWAYS USE asyncio.gather() FOR INDEPENDENT PARALLEL TASKS - IMPROVES PERFORMANCE 3-10x ***
-   *** CRITICAL EXCEPTION: NEVER use asyncio.gather() with analyze_documents_with_polling()! ***
-   *** For analyze_documents_with_polling: ALWAYS process sequentially with for loop ***
-   *** Safe to parallelize: document_search(), chat_completion(), upload_file() ***
+   *** CRITICAL: analyze_documents_with_polling() requires BATCH PROCESSING (max 2-3 parallel) ***
+   *** For analyze_documents_with_polling: Use asyncio.gather() in BATCHES of 2-3 documents max ***
+   *** Example: for i in range(0, len(doc_ids), 2): batch_results = await asyncio.gather(*tasks[i:i+2]) ***
+   *** NEVER process more than 3 analyze_documents_with_polling() in parallel to avoid API overload ***
+   *** Safe to fully parallelize: document_search(), chat_completion(), upload_file() ***
 9. *** ParadigmClient MUST ALWAYS INCLUDE upload_file() METHOD - REQUIRED FOR FILE UPLOADS ***
 10. *** CRITICAL STRING FORMATTING RULE - YOU MUST FOLLOW THIS EXACTLY:
     - NEVER EVER use f-strings ("..." or '''...''') ANYWHERE in the code
