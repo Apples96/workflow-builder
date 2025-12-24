@@ -395,35 +395,38 @@ Architecture:
 
         <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
             <h3>✅ Option A: Docker (Recommended - Easiest)</h3>
-            <p>Deploy the workflow builder with Docker for a complete, ready-to-use solution.</p>
+            <p>Deploy your generated workflow with Docker for a complete, production-ready solution.</p>
             <ol style="margin-left: 20px;">
                 <li><strong>Prerequisites:</strong> Install <a href="https://www.docker.com/get-started" target="_blank">Docker Desktop</a></li>
-                <li><strong>Clone the repository:</strong>
-                    <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>git clone https://github.com/Isydoria/lighton-workflow-generator-.git
-cd lighton-workflow-generator-</code></pre>
-                </li>
-                <li><strong>Configure environment:</strong> Create <code>.env</code> file with your Paradigm API key:
-                    <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>LIGHTON_API_KEY=your_paradigm_api_key_here
+                <li><strong>Download Workflow Package:</strong> After generating your workflow in Step 3, click the <strong>"Download Workflow Package"</strong> button to get a ZIP file</li>
+                <li><strong>Extract the Package:</strong> Unzip the downloaded file to your desired location (e.g., <code>C:\workflows\my-workflow\</code>)</li>
+                <li><strong>Configure Environment:</strong> In the extracted folder, you'll find a <code>.env.example</code> file. Either:
+                    <ul style="margin-left: 20px; margin-top: 5px;">
+                        <li><strong>Option 1:</strong> Rename <code>.env.example</code> to <code>.env</code> and edit it with your Paradigm API key</li>
+                        <li><strong>Option 2:</strong> Create a new <code>.env</code> file with:
+                            <pre style="background: #fff; padding: 10px; border-radius: 4px; margin: 10px 0;"><code>LIGHTON_API_KEY=your_paradigm_api_key_here
 LIGHTON_BASE_URL=https://paradigm.lighton.ai</code></pre>
+                        </li>
+                    </ul>
                 </li>
-                <li><strong>Start with Docker Compose:</strong>
+                <li><strong>Start with Docker Compose:</strong> In the extracted folder, run:
                     <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>docker compose up -d</code></pre>
                 </li>
-                <li><strong>Access the interface:</strong> Open <code>http://localhost:8000</code> in your browser</li>
+                <li><strong>Access Your Workflow API:</strong> Your workflow is now accessible at <code>http://localhost:8000/workflow</code></li>
             </ol>
 
             <div style="background: #d4edda; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #28a745;">
                 <strong>✅ Benefits:</strong>
                 <ul style="margin: 5px 0 0 20px;">
-                    <li>Complete workflow builder UI included</li>
-                    <li>No complex configuration needed</li>
-                    <li>Includes API endpoints, MCP package generation, and execution</li>
-                    <li>Easy to scale and deploy on any Docker-compatible infrastructure</li>
+                    <li>Complete deployment with FastAPI server included</li>
+                    <li>No complex configuration needed - just download, unzip, configure .env, and run</li>
+                    <li>Includes API endpoints with automatic documentation at <code>http://localhost:8000/docs</code></li>
+                    <li>Easy to scale and deploy on any Docker-compatible infrastructure (cloud VPS, on-premises, etc.)</li>
                 </ul>
             </div>
 
-            <h3>💰 Option B: Vercel Serverless</h3>
-            <p><strong>⚠️ Requires Vercel Pro Plan</strong> - Free tier doesn't support Python serverless functions.</p>
+            <h3>☁️ Option B: Vercel Serverless</h3>
+            <p>Deploy your workflow as a serverless function on Vercel for automatic scaling and global distribution.</p>
             <ol style="margin-left: 20px;">
                 <li><strong>Create a new directory for your API:</strong> Create a new folder on your computer for this deployment</li>
                 <li><strong>Install Vercel CLI:</strong> If you haven't already, install Vercel CLI by running: <code>npm install -g vercel</code></li>
@@ -481,16 +484,6 @@ class handler(BaseHTTPRequestHandler):
             
             <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
                 <strong>⚠️ Important:</strong> Make sure to add your Paradigm API key as an environment variable in the Vercel dashboard for security. Never commit API keys to your code.
-            </div>
-
-            <div style="background: #fff8e1; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ff9800;">
-                <strong>💰 Why Vercel Pro is Required:</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                    <li><strong>Python Runtime:</strong> Free tier only supports Node.js serverless functions</li>
-                    <li><strong>Execution Time:</strong> Free tier has 10s timeout, workflows often need 30-60s+</li>
-                    <li><strong>Function Size:</strong> Workflow code with dependencies can exceed free tier limits</li>
-                </ul>
-                <p style="margin: 10px 0 0 0;"><strong>Cost:</strong> Vercel Pro starts at $20/month. Consider Docker or Python manual deployment for cost-free alternatives.</p>
             </div>
 
             <h3>🐍 Option C: Manual Python Deployment</h3>
