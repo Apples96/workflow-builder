@@ -275,6 +275,90 @@ docker-compose up -d
 
 ⚠️ La génération de packages est **désactivée sur Vercel** pour rester dans la limite de 12 serverless functions. Utilisez le mode développement local pour générer des packages.
 
+## 🔌 MCP Server Package - Intégration Claude Desktop
+
+Le **MCP (Model Context Protocol) Package** permet d'intégrer vos workflows directement dans Claude Desktop ou Paradigm via le protocole MCP d'Anthropic.
+
+### Génération d'un Package MCP
+
+**En mode développement local uniquement** :
+
+```bash
+# Via l'interface web
+# Cliquer sur "Download MCP Package" après création du workflow
+```
+
+### Contenu du Package MCP
+
+```
+mcp-workflow-{name}.zip
+├── server.py                   # Serveur MCP (stdio + HTTP)
+├── workflow.py                 # Code du workflow généré
+├── paradigm_client.py          # Client Paradigm complet
+├── requirements.txt            # Dépendances Python
+├── docker-compose.yml          # Configuration Docker
+├── Dockerfile                  # Image Docker
+├── .env.example                # Template de configuration
+└── README.md                   # Documentation complète
+```
+
+### Utilisation avec Claude Desktop
+
+```bash
+# 1. Extraire le package
+unzip mcp-workflow-{name}.zip
+cd mcp-workflow-{name}
+
+# 2. Installer les dépendances
+pip install -r requirements.txt
+
+# 3. Configurer Claude Desktop
+# Éditer %APPDATA%\Claude\claude_desktop_config.json (Windows)
+# ou ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)
+```
+
+Ajouter cette configuration :
+
+```json
+{
+  "mcpServers": {
+    "your-workflow-name": {
+      "command": "python",
+      "args": ["C:\\path\\to\\mcp-workflow\\server.py"],
+      "cwd": "C:\\path\\to\\mcp-workflow",
+      "env": {
+        "PARADIGM_API_KEY": "your_paradigm_api_key",
+        "PARADIGM_BASE_URL": "https://paradigm.lighton.ai"
+      }
+    }
+  }
+}
+```
+
+**4. Redémarrer Claude Desktop** - Le workflow est maintenant disponible comme outil !
+
+### Utilisation avec Paradigm (HTTP Mode)
+
+Pour déployer le serveur MCP et l'utiliser avec Paradigm :
+
+```bash
+# 1. Déployer sur un serveur avec URL publique
+docker-compose up -d
+
+# 2. Dans Paradigm Admin → MCP Servers
+# Ajouter : https://votre-serveur.com/mcp
+# Bearer Token : optionnel (configuré dans .env)
+```
+
+⚠️ **Bug Connu Paradigm** : Les `file_ids` uploadés via l'interface Paradigm ne sont pas correctement transmis aux workflows MCP. Workaround : utilisez Claude Desktop en local jusqu'à correction du bug.
+
+### Limitations
+
+- **Claude Desktop** : Timeout de 4 minutes maximum par requête MCP
+  - Limiter à 3-5 documents par requête
+  - Pour workflows complexes, préférer le Workflow Runner Package standard
+- **Paradigm HTTP** : Bug de transmission des file_ids (en cours de correction)
+
 ## 🧪 Tests
 
 ```bash
@@ -315,18 +399,50 @@ pytest tests/test_integration.py
 └── test-docker.bat              # Script de test Docker
 ```
 
-## 🐳 Déploiement
+## 🐳 Déploiement du Workflow Builder
 
-### Docker (test local)
+### Option A : Docker (Recommandé - Le plus simple)
+
+Déployer le workflow builder complet avec Docker pour un environnement prêt à l'emploi.
+
 ```bash
-# Build et démarrage
+# 1. Cloner le repository
+git clone https://github.com/Isydoria/lighton-workflow-generator-.git
+cd lighton-workflow-generator-
+
+# 2. Configurer les clés API
+cp .env.example .env
+# Éditer .env et ajouter :
+# ANTHROPIC_API_KEY=your_anthropic_key
+# LIGHTON_API_KEY=your_lighton_key
+
+# 3. Démarrer avec Docker Compose
 docker-compose up --build
+
+# 4. Accéder à l'interface
+# Frontend : http://localhost:3000
+# API Backend : http://localhost:8000/docs
 
 # Arrêt
 docker-compose down
 ```
 
-### Vercel (production)
+**✅ Avantages** :
+- Configuration minimale
+- Environnement isolé et reproductible
+- Prêt pour production (déployable sur n'importe quel serveur avec Docker)
+- Pas de limite de functions serverless
+
+### Option B : Vercel (Requires Pro Plan)
+
+⚠️ **Attention** : Le workflow builder nécessite Vercel Pro ($20/mois) pour fonctionner correctement.
+
+**Pourquoi Pro est requis** :
+- **Python Runtime** : Le workflow builder utilise Python/FastAPI (pas disponible en free tier)
+- **Execution Time** : La génération de workflows peut prendre 30-60s+ (free tier limité à 10s)
+- **Function Count** : Le builder utilise plusieurs endpoints API (limite atteinte rapidement en free tier)
+
+**Déploiement Vercel** :
 1. Connectez votre repo GitHub/GitLab à Vercel
 2. Ajoutez les variables d'environnement dans Vercel :
    - `ANTHROPIC_API_KEY`
@@ -339,6 +455,48 @@ docker-compose down
 **Note** : Le code supporte automatiquement les deux conventions :
 - Variables Vercel KV (créées automatiquement lors du linking)
 - Variables Upstash directes (configuration manuelle)
+
+### Option C : Déploiement Python Manuel
+
+Déployer sur votre propre infrastructure (VPS, cloud VM, serveur on-premises).
+
+```bash
+# 1. Cloner et installer
+git clone https://github.com/Isydoria/lighton-workflow-generator-.git
+cd lighton-workflow-generator-
+pip install -r requirements.txt
+
+# 2. Configurer les variables d'environnement
+cp .env.example .env
+nano .env  # Ajouter ANTHROPIC_API_KEY et LIGHTON_API_KEY
+
+# 3. Démarrer le serveur
+python -m uvicorn api.index:app --host 0.0.0.0 --port 8000
+
+# Ou avec plus d'options de production
+uvicorn api.index:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --workers 4 \
+  --log-level info
+```
+
+**Configuration Nginx (optionnel)** :
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
 
 ## 📚 Documentation
 
