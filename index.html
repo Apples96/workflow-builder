@@ -358,6 +358,7 @@ Architecture:
         
         <button onclick="executeWorkflowWithQuery()" id="testButton" disabled>Test Workflow</button>
         <button onclick="downloadWorkflowPackage()" id="packageButton" disabled style="background: #28a745; margin-left: 10px;">📦 Download Workflow Package</button>
+        <button onclick="downloadMCPPackage()" id="mcpPackageButton" disabled style="background: #007bff; margin-left: 10px;">🔧 Download MCP Package</button>
         <div id="testResult" style="margin-top: 15px;"></div>
     </div>
 
@@ -1375,6 +1376,7 @@ if __name__ == "__main__":
                     currentWorkflowId = data.id;
                     document.getElementById('testButton').disabled = false;
                     document.getElementById('packageButton').disabled = false;
+                    document.getElementById('mcpPackageButton').disabled = false;
 
                     const resultMessage = `✅ Workflow created successfully!\n\nID: ${data.id}\nName: ${data.name || 'Unnamed'}\nStatus: ${data.status}\n\nGenerated Code:\n${data.generated_code || 'No code generated'}`;
 
@@ -1994,6 +1996,75 @@ if __name__ == "__main__":
                 console.error('Package download error:', error);
                 addLog(`❌ Failed to download package: ${error.message}`, 'error');
                 alert(`Failed to download package: ${error.message}`);
+            }
+        }
+
+        /**
+         * Download MCP (Model Context Protocol) server package as ZIP
+         *
+         * This function calls the API endpoint that generates a complete,
+         * MCP-compatible package containing:
+         * - MCP server with tool definitions
+         * - Workflow execution code
+         * - Paradigm API client
+         * - Python package configuration
+         * - Claude Desktop integration instructions
+         */
+        async function downloadMCPPackage() {
+            if (!currentWorkflowId) {
+                alert('Please create a workflow first');
+                addLog('❌ No workflow to package', 'error');
+                return;
+            }
+
+            addLog('🔧 Generating MCP package...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/workflow/generate-mcp-package/${currentWorkflowId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to generate MCP package');
+                }
+
+                // Get the ZIP file as a blob
+                const blob = await response.blob();
+
+                // Extract filename from Content-Disposition header or use default
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'mcp-workflow-package.zip';
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    if (filenameMatch && filenameMatch[1]) {
+                        filename = filenameMatch[1].replace(/['"]/g, '');
+                    }
+                }
+
+                // Create a download link and click it
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+
+                // Cleanup
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                addLog(`✅ MCP package downloaded: ${filename}`, 'success');
+                alert(`✅ MCP package downloaded successfully!\n\nFile: ${filename}\n\nYou can now:\n1. Extract the ZIP file\n2. Configure your Paradigm API key in .env\n3. Run: pip install -e .\n4. Configure Claude Desktop (see README.md)\n5. Use the workflow as an MCP tool in Claude Desktop`);
+
+            } catch (error) {
+                console.error('MCP package download error:', error);
+                addLog(`❌ Failed to download MCP package: ${error.message}`, 'error');
+                alert(`Failed to download MCP package: ${error.message}`);
             }
         }
     </script>
