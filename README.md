@@ -2,38 +2,33 @@
 
 Application de génération et d'exécution de workflows automatisés utilisant l'API Anthropic Claude et l'API LightOn Paradigm.
 
-## 🚀 Démarrage Rapide
+## 🚀 Démarrage Rapide avec Docker
 
-### Développement quotidien
-Double-cliquez sur **`dev.bat`**
-- Démarre le serveur en mode développement
-- Frontend : http://localhost:3000
-- Backend API : http://localhost:8000/docs
+```bash
+# 1. Cloner le repository
+git clone https://github.com/Isydoria/lighton-workflow-generator-.git
+cd lighton-workflow-generator-
 
-### Test avant déploiement
-Double-cliquez sur **`test-docker.bat`**
-- Teste l'application dans Docker (environnement de production)
-- Vérifiez que tout fonctionne avant de déployer
+# 2. Configurer les clés API
+cp .env.example .env
+# Éditer .env et ajouter vos clés :
+# ANTHROPIC_API_KEY=votre_clé_anthropic
+# LIGHTON_API_KEY=votre_clé_lighton
+
+# 3. Démarrer avec Docker Compose
+docker-compose up --build
+
+# 4. Accéder à l'application
+# Frontend : http://localhost:3000
+# API Backend : http://localhost:8000/docs
+```
 
 ## 📋 Prérequis
 
-1. **Python 3.11+** installé
-2. **Docker Desktop** (pour les tests Docker uniquement)
-3. **Fichier .env** avec vos clés API :
-   ```env
-   ANTHROPIC_API_KEY=votre_clé_anthropic
-   LIGHTON_API_KEY=votre_clé_lighton
-   ```
-
-## 🛠️ Workflow de Développement
-
-```
-1. Développer        → dev.bat
-2. Tester            → http://localhost:3000
-3. Test Docker       → test-docker.bat (avant commit)
-4. Commit & Push     → git commit && git push
-5. Déploiement       → Automatique sur Vercel
-```
+1. **Docker Desktop** installé
+2. **Clés API** :
+   - Anthropic API key (pour la génération de workflows)
+   - LightOn Paradigm API key (pour l'exécution des workflows)
 
 ## ✨ Fonctionnalités Principales
 
@@ -66,36 +61,6 @@ Double-cliquez sur **`test-docker.bat`**
   - ⚠️ Disponible en mode développement local uniquement (désactivé sur Vercel)
 - **RESTful API**: API FastAPI avec documentation OpenAPI automatique
 
-## 🔧 Installation Manuelle (si besoin)
-
-1. **Installer les dépendances**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Configurer les clés API**
-
-   Créez un fichier `.env` à la racine :
-   ```bash
-   ANTHROPIC_API_KEY=votre_clé_anthropic
-   LIGHTON_API_KEY=votre_clé_lighton
-
-   # Redis (optionnel - pour persistance serverless)
-   # Vercel KV (automatique si lié depuis Vercel)
-   KV_REST_API_URL=https://your-redis.upstash.io
-   KV_REST_API_TOKEN=your_token_here
-
-   # OU Upstash direct (configuration manuelle)
-   UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
-   UPSTASH_REDIS_REST_TOKEN=your_token_here
-   ```
-
-3. **Démarrer le serveur**
-   ```bash
-   # Utilisez plutôt dev.bat (recommandé)
-   # Ou manuellement :
-   python -m uvicorn api.index:app --port 8000
-   ```
 
 ## 📖 API Endpoints
 
@@ -368,8 +333,8 @@ pytest tests/
 # Tests d'intégration
 pytest tests/test_integration.py
 
-# Test Docker (avant commit)
-./test-docker.bat
+# Test Docker
+docker-compose up --build
 ```
 
 ## 📁 Structure du Projet
@@ -394,9 +359,7 @@ pytest tests/test_integration.py
 ├── .env                         # Variables d'environnement (NE PAS commiter!)
 ├── docker-compose.yml           # Configuration Docker
 ├── Dockerfile                   # Image Docker
-├── vercel.json                  # Configuration Vercel
-├── dev.bat                      # Script de développement Windows
-└── test-docker.bat              # Script de test Docker
+└── vercel.json                  # Configuration Vercel
 ```
 
 ## 🐳 Déploiement du Workflow Builder
@@ -514,13 +477,14 @@ server {
 ## 🐛 Dépannage
 
 **Problème : "Port already in use"**
-- Les scripts `dev.bat` et `test-docker.bat` tuent automatiquement les anciens serveurs
-- Si problème persiste : `powershell "Get-Process python | Stop-Process -Force"`
+- Arrêtez les conteneurs Docker : `docker-compose down`
+- Vérifiez les processus sur les ports : `netstat -ano | findstr :8000`
+- Si besoin, tuez les processus : `taskkill /F /PID <pid>`
 
 **Problème : "API key not configured"**
 - Vérifiez que le fichier `.env` existe à la racine du projet
 - Vérifiez que les clés API sont correctes et commencent par les bons préfixes
-- Redémarrez avec `dev.bat`
+- Redémarrez Docker : `docker-compose restart`
 
 **Problème : "File not embedded yet"**
 - Les fichiers uploadés doivent être indexés avant utilisation
