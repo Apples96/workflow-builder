@@ -32,34 +32,91 @@ docker-compose up --build
 
 ## ✨ Fonctionnalités Principales
 
-### 1. Création de Workflows IA
-- **Natural Language to Code**: Décrivez vos workflows en langage naturel
-- **AI-Powered Generation**: Génération de code Python par Anthropic Claude
-- **Auto-Validation**: Validation automatique avec retry (jusqu'à 3 tentatives)
-- **Post-Processing**: Correction automatique des erreurs f-strings
+### 1. Génération de Workflows par IA
 
-### 2. Intégration Complète LightOn Paradigm
-- **Document Search**: Recherche sémantique dans vos documents
-- **Document Analysis**: Analyse approfondie avec polling automatique
-- **Vision OCR**: Support de VisionDocumentSearch pour documents scannés
-- **File Management**: Upload, indexation automatique, gestion de fichiers
-- **Advanced Features**: Filter chunks, get file chunks, query sans AI
+- **Natural Language to Code**: Décrivez vos workflows en langage naturel, Claude Sonnet 4 génère le code Python exécutable
+- **Enhancement Description**: Amélioration automatique des descriptions utilisateur avant génération
+- **Auto-Validation avec Retry**: Jusqu'à 3 tentatives avec feedback d'erreur contextuel pour auto-correction
+- **Post-Processing Intelligent**: Correction automatique des erreurs de syntaxe f-strings
+- **Détection de Complexité**: Identification automatique de workflows complexes (>40 appels API) avec gestion de rate limiting
+- **Optimisation des Performances**: Parallelisation automatique via asyncio.gather() pour les opérations indépendantes
 
-### 3. Exécution Sécurisée et Performance
-- **Safe Execution**: Environnement sandboxé avec timeout (30 min par défaut)
-- **File Attachments**: Support de fichiers joints aux workflows
-- **Redis Storage**: Persistance avec Upstash Redis pour serverless
-- **Performance**: Session reuse HTTP (5.55x plus rapide)
+### 2. Intégration Complète Paradigm API
 
-### 4. Export et Déploiement Client
-- **PDF Reports**: Génération de rapports professionnels
-- **Workflow Runner**: Package ZIP standalone avec frontend dynamique + backend complet
-  - Interface utilisateur générée automatiquement selon le workflow
-  - Documentation bilingue (FR/EN)
-  - Configuration Docker incluse
-  - Prêt pour déploiement client autonome
-  - ⚠️ Disponible en mode développement local uniquement (désactivé sur Vercel)
-- **RESTful API**: API FastAPI avec documentation OpenAPI automatique
+**Recherche et Analyse de Documents:**
+- `document_search()` - Recherche sémantique dans vos documents
+- `search_with_vision_fallback()` - Fallback automatique vers VisionDocumentSearch pour documents scannés
+- `analyze_documents_with_polling()` - Analyse approfondie avec récupération automatique des résultats
+- `chat_completion()` - Complétion IA avec extraction de données structurées :
+  - **guided_choice**: Sélection forcée parmi liste prédéfinie (classification)
+  - **guided_regex**: Format garanti (SIRET, IBAN, téléphones, dates, montants)
+  - **guided_json**: Extraction JSON structurée
+
+**Gestion de Fichiers:**
+- `upload_file()` - Upload vers Paradigm avec indexation automatique
+- `wait_for_embedding()` - Attente automatique de l'indexation (timeout 5min)
+- `get_file()` / `delete_file()` - Gestion complète du cycle de vie
+- `get_file_chunks()` - Récupération des chunks de documents
+
+**APIs Avancées:**
+- `filter_chunks()` - Filtrage par pertinence (+20% précision)
+- `query()` - Extraction de chunks sans synthèse AI (30% plus rapide)
+- `analyze_image()` - Analyse d'images avec IA
+
+**Performance:**
+- Session HTTP réutilisable (5.55x plus rapide)
+- Support complet des opérations async
+
+### 3. Exécution Sécurisée
+
+- **Sandboxing**: Environnement d'exécution restreint avec built-ins sécurisés uniquement
+- **Timeout Configurable**: Protection contre les exécutions infinies (défaut 30 min)
+- **File Attachments**: Support natif de fichiers joints via `attached_file_ids`
+- **Injection Sécurisée**: Clés API injectées automatiquement à l'exécution
+- **Logging Complet**: Capture stdout/stderr avec traçage API détaillé
+- **Support Async**: Workflows synchrones et asynchrones
+
+### 4. Persistance et Stockage
+
+- **Upstash Redis**: Stockage serverless-compatible (TTL 24h)
+- **Vercel KV**: Détection et utilisation automatique des variables Vercel
+- **Fallback In-Memory**: Fonctionnement sans Redis si nécessaire
+- **Workflow History**: Stockage des exécutions et résultats
+
+### 5. Export et Packages
+
+**Workflow Runner (Package Standalone):**
+- Interface web dynamique générée automatiquement par analyse du code
+- Détection intelligente des champs (inputs texte, uploads fichiers, types multiples)
+- Backend FastAPI complet avec client Paradigm
+- Documentation bilingue (FR/EN)
+- Configuration Docker prête à l'emploi
+- Export PDF intégré (jsPDF)
+- ⚠️ Local dev uniquement (limite serverless Vercel)
+
+**MCP Server Package:**
+- Serveur MCP dual-mode (stdio pour Claude Desktop + HTTP pour Paradigm)
+- Support multi-formats d'entrée (paths locaux, file IDs, auto-upload)
+- Attente automatique d'indexation (wait_for_embedding 5min)
+- Configuration Docker + bearer token auth
+- ⚠️ Limitations: 4min timeout Claude Desktop, bug file_ids Paradigm
+
+### 6. Rapports PDF Professionnels
+
+- Génération automatique de rapports vendor-neutral
+- Support Markdown (headers, listes, tables, bold/italic)
+- Affichage structuré des données JSON
+- Métadonnées complètes (nom, description, durée, status)
+- Typographie professionnelle (ReportLab)
+
+### 7. Interface Web Moderne
+
+- **Vanilla JavaScript**: Sans dépendances framework
+- **Upload Drag-and-Drop**: Interface visuelle de fichiers
+- **Monitoring en Temps Réel**: Logs colorés avec traçage API complet
+- **Code Preview**: Visualisation du workflow généré
+- **Téléchargements**: PDF, Workflow Runner Package, MCP Package
+- **Responsive**: Compatible desktop et mobile
 
 
 ## 📖 API Endpoints
