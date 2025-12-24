@@ -78,15 +78,6 @@ def count_api_calls(code: str) -> int:
     return total_calls
 
 
-def fix_fstring_with_braces(code: str) -> str:
-    """
-    Disabled - too complex to fix f-strings reliably with regex.
-    Rely on improved instructions to Claude instead.
-    """
-    # Do nothing - let validation catch errors and retry with context
-    return code
-
-
 def add_staggering_to_workflow(code: str, description: str) -> str:
     """
     Add staggering (delays) between API calls for complex workflows.
@@ -158,9 +149,6 @@ class WorkflowGenerator:
                 try:
                     # Generate the code using Anthropic API
                     generated_code = await self._generate_code(description, context)
-
-                    # Fix f-strings with curly braces BEFORE validation
-                    generated_code = fix_fstring_with_braces(generated_code)
 
                     # Validate the generated code
                     validation_result = await self._validate_code(generated_code)
