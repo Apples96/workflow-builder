@@ -74,10 +74,20 @@ test_*.json
 start.bat
 .vercel
 
-# Workflow description files (contain business logic)
+# Documentation files (drafts and comparisons)
+AMELIORATIONS_WORKFLOW_BUILDER.md
+COMPARISON_ARCHITECTURES.md
+GUIDED_FEATURES.md
+workflow_description_traitement_factures.txt
+
+# Workflow description files (contain business logic - keep specific ones in repo)
 workflow_ugap_description*.txt
 workflow_*_description*.txt
+!workflow_description_analyse_cv.md
+!workflow_ugap_description_v5_LN.txt
 
-# Temporary files and diagrams
+# Temporary files and diagrams (keep schema)
 _temp_diagrams/
+!_temp_diagrams/workflow-builder-schema.html
 workflow_description_*.md
+!workflow_description_analyse_cv.md
