@@ -348,7 +348,7 @@
                 <li><a href="#file-upload">4. Upload et Traitement de Fichiers</a></li>
                 <li><a href="#workflow-runner">5. Workflow Runner (Exécution)</a></li>
                 <li><a href="#recherche-vectorielle">6. Recherche Vectorielle</a></li>
-                <li><a href="#package-generator">7. Génération de Package</a></li>
+                <li><a href="#package-generator">7. Génération de Package (Workflow Runner + MCP Server)</a></li>
                 <li><a href="#apis">8. APIs Paradigm</a></li>
             </ul>
         </div>
@@ -405,9 +405,9 @@
             <div class="info-box">
                 <strong>🔑 Caractéristiques clés :</strong>
                 <ul>
-                    <li><strong>Conteneurisé Docker</strong> : Déployé avec Docker Compose</li>
-                    <li><strong>Architecture microservices</strong> : Services isolés et scalables</li>
-                    <li><strong>Pas de base de données traditionnelle</strong> : Redis + APIs externes</li>
+                    <li><strong>Conteneurisé Docker</strong> : Déployé avec Docker (mono-container)</li>
+                    <li><strong>Architecture monolithique</strong> : Application tout-en-un (Backend + Frontend)</li>
+                    <li><strong>Pas de base de données traditionnelle</strong> : Stockage en mémoire (Redis optionnel pour serverless)</li>
                     <li><strong>Code généré par IA</strong> : Claude génère du code Python autonome</li>
                 </ul>
             </div>
@@ -426,35 +426,18 @@
                 <div style="background: #f8f9fa; padding: 30px; border-radius: 10px; text-align: center; font-family: monospace;">
                     <div style="border: 3px solid #667eea; padding: 20px; border-radius: 10px; background: white;">
                         <strong style="font-size: 1.2em; color: #667eea;">🐳 DOCKER HOST</strong>
-                        <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
-                            <!-- Container Backend -->
-                            <div style="border: 2px solid #3498db; padding: 15px; border-radius: 8px; background: #e3f2fd;">
-                                <strong style="color: #3498db;">📦 Container Backend</strong>
-                                <div style="margin-top: 10px; font-size: 0.9em; text-align: left;">
-                                    <div>🐍 Python 3.11</div>
-                                    <div>⚡ FastAPI</div>
-                                    <div>🔌 Port: 8000</div>
-                                    <div>📁 /app</div>
-                                </div>
-                            </div>
-                            <!-- Container Redis -->
-                            <div style="border: 2px solid #e74c3c; padding: 15px; border-radius: 8px; background: #ffebee;">
-                                <strong style="color: #e74c3c;">📦 Container Redis</strong>
-                                <div style="margin-top: 10px; font-size: 0.9em; text-align: left;">
-                                    <div>💾 Redis 7 Alpine</div>
-                                    <div>🔌 Port: 6379</div>
-                                    <div>📀 Volume: redis_data</div>
-                                    <div>⚙️ AOF persistence</div>
-                                </div>
-                            </div>
-                            <!-- Container Frontend -->
-                            <div style="border: 2px solid #27ae60; padding: 15px; border-radius: 8px; background: #e8f5e9;">
-                                <strong style="color: #27ae60;">📦 Container Frontend</strong>
-                                <div style="margin-top: 10px; font-size: 0.9em; text-align: left;">
-                                    <div>⚛️ Node.js 20</div>
-                                    <div>🎨 Next.js</div>
-                                    <div>🔌 Port: 3000</div>
-                                    <div>🌐 React UI</div>
+                        <div style="margin-top: 20px;">
+                            <!-- Container Unique -->
+                            <div style="border: 2px solid #3498db; padding: 20px; border-radius: 8px; background: #e3f2fd; max-width: 600px; margin: 0 auto;">
+                                <strong style="color: #3498db; font-size: 1.1em;">📦 Container workflow-generator</strong>
+                                <div style="margin-top: 15px; font-size: 0.9em; text-align: left;">
+                                    <div style="margin: 5px 0;">🐍 Python 3.12 (multi-stage build)</div>
+                                    <div style="margin: 5px 0;">⚡ FastAPI Backend (port 8000)</div>
+                                    <div style="margin: 5px 0;">🌐 Frontend HTML/JS (servi par FastAPI)</div>
+                                    <div style="margin: 5px 0;">📁 /app (api/ + frontend/ + index.html)</div>
+                                    <div style="margin: 5px 0;">🔐 Non-root user (appuser)</div>
+                                    <div style="margin: 10px 0 5px 0; color: #666; font-style: italic;">💾 Stockage en mémoire uniquement</div>
+                                    <div style="margin: 5px 0; color: #666; font-style: italic;">☁️ Support Redis optionnel (Vercel KV/Upstash)</div>
                                 </div>
                             </div>
                         </div>
@@ -462,18 +445,18 @@
                         <div style="margin-top: 20px; border: 2px dashed #9c27b0; padding: 15px; border-radius: 8px; background: #f3e5f5;">
                             <strong style="color: #9c27b0;">🔗 Réseau Docker: workflow-network (bridge)</strong>
                             <div style="margin-top: 10px; font-size: 0.9em;">
-                                <div>↔️ backend ⟷ redis</div>
-                                <div>↔️ frontend ⟷ backend</div>
                                 <div>🔒 Isolation réseau</div>
+                                <div>🌐 Ports exposés : 8000 (API), 3000 (Frontend)</div>
                             </div>
                         </div>
                         <!-- Volumes -->
                         <div style="margin-top: 20px; border: 2px solid #ff9800; padding: 15px; border-radius: 8px; background: #fff3e0;">
-                            <strong style="color: #ff9800;">💿 Volumes Persistants</strong>
+                            <strong style="color: #ff9800;">💿 Volumes de Développement</strong>
                             <div style="margin-top: 10px; font-size: 0.9em;">
-                                <div>📀 redis_data → /data (Redis)</div>
-                                <div>📁 ./api → /app (Backend - dev)</div>
-                                <div>💾 Données conservées après redémarrage</div>
+                                <div>📁 ./api → /app/api (hot-reload développement)</div>
+                                <div>📁 ./frontend → /app/frontend</div>
+                                <div>📄 ./index.html → /app/index.html</div>
+                                <div style="margin-top: 5px; font-style: italic; color: #666;">⚠️ Volumes à désactiver en production</div>
                             </div>
                         </div>
                     </div>
@@ -492,64 +475,57 @@
             </div>
 
             <div class="component-box">
-                <h4>📋 docker-compose.yml - Configuration des Services</h4>
+                <h4>📋 docker-compose.yml - Configuration du Service</h4>
                 <div class="code-box">
 version: '3.8'
 
 services:
-  # Service Backend FastAPI
-  backend:
+  # Service principal de l'application
+  workflow-generator:
     build:
-      context: ./api
+      context: .
       dockerfile: Dockerfile
-    container_name: workflow-builder-backend
+    container_name: lighton-workflow-generator
     ports:
-      - "8000:8000"
+      - "8000:8000"  # FastAPI backend
+      - "3000:3000"  # Frontend
     environment:
+      # Clés API (à définir dans le fichier .env)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - LIGHTON_API_KEY=${LIGHTON_API_KEY}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    depends_on:
-      - redis
+      - PARADIGM_API_KEY=${PARADIGM_API_KEY}
+      - PARADIGM_API_BASE_URL=${PARADIGM_API_BASE_URL:-https://paradigm.lighton.ai}
+
+      # Configuration Redis (optionnel - compatibilité serverless)
+      # Support Vercel KV (automatique) et Upstash (manuel)
+      - KV_REST_API_URL=${KV_REST_API_URL}
+      - KV_REST_API_TOKEN=${KV_REST_API_TOKEN}
+      - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}
+      - UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
+
+      # Environnement Python
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    env_file:
+      - .env
     volumes:
-      - ./api:/app
+      # Montage du code source pour développement
+      # (à commenter pour production)
+      - ./api:/app/api
+      - ./frontend:/app/frontend
+      - ./index.html:/app/index.html
+
+      # Exclusion cache
+      - /app/api/__pycache__
+      - /app/api/workflow/__pycache__
+    restart: unless-stopped
     networks:
       - workflow-network
-    restart: unless-stopped
-
-  # Service Redis pour stockage
-  redis:
-    image: redis:7-alpine
-    container_name: workflow-builder-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    networks:
-      - workflow-network
-    restart: unless-stopped
-
-  # Service Frontend (optionnel)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: workflow-builder-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-    depends_on:
-      - backend
-    networks:
-      - workflow-network
-    restart: unless-stopped
-
-volumes:
-  redis_data:
-    driver: local
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
   workflow-network:
@@ -559,72 +535,100 @@ networks:
 
             <div class="grid">
                 <div class="card">
-                    <h4>🔧 Service Backend</h4>
+                    <h4>🐳 Container Unique</h4>
                     <ul>
-                        <li>Image: Python 3.11</li>
+                        <li>Image: Python 3.12-slim</li>
+                        <li>Multi-stage build</li>
+                        <li>Backend + Frontend intégrés</li>
+                        <li>Non-root user (appuser)</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>⚡ Backend FastAPI</h4>
+                    <ul>
                         <li>Port: 8000</li>
-                        <li>FastAPI + Uvicorn</li>
-                        <li>Variables d'environnement</li>
+                        <li>Uvicorn ASGI server</li>
+                        <li>API REST complète</li>
+                        <li>Hot-reload en dev</li>
                     </ul>
                 </div>
 
                 <div class="card">
-                    <h4>💾 Service Redis</h4>
+                    <h4>🌐 Frontend</h4>
                     <ul>
-                        <li>Image: Redis 7 Alpine</li>
-                        <li>Port: 6379</li>
-                        <li>Persistence (AOF)</li>
-                        <li>Volume: redis_data</li>
+                        <li>HTML/CSS/JS vanilla</li>
+                        <li>Servi par FastAPI (index.html)</li>
+                        <li>Pas de build séparé</li>
+                        <li>Interface interactive</li>
                     </ul>
                 </div>
 
                 <div class="card">
-                    <h4>🌐 Service Frontend</h4>
+                    <h4>💾 Stockage</h4>
                     <ul>
-                        <li>Image: Node.js 20</li>
-                        <li>Port: 3000</li>
-                        <li>Next.js / React</li>
-                        <li>Proxy vers backend</li>
-                    </ul>
-                </div>
-
-                <div class="card">
-                    <h4>🔗 Réseau Docker</h4>
-                    <ul>
-                        <li>Bridge network</li>
-                        <li>Communication interne</li>
-                        <li>Résolution DNS automatique</li>
-                        <li>Isolation sécurisée</li>
+                        <li>En mémoire par défaut</li>
+                        <li>Redis optionnel (Vercel KV/Upstash)</li>
+                        <li>Pas de volumes persistants</li>
+                        <li>Workflow éphémère (24h TTL)</li>
                     </ul>
                 </div>
             </div>
 
             <div class="component-box" style="margin-top: 20px;">
-                <h4>📦 Dockerfile Backend (api/Dockerfile)</h4>
+                <h4>📦 Dockerfile (Multi-Stage Build)</h4>
                 <div class="code-box">
-FROM python:3.11-slim
+# Stage 1: Base image avec Python 3.12
+FROM python:3.12-slim AS base
 
 WORKDIR /app
 
 # Installation dépendances système
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copie fichiers de dépendances
+# Stage 2: Installation des dépendances
+FROM base AS dependencies
+
 COPY requirements.txt .
 
-# Installation dépendances Python
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copie code application
-COPY . .
+# Stage 3: Image runtime finale
+FROM base AS runtime
 
-# Exposition port
-EXPOSE 8000
+# Copie des dépendances installées
+COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=dependencies /usr/local/bin /usr/local/bin
+
+# Copie du code de l'application
+COPY api/ /app/api/
+COPY frontend/ /app/frontend/
+COPY index.html /app/
+COPY lighton-logo.png /app/
+
+# Création utilisateur non-root pour sécurité
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Exposition des ports
+EXPOSE 8000 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/home/appuser/.local/bin:$PATH"
 
 # Commande de démarrage
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
                 </div>
             </div>
 
@@ -648,29 +652,32 @@ docker-compose logs -f backend
                     <strong>Accéder aux services</strong>
                     <div class="info-box">
                         <ul>
-                            <li><strong>Backend API :</strong> http://localhost:8000</li>
+                            <li><strong>Application :</strong> http://localhost:8000</li>
                             <li><strong>API Docs :</strong> http://localhost:8000/docs</li>
-                            <li><strong>Frontend :</strong> http://localhost:3000</li>
-                            <li><strong>Redis :</strong> localhost:6379</li>
+                            <li><strong>Health Check :</strong> http://localhost:8000/health</li>
+                            <li><strong>Frontend :</strong> Servi à http://localhost:8000/</li>
                         </ul>
                     </div>
                 </div>
 
                 <div class="step">
                     <span class="step-number">3</span>
-                    <strong>Gérer les services</strong>
+                    <strong>Gérer le service</strong>
                     <div class="code-box">
-# Arrêter les services
+# Arrêter le service
 docker-compose down
 
-# Arrêter et supprimer les volumes
-docker-compose down -v
-
-# Redémarrer un service spécifique
-docker-compose restart backend
+# Redémarrer le service
+docker-compose restart workflow-generator
 
 # Voir les services en cours
 docker-compose ps
+
+# Voir les logs
+docker-compose logs -f workflow-generator
+
+# Reconstruire l'image
+docker-compose up -d --build
                     </div>
                 </div>
             </div>
@@ -1290,7 +1297,31 @@ et d'une TVA de 200.00 EUR (20%)."
 
             <div class="component-box">
                 <h4>📦 Fichier : api/workflow/package_generator.py</h4>
-                <p>Génère un package ZIP complet avec frontend adapté et backend intégré.</p>
+                <p>Génère deux types de packages : <strong>Workflow Runner</strong> (application web complète) et <strong>MCP Server</strong> (serveur Model Context Protocol pour intégration LightOn Paradigm en priorité, et Claude Desktop comme solution temporaire).</p>
+            </div>
+
+            <div class="info-box" style="margin-top: 20px;">
+                <strong>🎯 Deux Types de Packages Disponibles :</strong>
+                <div class="grid" style="margin-top: 15px;">
+                    <div class="card">
+                        <h4>📊 Workflow Runner Package</h4>
+                        <p>Application web standalone avec frontend personnalisé et backend intégré</p>
+                        <ul>
+                            <li>Interface utilisateur HTML/CSS/JS</li>
+                            <li>API FastAPI backend</li>
+                            <li>Déployable indépendamment</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4>🔌 MCP Server Package</h4>
+                        <p>Serveur Model Context Protocol pour intégration Paradigm (cible) et Claude Desktop (temporaire)</p>
+                        <ul>
+                            <li>Mode HTTP pour Paradigm (Render)</li>
+                            <li>Mode stdio pour Claude Desktop (local)</li>
+                            <li>Tools exposés via MCP</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
 
             <div class="flow-box">
@@ -1305,85 +1336,366 @@ et d'une TVA de 200.00 EUR (20%)."
                         <li>Structure des résultats</li>
                         <li>APIs Paradigm utilisées</li>
                         <li>Configuration UI nécessaire</li>
+                        <li>Paramètres pour tools MCP</li>
                     </ul>
                 </div>
 
                 <div class="step">
                     <span class="step-number">2</span>
-                    <strong>Génération Frontend Adapté</strong>
-                    <div class="grid">
-                        <div class="card">
-                            <h4>index.html</h4>
-                            <ul>
-                                <li>Structure HTML</li>
-                                <li>Formulaire dynamique</li>
-                                <li>Champs adaptés</li>
-                            </ul>
-                        </div>
-                        <div class="card">
-                            <h4>style.css</h4>
-                            <ul>
-                                <li>Design responsive</li>
-                                <li>Thème professionnel</li>
-                                <li>Animations</li>
-                            </ul>
-                        </div>
-                        <div class="card">
-                            <h4>app.js</h4>
-                            <ul>
-                                <li>Upload fichiers</li>
-                                <li>Appels API</li>
-                                <li>Affichage résultats</li>
-                            </ul>
+                    <strong>Choix du Type de Package</strong>
+                    <div class="info-box">
+                        L'utilisateur choisit le type de package à générer via l'API :
+                        <div class="code-box" style="margin-top: 10px;">
+GET /api/workflows/{workflow_id}/download?package_type=workflow_runner
+# ou
+GET /api/workflows/{workflow_id}/download?package_type=mcp_server
                         </div>
                     </div>
                 </div>
 
                 <div class="step">
                     <span class="step-number">3</span>
-                    <strong>Génération Backend</strong>
+                    <strong>Génération Workflow Runner Package</strong>
                     <div class="component-box">
-                        <h4>Structure du Backend</h4>
-                        <ul>
-                            <li><strong>main.py</strong> : API FastAPI avec endpoints</li>
-                            <li><strong>workflow.py</strong> : Code workflow généré</li>
-                            <li><strong>paradigm_client.py</strong> : Client API complet avec documentation</li>
-                            <li><strong>requirements.txt</strong> : Dépendances Python</li>
-                        </ul>
+                        <h4>📊 Composants du Workflow Runner</h4>
+                        <div class="grid">
+                            <div class="card">
+                                <h4>frontend_index.html</h4>
+                                <ul>
+                                    <li>Interface web complète</li>
+                                    <li>CSS intégré (responsive)</li>
+                                    <li>JavaScript intégré</li>
+                                    <li>Formulaire dynamique adapté</li>
+                                </ul>
+                            </div>
+                            <div class="card">
+                                <h4>backend_main.py</h4>
+                                <ul>
+                                    <li>Serveur FastAPI</li>
+                                    <li>Endpoint /execute</li>
+                                    <li>Upload de fichiers</li>
+                                    <li>Serve frontend HTML</li>
+                                </ul>
+                            </div>
+                            <div class="card">
+                                <h4>workflow.py</h4>
+                                <ul>
+                                    <li>Code généré par Claude</li>
+                                    <li>Fonction async principale</li>
+                                    <li>Appels Paradigm API</li>
+                                    <li>Logique métier</li>
+                                </ul>
+                            </div>
+                            <div class="card">
+                                <h4>paradigm_client.py</h4>
+                                <ul>
+                                    <li>Client API standalone</li>
+                                    <li>Toutes les APIs Paradigm</li>
+                                    <li>Gestion retry/timeout</li>
+                                    <li>Documentation complète</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="code-box" style="margin-top: 15px;">
+workflow-runner-package.zip
+├── frontend_index.html    # Interface web complète (HTML/CSS/JS intégré)
+├── backend_main.py        # Serveur FastAPI
+├── workflow.py            # Code du workflow généré
+├── paradigm_client.py     # Client API Paradigm standalone
+├── requirements.txt       # Dépendances Python
+├── Dockerfile             # Configuration Docker
+├── docker-compose.yml     # Orchestration (optionnel)
+├── config.json            # Configuration workflow
+├── .env.example           # Template variables d'environnement
+├── README.md              # Instructions en français
+└── README_EN.md           # Instructions en anglais
+                        </div>
                     </div>
                 </div>
 
                 <div class="step">
                     <span class="step-number">4</span>
-                    <strong>Création Archive ZIP</strong>
-                    <div class="code-box">
-workflow-package.zip
-├── index.html
-├── style.css
-├── app.js
-├── backend/
-│   ├── main.py
-│   ├── workflow.py
-│   ├── paradigm_client.py
-│   └── requirements.txt
-├── .env.example
-└── README.md
+                    <strong>Génération MCP Server Package</strong>
+                    <div class="info-box" style="margin-bottom: 15px;">
+                        <strong>🔌 Deux modes de déploiement MCP Server :</strong>
+                        <p style="margin-top: 10px;">Le MCP Server peut être déployé de deux manières :</p>
+                        <ul>
+                            <li><strong>Mode 1 - HTTP (LightOn Paradigm)</strong> - 🎯 Architecture cible, déployé sur URL publique (Render) | ⚠️ Bug temporaire sur transmission des file_ids</li>
+                            <li><strong>Mode 2 - stdio (Claude Desktop)</strong> - ✅ Fonctionne parfaitement en local, solution temporaire pendant correction du bug</li>
+                        </ul>
+                        <p style="margin-top: 10px;">Les deux modes utilisent uniquement <strong>Paradigm API</strong> - pas de Claude API externe.</p>
+                        <p style="margin-top: 5px;"><strong>Une fois le bug résolu, le Mode 1 (Paradigm HTTP) deviendra la solution principale recommandée.</strong></p>
+                    </div>
+                    <div class="component-box">
+                        <h4>🔌 Composants du MCP Server</h4>
+                        <p>Le MCP Server expose le workflow comme un "tool" utilisable par Claude Desktop via le Model Context Protocol.</p>
+                        <div class="grid">
+                            <div class="card">
+                                <h4>server.py</h4>
+                                <ul>
+                                    <li>Serveur MCP stdio</li>
+                                    <li>Pour Claude Desktop local</li>
+                                    <li>Communication bidirectionnelle</li>
+                                </ul>
+                            </div>
+                            <div class="card">
+                                <h4>http_server.py</h4>
+                                <ul>
+                                    <li>Serveur MCP HTTP</li>
+                                    <li>Pour Paradigm (déployé sur Render)</li>
+                                    <li>URL publique avec endpoint /mcp</li>
+                                </ul>
+                            </div>
+                            <div class="card">
+                                <h4>workflow.py</h4>
+                                <ul>
+                                    <li>Code workflow généré</li>
+                                    <li>Utilise Paradigm API uniquement</li>
+                                    <li>Exécution autonome</li>
+                                </ul>
+                            </div>
+                            <div class="card">
+                                <h4>paradigm_client.py</h4>
+                                <ul>
+                                    <li>Client API Paradigm standalone</li>
+                                    <li>Gestion retry</li>
+                                    <li>Documentation complète</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="code-box" style="margin-top: 15px;">
+mcp-server-package.zip
+├── server.py              # Serveur MCP stdio (Claude Desktop)
+├── http_server.py         # Serveur MCP HTTP (Paradigm via Render)
+├── workflow.py            # Workflow généré (utilise Paradigm API)
+├── paradigm_client.py     # Client API Paradigm standalone
+├── pyproject.toml         # Configuration package Python
+├── .env.example           # Template variables d'environnement
+├── .gitignore
+└── README.md              # Instructions déploiement (2 parties)
+                        </div>
+                        <div class="component-box" style="margin-top: 20px;">
+                            <h4>🔄 Deux Modes de Déploiement</h4>
+
+                            <div style="margin-top: 15px;">
+                                <h5 style="color: #667eea; margin-bottom: 10px;">🎯 Mode 1 : MCP Server HTTP (LightOn Paradigm) - Architecture Cible</h5>
+                                <div class="info-box" style="border-left: 4px solid #667eea;">
+                                    <p><strong>Fonctionnement :</strong></p>
+                                    <ol>
+                                        <li>Serveur MCP <strong>HTTP</strong> (http_server.py) déployé sur Render.com</li>
+                                        <li>URL publique accessible : <code>https://app-name.onrender.com/mcp</code></li>
+                                        <li>Paradigm communique avec le serveur via HTTP</li>
+                                        <li>Le workflow utilise <strong>Paradigm API directement</strong></li>
+                                        <li>Les résultats sont retournés à Paradigm</li>
+                                    </ol>
+                                    <p style="margin-top: 10px;"><strong>Déploiement sur Render :</strong></p>
+                                    <div class="code-box" style="margin-top: 10px;">
+# Build Command :
+pip install mcp aiohttp python-dotenv uvicorn
+
+# Start Command :
+python -m http_server --host 0.0.0.0 --port 10000
+
+# Variables d'environnement :
+PARADIGM_API_KEY=sk-...
+PARADIGM_BASE_URL=https://paradigm.lighton.ai
+MCP_BEARER_TOKEN=votre-token-securise
+                                    </div>
+                                    <p style="margin-top: 10px;"><strong>Configuration dans Paradigm (Admin) :</strong></p>
+                                    <ul>
+                                        <li>Admin > MCP Servers > Add MCP Server</li>
+                                        <li>Name : workflow-name</li>
+                                        <li>URL : https://app-name.onrender.com/mcp</li>
+                                        <li>Bearer Token : (le même que MCP_BEARER_TOKEN)</li>
+                                    </ul>
+                                    <p style="margin-top: 10px;"><strong>Avantages (une fois le bug résolu) :</strong></p>
+                                    <ul>
+                                        <li>✅ Pas de timeout de 4 minutes</li>
+                                        <li>✅ Peut traiter beaucoup de documents</li>
+                                        <li>✅ Accessible depuis n'importe où</li>
+                                        <li>✅ Intégré dans l'interface Paradigm</li>
+                                        <li>✅ Mode conversationnel natif avec Agent Paradigm</li>
+                                    </ul>
+                                    <div class="warning-box" style="margin-top: 15px;">
+                                        <strong>⚠️ Bug Connu (Temporaire) :</strong>
+                                        <ul style="margin-top: 10px;">
+                                            <li>❌ Les file_ids uploadés via Paradigm ne sont pas transmis au workflow</li>
+                                            <li>Le workflow reçoit des file_ids vides ou incorrects</li>
+                                            <li>Bug en cours d'investigation avec l'équipe Paradigm</li>
+                                            <li><strong>Workaround temporaire :</strong> Utilisez le Mode 2 (Claude Desktop)</li>
+                                            <li><strong>Une fois résolu :</strong> Ce mode deviendra la solution principale recommandée</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 20px;">
+                                <h5 style="color: #27ae60; margin-bottom: 10px;">✅ Mode 2 : MCP Server Local (Claude Desktop) - Solution Temporaire</h5>
+                                <div class="success-box">
+                                    <p><strong>Fonctionnement :</strong></p>
+                                    <ol>
+                                        <li>Serveur MCP <strong>stdio</strong> (server.py) tourne en local</li>
+                                        <li>Claude Desktop communique avec le serveur via stdin/stdout</li>
+                                        <li>Le workflow utilise <strong>Paradigm API directement</strong></li>
+                                        <li>Les résultats sont retournés à Claude Desktop via MCP protocol</li>
+                                    </ol>
+                                    <p style="margin-top: 10px;"><strong>Configuration :</strong></p>
+                                    <div class="code-box" style="margin-top: 10px;">
+{
+  "mcpServers": {
+    "workflow-name": {
+      "command": "py",
+      "args": ["-3.10", "-m", "server"],
+      "cwd": "C:\\path\\to\\mcp-server"
+    }
+  }
+}
+
+# Fichier .env requis :
+PARADIGM_API_KEY=sk-...
+PARADIGM_BASE_URL=https://paradigm.lighton.ai
+                                    </div>
+                                    <p style="margin-top: 10px;"><strong>Avantages :</strong></p>
+                                    <ul>
+                                        <li>✅ <strong>Fonctionne parfaitement actuellement</strong></li>
+                                        <li>Latence minimale (local)</li>
+                                        <li>Pas de serveur à déployer</li>
+                                        <li>Utilise chemins absolus des fichiers locaux</li>
+                                        <li>Contournement efficace du bug Paradigm</li>
+                                    </ul>
+                                    <p style="margin-top: 10px;"><strong>Limitations :</strong></p>
+                                    <ul>
+                                        <li>⏱️ Timeout de 4 minutes (limite Claude Desktop)</li>
+                                        <li>Recommandé pour 3-5 documents maximum</li>
+                                        <li>Exécution locale uniquement (pas d'accès distant)</li>
+                                        <li><strong>Solution temporaire :</strong> À utiliser en attendant la résolution du bug Paradigm</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="info-box" style="margin-top: 20px;">
+                                <strong>📋 Architecture Commune :</strong>
+                                <p style="margin-top: 10px;">Les deux modes partagent la même architecture backend :</p>
+                                <ul>
+                                    <li>✅ Utilisent <strong>uniquement Paradigm API</strong> (pas de Claude API)</li>
+                                    <li>✅ Même code workflow généré (workflow.py)</li>
+                                    <li>✅ Même client Paradigm (paradigm_client.py)</li>
+                                    <li>⚙️ Seul le transport change : stdio vs HTTP</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <div class="step">
                     <span class="step-number">5</span>
-                    <strong>Téléchargement</strong>
+                    <strong>Téléchargement et Déploiement</strong>
                     <div class="success-box">
-                        ✅ Package standalone prêt à déployer !
-                        <ul>
-                            <li>Frontend personnalisé</li>
-                            <li>Backend avec workflow intégré</li>
-                            <li>Documentation API complète</li>
-                            <li>Instructions d'installation</li>
-                        </ul>
+                        <strong>✅ Package standalone prêt à déployer !</strong>
+                        <div class="grid" style="margin-top: 15px;">
+                            <div class="card">
+                                <h4>Workflow Runner</h4>
+                                <ul>
+                                    <li>Interface HTML complète (frontend_index.html)</li>
+                                    <li>Backend FastAPI (backend_main.py)</li>
+                                    <li>Workflow généré + Client Paradigm</li>
+                                    <li>Configuration Docker incluse</li>
+                                    <li>Documentation bilingue (FR/EN)</li>
+                                </ul>
+                            </div>
+                            <div class="card">
+                                <h4>MCP Server</h4>
+                                <ul>
+                                    <li>Serveur MCP complet (HTTP + stdio)</li>
+                                    <li>Intégration Paradigm (architecture cible)</li>
+                                    <li>Intégration Claude Desktop (temporaire)</li>
+                                    <li>Configuration incluse (2 modes)</li>
+                                    <li>Déployable sur Render ou local</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="component-box" style="margin-top: 30px;">
+                <h4>🔄 Comparaison des Packages</h4>
+                <table class="entity-table">
+                    <thead>
+                        <tr>
+                            <th>Critère</th>
+                            <th>Workflow Runner</th>
+                            <th>MCP Server (stdio)</th>
+                            <th>MCP Server (HTTP)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Interface</strong></td>
+                            <td>Application web (HTML/CSS/JS)</td>
+                            <td>Claude Desktop (local)</td>
+                            <td>LightOn Paradigm (web)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Déploiement</strong></td>
+                            <td>Serveur web (FastAPI + frontend)</td>
+                            <td>Local (processus Python)</td>
+                            <td>Cloud (Render.com)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Utilisation</strong></td>
+                            <td>Navigateur web</td>
+                            <td>Claude Desktop (conversation)</td>
+                            <td>Paradigm (conversation Agent)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Transport</strong></td>
+                            <td>HTTP REST API</td>
+                            <td>MCP Protocol (stdin/stdout)</td>
+                            <td>MCP Protocol (HTTP)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>API Backend</strong></td>
+                            <td colspan="3">Paradigm API uniquement</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fichier Serveur</strong></td>
+                            <td>N/A</td>
+                            <td>server.py</td>
+                            <td>http_server.py</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Configuration</strong></td>
+                            <td>.env</td>
+                            <td>.env + claude_desktop_config.json</td>
+                            <td>.env + Config Paradigm Admin</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Timeout</strong></td>
+                            <td>20 minutes</td>
+                            <td>4 minutes (limite Claude Desktop)</td>
+                            <td>Pas de limite</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Coûts</strong></td>
+                            <td>Hébergement serveur</td>
+                            <td>Aucun (local)</td>
+                            <td>Hébergement Render (~$7/mois)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>État</strong></td>
+                            <td>✅ Production</td>
+                            <td>✅ Production (fonctionne parfaitement)</td>
+                            <td>⚠️ Bug file_ids (en investigation)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cas d'usage</strong></td>
+                            <td>App standalone, partage équipe</td>
+                            <td>Utilisation personnelle, 3-5 docs</td>
+                            <td>Usage intensif, beaucoup de docs</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -1460,23 +1772,13 @@ workflow-package.zip
 
                 <div class="card">
                     <div class="api-endpoint">
-                        <span class="method">POST</span> /api/v2/files/{id}/ask
-                    </div>
-                    <p><strong>Question sur fichier spécifique</strong></p>
-                    <ul>
-                        <li>question (requis)</li>
-                        <li>Retourne réponse + chunks</li>
-                    </ul>
-                </div>
-
-                <div class="card">
-                    <div class="api-endpoint">
                         <span class="method">POST</span> /api/v2/filter/chunks
                     </div>
                     <p><strong>Filtrer chunks par score</strong></p>
                     <ul>
-                        <li>Filtrage par pertinence</li>
-                        <li>Seuil configurable</li>
+                        <li>query, chunk_ids (requis)</li>
+                        <li>n (nombre max), model (optionnel)</li>
+                        <li>Retourne chunks filtrés par pertinence</li>
                     </ul>
                 </div>
 
@@ -1484,10 +1786,34 @@ workflow-package.zip
                     <div class="api-endpoint">
                         <span class="method">GET</span> /api/v2/files/{id}/chunks
                     </div>
-                    <p><strong>Récupérer tous les chunks</strong></p>
+                    <p><strong>Récupérer tous les chunks d'un fichier</strong></p>
                     <ul>
-                        <li>Tous les morceaux d'un document</li>
-                        <li>Avec embeddings</li>
+                        <li>Retourne tous les morceaux d'un document</li>
+                        <li>Avec métadonnées et embeddings</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="api-endpoint">
+                        <span class="method">POST</span> /api/v2/query
+                    </div>
+                    <p><strong>Extraction de chunks sans réponse IA</strong></p>
+                    <ul>
+                        <li>query (requis)</li>
+                        <li>collection, n (optionnel)</li>
+                        <li>Retourne chunks bruts sans synthèse</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="api-endpoint">
+                        <span class="method">POST</span> /api/v2/chat/image-analysis
+                    </div>
+                    <p><strong>Analyse d'images avec vision AI</strong></p>
+                    <ul>
+                        <li>query, document_ids (requis)</li>
+                        <li>model, private (optionnel)</li>
+                        <li>Retourne analyse visuelle</li>
                     </ul>
                 </div>
             </div>
@@ -1527,8 +1853,12 @@ workflow-package.zip
                     <p>Paradigm API avec embeddings vectoriels (1024D)</p>
                 </div>
                 <div class="card">
-                    <h4>📦 Package Standalone</h4>
-                    <p>Export complet avec frontend adapté sur-mesure</p>
+                    <h4>📦 Double Export</h4>
+                    <p>Workflow Runner (web app) ou MCP Server (Paradigm/Claude Desktop)</p>
+                </div>
+                <div class="card">
+                    <h4>🔌 MCP Protocol</h4>
+                    <p>Intégration Paradigm (HTTP) et Claude Desktop (stdio)</p>
                 </div>
             </div>
         </div>
