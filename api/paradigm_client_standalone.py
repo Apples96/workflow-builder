@@ -519,7 +519,7 @@ class ParadigmClient:
     async def chat_completion(
         self,
         prompt: str,
-        model: str = "alfred-4.2",
+        model: str = "alfred-ft5",
         system_prompt: Optional[str] = None,
         guided_choice: Optional[List[str]] = None,
         guided_json: Optional[Dict[str, Any]] = None,
@@ -532,7 +532,7 @@ class ParadigmClient:
 
         Args:
             prompt: Your question or instruction
-            model: Which AI model to use (default: alfred-4.2)
+            model: Which AI model to use (default: alfred-ft5)
             system_prompt: Optional instructions for the AI's behavior and output format
                           Use this to enforce specific formats like JSON-only responses
             guided_choice: Optional list of allowed response values (forces AI to choose from list)

@@ -32,7 +32,7 @@ try:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "alfred-4.2",
+                "model": "alfred-ft5",
                 "messages": [
                     {"role": "user", "content": "Dis bonjour en une phrase"}
                 ],

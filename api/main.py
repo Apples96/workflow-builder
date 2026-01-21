@@ -28,8 +28,10 @@ and provides comprehensive API documentation via FastAPI's automatic OpenAPI int
 
 import logging
 import asyncio
+import json
+import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
@@ -48,10 +50,21 @@ from .models import (
     WorkflowWithFilesRequest,
     WorkflowDescriptionEnhanceRequest,
     WorkflowDescriptionEnhanceResponse,
+    CellBasedWorkflowResponse,
+    CellBasedExecuteRequest,
+    CellResponse,
+    WorkflowPlanResponse,
+    CellStatusEnum,
+    CellFeedbackRequest,
+    CellExecuteSingleRequest,
+    ExecuteWithEvaluationRequest,
 )
 from .workflow.generator import workflow_generator
+from .workflow.enhancer import WorkflowEnhancer
 from .workflow.executor import workflow_executor
-from .workflow.models import Workflow, WorkflowExecution
+from .workflow.models import Workflow, WorkflowExecution, ExecutionStatus, WorkflowPlan, WorkflowCell, CellStatus
+from .workflow.cell_planner import WorkflowPlanner
+from .workflow.cell_executor import CellExecutor
 from .api_clients import paradigm_client  # Updated import
 
 # Configure logging based on debug settings
@@ -133,18 +146,28 @@ app.add_middleware(
 async def serve_frontend():
     """
     Serve the frontend HTML page.
-    
+
     Returns the main application interface when accessing the root URL.
+    Cache-Control headers prevent browser caching issues.
     """
     try:
         # Try to read the index.html file from the project root
         with open("index.html", "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
+            content = f.read()
+        # Add cache-control headers to prevent browser caching issues
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     except FileNotFoundError:
         # Fallback to API info if index.html not found
         return {
             "message": "Workflow Automation API",
-            "version": "1.0.0", 
+            "version": "1.0.0",
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
             "note": "Frontend file not found - API only mode"
@@ -208,8 +231,9 @@ async def enhance_workflow_description(request: WorkflowDescriptionEnhanceReques
     try:
         logger.info(f"Enhancing workflow description: {request.description[:100]}...")
         
-        # Enhance the description
-        result = await workflow_generator.enhance_workflow_description(request.description)
+        # Enhance the description using the enhancer directly
+        enhancer = WorkflowEnhancer(workflow_generator.anthropic_client)
+        result = await enhancer.enhance_workflow_description(request.description)
         
         logger.info("Workflow description enhanced successfully")
         
@@ -398,7 +422,7 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest):
                 logger.warning(f"⚠️ Files not fully indexed after {max_wait_time}s, proceeding anyway...")
                 logger.warning(f"📋 Files status: {', '.join(files_status)}")
 
-        # Execute the workflow
+        # Execute the workflow synchronously with progress tracking
         execution = await workflow_executor.execute_workflow(workflow_id, request.user_input, request.attached_file_ids)
 
         logger.info(f"Workflow execution completed: {execution.id} (status: {execution.status})")
@@ -476,6 +500,928 @@ async def get_execution(workflow_id: str, execution_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get execution: {str(e)}"
+        )
+
+@api_router.get("/workflows/{workflow_id}/executions/{execution_id}/progress", tags=["Execution"])
+async def stream_execution_progress(workflow_id: str, execution_id: str):
+    """
+    Stream real-time progress updates for a workflow execution using Server-Sent Events.
+    
+    Provides real-time progress updates during workflow execution, enabling
+    frontend applications to display live progress indicators, step-by-step
+    execution status, and error information as they occur.
+    
+    Args:
+        workflow_id: ID of the parent workflow  
+        execution_id: Unique identifier of the execution to monitor
+        
+    Returns:
+        StreamingResponse: Server-Sent Events stream with progress updates
+        
+    Event Format:
+        data: {"type": "step_start|step_complete|step_error", "step_id": "...", "step_name": "...", "details": "...", "timestamp": "..."}
+        
+    Raises:
+        HTTPException: 404 if execution not found, 400 if execution doesn't belong to workflow
+    """
+    try:
+        # Verify execution exists and belongs to workflow
+        execution = workflow_executor.get_execution(execution_id)
+        if not execution:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Execution {execution_id} not found"
+            )
+        
+        if execution.workflow_id != workflow_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Execution {execution_id} does not belong to workflow {workflow_id}"
+            )
+
+        async def generate_progress_events():
+            """Generate Server-Sent Events for progress updates"""
+            logger.info(f"📡 SSE: Starting progress stream for execution {execution_id}")
+            
+            # Send all available progress updates immediately
+            progress_updates = workflow_executor.get_progress_updates(execution_id)
+            
+            if progress_updates:
+                logger.info(f"📡 SSE: Found {len(progress_updates)} progress updates")
+                for update in progress_updates:
+                    yield f"data: {json.dumps(update)}\n\n"
+                    logger.info(f"📡 SSE: Sent progress update - {update.get('step_name', 'Unknown')}")
+            else:
+                logger.info("📡 SSE: No progress updates found")
+            
+            # Send final execution status
+            final_status = {
+                "type": "execution_complete",
+                "status": execution.status.value,
+                "execution_time": execution.execution_time,
+                "error": execution.error,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+            }
+            yield f"data: {json.dumps(final_status)}\n\n"
+            logger.info(f"📡 SSE: Sent final status - {execution.status.value}")
+            
+            # Clean up progress queue
+            workflow_executor.clear_progress_updates(execution_id)
+
+        return StreamingResponse(
+            generate_progress_events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Cache-Control"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error streaming progress: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# Cell-Based Workflow Endpoints
+# ============================================================================
+
+@api_router.post("/workflows-cell-based", response_model=CellBasedWorkflowResponse, tags=["Cell-Based Workflows"])
+async def create_cell_based_workflow(request: WorkflowCreateRequest):
+    """
+    Create a new cell-based workflow with step-by-step execution plan.
+
+    This endpoint creates a workflow that will be executed cell-by-cell,
+    with each cell's output displayed as it completes. The workflow is
+    broken into discrete steps during the planning phase.
+
+    Args:
+        request: Workflow creation request with description and optional context
+
+    Returns:
+        CellBasedWorkflowResponse: Workflow with plan and cell definitions
+
+    Raises:
+        HTTPException: 503 if API keys missing, 500 if planning fails
+    """
+    validate_anthropic_api_key()
+
+    try:
+        logger.info("Creating cell-based workflow: {}...".format(request.description[:100]))
+
+        # Create the workflow planner
+        planner = WorkflowPlanner()
+
+        # Generate the plan
+        plan = await planner.create_plan(
+            description=request.description,
+            context=request.context
+        )
+
+        # Create workflow object
+        workflow = Workflow(
+            name=request.name,
+            description=request.description,
+            status="ready",
+            context=request.context
+        )
+
+        # Store the plan with the workflow
+        plan.workflow_id = workflow.id
+        for cell in plan.cells:
+            cell.workflow_id = workflow.id
+
+        # Store workflow in executor (for retrieval)
+        workflow_executor.store_workflow(workflow)
+
+        # Store the plan separately
+        workflow_executor.store_workflow_plan(workflow.id, plan)
+
+        logger.info("Cell-based workflow created: {} with {} cells".format(
+            workflow.id, len(plan.cells)
+        ))
+
+        # Build response
+        cells_response = [
+            CellResponse(
+                id=cell.id,
+                step_number=cell.step_number,
+                name=cell.name,
+                description=cell.description,
+                status=CellStatusEnum(cell.status.value),
+                inputs_required=cell.inputs_required,
+                outputs_produced=cell.outputs_produced,
+                paradigm_tools_used=cell.paradigm_tools_used,
+                generated_code=cell.generated_code,
+                code_description=cell.code_description,
+                output=cell.output,
+                execution_time=cell.execution_time,
+                error=cell.error
+            )
+            for cell in plan.cells
+        ]
+
+        plan_response = WorkflowPlanResponse(
+            id=plan.id,
+            total_cells=len(plan.cells),
+            cells=cells_response,
+            shared_context_schema=plan.shared_context_schema,
+            status=plan.status
+        )
+
+        return CellBasedWorkflowResponse(
+            id=workflow.id,
+            name=workflow.name,
+            description=workflow.description,
+            status=workflow.status,
+            execution_mode="cell_based",
+            plan=plan_response,
+            cells=cells_response,
+            generated_code=None,
+            created_at=workflow.created_at,
+            updated_at=workflow.updated_at,
+            error=workflow.error
+        )
+
+    except Exception as e:
+        logger.error("Failed to create cell-based workflow: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create cell-based workflow: {}".format(str(e))
+        )
+
+
+@api_router.post("/workflows/{workflow_id}/execute-stream", tags=["Cell-Based Workflows"])
+async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteRequest):
+    """
+    Execute a cell-based workflow with real-time streaming of results.
+
+    This endpoint executes the workflow cell-by-cell, streaming events
+    via Server-Sent Events as each cell generates, executes, and completes.
+    Each cell's output is displayed progressively to the user.
+
+    Event Types:
+        - workflow_start: Workflow execution beginning
+        - cell_generating: Claude is generating code for a cell
+        - cell_ready: Cell code generated successfully
+        - cell_executing: Cell is now running
+        - cell_completed: Cell finished with output
+        - cell_failed: Cell execution failed
+        - workflow_completed: All cells finished successfully
+        - workflow_failed: Workflow stopped due to cell failure
+
+    Args:
+        workflow_id: ID of the workflow to execute
+        request: Execution request with user input and optional file IDs
+
+    Returns:
+        StreamingResponse: SSE stream of execution events
+    """
+    validate_anthropic_api_key()
+    validate_lighton_api_key()
+
+    async def event_generator():
+        try:
+            # Get the workflow
+            workflow = workflow_executor.get_workflow(workflow_id)
+            if not workflow:
+                yield "data: {}\n\n".format(json.dumps({
+                    "type": "error",
+                    "error": "Workflow not found: {}".format(workflow_id)
+                }))
+                return
+
+            # Get the plan
+            plan = workflow_executor.get_workflow_plan(workflow_id)
+            if not plan:
+                yield "data: {}\n\n".format(json.dumps({
+                    "type": "error",
+                    "error": "Workflow plan not found. This may be a monolithic workflow."
+                }))
+                return
+
+            logger.info("Starting streaming execution for workflow: {}".format(workflow_id))
+
+            # Create cell executor and run stepwise
+            executor = CellExecutor()
+            async for event in executor.execute_workflow_stepwise(
+                plan=plan,
+                user_input=request.user_input,
+                attached_file_ids=request.attached_file_ids,
+                workflow_description=workflow.description
+            ):
+                yield "data: {}\n\n".format(json.dumps(event))
+
+        except Exception as e:
+            logger.error("Streaming execution error: {}".format(str(e)))
+            yield "data: {}\n\n".format(json.dumps({
+                "type": "error",
+                "error": str(e)
+            }))
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
+@api_router.post("/workflows/{workflow_id}/execute-with-evaluation", tags=["Cell-Based Workflows"])
+async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWithEvaluationRequest):
+    """
+    Execute a cell-based workflow with LLM-as-judge evaluation.
+
+    Uses the smoke test approach for quality assurance:
+    1. For each cell, execute with the first example (smoke test)
+    2. Evaluate the output using Claude as a judge
+    3. If evaluation fails, fix the code and retry (up to 5 times)
+    4. Once evaluation passes (or max retries reached), run remaining examples
+    5. Move to next cell
+
+    This ensures each cell produces valid output before running all examples.
+
+    Event Types:
+        Standard events: workflow_start, cell_generating, cell_ready,
+                        cell_executing, cell_completed, cell_failed,
+                        workflow_completed, workflow_failed
+
+        Evaluation events:
+            - cell_smoke_test_completed: First example executed successfully
+            - cell_evaluating: Starting LLM evaluation of output
+            - cell_evaluation_passed: Output passed evaluation
+            - cell_evaluation_failed: Output failed evaluation, will retry
+            - cell_evaluation_max_retries: Max retries reached, proceeding anyway
+            - cell_fixing_from_evaluation: Fixing code based on evaluation feedback
+            - cell_code_fixed: Code was fixed (for execution or evaluation error)
+            - cell_example_completed: An example completed for a cell
+            - cell_example_failed: An example failed for a cell
+
+    Args:
+        workflow_id: ID of the workflow to execute
+        request: ExecuteWithEvaluationRequest with list of examples
+
+    Returns:
+        StreamingResponse: SSE stream of execution events
+    """
+    validate_anthropic_api_key()
+    validate_lighton_api_key()
+
+    async def event_generator():
+        try:
+            # Get the workflow
+            workflow = workflow_executor.get_workflow(workflow_id)
+            if not workflow:
+                yield "data: {}\n\n".format(json.dumps({
+                    "type": "error",
+                    "error": "Workflow not found: {}".format(workflow_id)
+                }))
+                return
+
+            # Get the plan
+            plan = workflow_executor.get_workflow_plan(workflow_id)
+            if not plan:
+                yield "data: {}\n\n".format(json.dumps({
+                    "type": "error",
+                    "error": "Workflow plan not found. This may be a monolithic workflow."
+                }))
+                return
+
+            logger.info("Starting execution with evaluation for workflow: {} with {} examples".format(
+                workflow_id, len(request.examples)
+            ))
+
+            # Convert examples to the format expected by the executor
+            examples = [
+                {
+                    "id": example.id or "example_{}".format(i),
+                    "user_input": example.user_input,
+                    "attached_file_ids": example.attached_file_ids or []
+                }
+                for i, example in enumerate(request.examples)
+            ]
+
+            # Create cell executor and run with evaluation
+            executor = CellExecutor()
+            async for event in executor.execute_workflow_with_evaluation(
+                plan=plan,
+                examples=examples,
+                workflow_description=workflow.description
+            ):
+                yield "data: {}\n\n".format(json.dumps(event))
+
+        except Exception as e:
+            logger.error("Execution with evaluation error: {}".format(str(e)))
+            yield "data: {}\n\n".format(json.dumps({
+                "type": "error",
+                "error": str(e)
+            }))
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
+@api_router.get("/workflows/{workflow_id}/plan", response_model=WorkflowPlanResponse, tags=["Cell-Based Workflows"])
+async def get_workflow_plan(workflow_id: str):
+    """
+    Retrieve the execution plan for a cell-based workflow.
+
+    Returns the plan with all cell definitions, their status,
+    and any outputs from completed cells.
+
+    Args:
+        workflow_id: ID of the workflow
+
+    Returns:
+        WorkflowPlanResponse: The workflow plan with cells
+
+    Raises:
+        HTTPException: 404 if workflow or plan not found
+    """
+    try:
+        workflow = workflow_executor.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="Workflow not found: {}".format(workflow_id)
+            )
+
+        plan = workflow_executor.get_workflow_plan(workflow_id)
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found for workflow: {}".format(workflow_id)
+            )
+
+        cells_response = [
+            CellResponse(
+                id=cell.id,
+                step_number=cell.step_number,
+                name=cell.name,
+                description=cell.description,
+                status=CellStatusEnum(cell.status.value),
+                inputs_required=cell.inputs_required,
+                outputs_produced=cell.outputs_produced,
+                paradigm_tools_used=cell.paradigm_tools_used,
+                generated_code=cell.generated_code,
+                code_description=cell.code_description,
+                output=cell.output,
+                execution_time=cell.execution_time,
+                error=cell.error
+            )
+            for cell in plan.cells
+        ]
+
+        return WorkflowPlanResponse(
+            id=plan.id,
+            total_cells=len(plan.cells),
+            cells=cells_response,
+            shared_context_schema=plan.shared_context_schema,
+            status=plan.status
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get workflow plan: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get workflow plan: {}".format(str(e))
+        )
+
+
+@api_router.post("/workflows/{workflow_id}/cells/{cell_id}/approve", tags=["Cell-Based Workflows"])
+async def approve_cell(workflow_id: str, cell_id: str):
+    """
+    Approve a completed cell's output and allow workflow to continue.
+
+    This endpoint is called when the user approves a cell's generated code
+    and output. It simply acknowledges the approval - workflow execution
+    will naturally continue to the next cell.
+
+    Args:
+        workflow_id: ID of the workflow
+        cell_id: ID of the cell to approve
+
+    Returns:
+        dict: Success status and message
+
+    Raises:
+        HTTPException: 404 if workflow or cell not found
+    """
+    try:
+        logger.info("Cell approved by user: {} in workflow {}".format(cell_id, workflow_id))
+
+        # Verify workflow exists
+        workflow = workflow_executor.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="Workflow not found: {}".format(workflow_id)
+            )
+
+        return {
+            "success": True,
+            "message": "Cell {} approved successfully".format(cell_id)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to approve cell: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to approve cell: {}".format(str(e))
+        )
+
+
+@api_router.post("/workflows/{workflow_id}/cells/{cell_id}/rerun", tags=["Cell-Based Workflows"])
+async def rerun_cell(workflow_id: str, cell_id: str):
+    """
+    Rerun a specific cell with its current code and the latest execution context.
+
+    This endpoint allows users to rerun a cell after modifying its code or when
+    they want to refresh its outputs. The cell executes with the current shared
+    context (outputs from all previous cells), and its outputs are updated in
+    the context. Later cells that depend on this cell's outputs will use the
+    updated values when they execute.
+
+    Args:
+        workflow_id: ID of the workflow
+        cell_id: ID of the cell to rerun
+
+    Returns:
+        dict: Execution results with new outputs and formatted variable values
+
+    Raises:
+        HTTPException: 404 if workflow or cell not found, 500 if execution fails
+    """
+    try:
+        logger.info("Rerunning cell {} in workflow {}".format(cell_id, workflow_id))
+
+        # Verify workflow exists
+        workflow = workflow_executor.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="Workflow not found: {}".format(workflow_id)
+            )
+
+        # Get workflow plan
+        plan = workflow_executor.get_workflow_plan(workflow_id)
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found for workflow: {}".format(workflow_id)
+            )
+
+        # Find the cell in the plan
+        cell = None
+        for c in plan.cells:
+            if c.id == cell_id:
+                cell = c
+                break
+
+        if not cell:
+            raise HTTPException(
+                status_code=404,
+                detail="Cell not found: {}".format(cell_id)
+            )
+
+        # Get current execution context
+        execution_context = workflow_executor.get_execution_context(workflow_id)
+
+        # If no context exists, initialize with user inputs
+        if not execution_context:
+            execution_context = {
+                "user_input": "",
+                "attached_file_ids": []
+            }
+            logger.warning("No execution context found, using empty context")
+
+        # Execute the cell
+        executor = CellExecutor()
+
+        try:
+            import asyncio
+            cell_result = await asyncio.wait_for(
+                executor._execute_cell_code(
+                    cell.generated_code,
+                    execution_context,
+                    cell.id
+                ),
+                timeout=executor.max_cell_execution_time
+            )
+
+            # Extract outputs
+            output_variables = cell_result.get("variables", {})
+            output_text = cell_result.get("output", "")
+
+            # Update execution context with new outputs
+            execution_context.update(output_variables)
+            workflow_executor.store_execution_context(workflow_id, execution_context)
+
+            # Format outputs for display
+            formatted_outputs = executor._format_output_variables(output_variables)
+
+            # Update the cell in the plan
+            cell.mark_completed(
+                output=output_text,
+                variables=output_variables,
+                execution_time=0
+            )
+            workflow_executor.update_workflow_plan(workflow_id, plan)
+
+            logger.info("Successfully reran cell {} with {} outputs".format(
+                cell_id, len(output_variables)
+            ))
+
+            return {
+                "success": True,
+                "output": output_text,
+                "variables": list(output_variables.keys()),
+                "variable_values": formatted_outputs,
+                "code": cell.generated_code
+            }
+
+        except asyncio.TimeoutError:
+            error_msg = "Cell execution timed out after {}s".format(
+                executor.max_cell_execution_time
+            )
+            logger.error(error_msg)
+            raise HTTPException(status_code=500, detail=error_msg)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to rerun cell: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to rerun cell: {}".format(str(e))
+        )
+
+
+@api_router.post("/workflows/{workflow_id}/cells/{cell_id}/execute-single", tags=["Cell-Based Workflows"])
+async def execute_single_cell(
+    workflow_id: str,
+    cell_id: str,
+    request: CellExecuteSingleRequest
+):
+    """
+    Execute a single cell with provided input and context.
+
+    This endpoint allows executing one cell at a time with specific user input,
+    which is useful for multi-example testing where we want to run each cell
+    for all examples before moving to the next cell.
+
+    Args:
+        workflow_id: ID of the workflow
+        cell_id: ID of the cell to execute
+        request: CellExecuteSingleRequest with user input, files, and context
+
+    Returns:
+        dict: Execution results with outputs and variable values
+
+    Raises:
+        HTTPException: 404 if workflow or cell not found, 500 if execution fails
+    """
+    # Validate API keys upfront since we may need to generate code
+    validate_anthropic_api_key()
+    validate_lighton_api_key()
+
+    try:
+        logger.info("Executing single cell {} in workflow {} with input: {}".format(
+            cell_id, workflow_id, request.user_input[:50] if request.user_input else "(empty)"
+        ))
+
+        # Verify workflow exists
+        workflow = workflow_executor.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="Workflow not found: {}".format(workflow_id)
+            )
+
+        # Get workflow plan
+        plan = workflow_executor.get_workflow_plan(workflow_id)
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found for workflow: {}".format(workflow_id)
+            )
+
+        # Find the cell in the plan
+        cell = None
+        for c in plan.cells:
+            if c.id == cell_id:
+                cell = c
+                break
+
+        if not cell:
+            raise HTTPException(
+                status_code=404,
+                detail="Cell not found: {}".format(cell_id)
+            )
+
+        # Initialize context with user input
+        context = {
+            "user_input": request.user_input,
+            "attached_file_ids": request.attached_file_ids or []
+        }
+
+        # Merge in any provided execution context from previous cells
+        if request.execution_context:
+            context.update(request.execution_context)
+
+        # Execute the cell
+        executor = CellExecutor()
+
+        # Generate code for the cell if it hasn't been generated yet
+        if not cell.generated_code:
+            logger.info("Cell {} has no generated code, generating now...".format(cell_id))
+            try:
+                description, code = await executor.cell_generator.generate_cell_code(
+                    cell=cell,
+                    available_context=plan.shared_context_schema or {},
+                    workflow_description=workflow.description
+                )
+                cell.mark_ready(code, description)
+                # Update the plan with the generated code
+                workflow_executor.update_workflow_plan(workflow_id, plan)
+                logger.info("Generated code for cell {} ({} chars)".format(cell_id, len(code)))
+            except Exception as gen_error:
+                logger.error("Failed to generate code for cell {}: {}".format(cell_id, str(gen_error)))
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to generate code for cell: {}".format(str(gen_error))
+                )
+
+        try:
+            import asyncio
+            cell_result = await asyncio.wait_for(
+                executor._execute_cell_code(
+                    cell.generated_code,
+                    context,
+                    cell.id
+                ),
+                timeout=executor.max_cell_execution_time
+            )
+
+            # Extract outputs
+            output_variables = cell_result.get("variables", {})
+            output_text = cell_result.get("output", "")
+
+            # Format outputs for display
+            formatted_outputs = executor._format_output_variables(output_variables)
+
+            logger.info("Successfully executed cell {} with {} outputs".format(
+                cell_id, len(output_variables)
+            ))
+
+            return {
+                "success": True,
+                "output": output_text,
+                "variables": list(output_variables.keys()),
+                "variable_values": formatted_outputs,
+                "output_variables": output_variables,  # Raw variables for next cell's context
+                "code": cell.generated_code
+            }
+
+        except asyncio.TimeoutError:
+            error_msg = "Cell execution timed out after {}s".format(
+                executor.max_cell_execution_time
+            )
+            logger.error(error_msg)
+            raise HTTPException(status_code=500, detail=error_msg)
+
+        except Exception as e:
+            logger.error("Cell execution failed: {}".format(str(e)))
+            raise HTTPException(
+                status_code=500,
+                detail="Cell execution failed: {}".format(str(e))
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to execute single cell: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to execute single cell: {}".format(str(e))
+        )
+
+
+@api_router.post("/workflows/{workflow_id}/cells/{cell_id}/feedback", tags=["Cell-Based Workflows"])
+async def submit_cell_feedback(workflow_id: str, cell_id: str, request: CellFeedbackRequest):
+    """
+    Submit feedback for a cell and regenerate its code based on user input.
+
+    This endpoint takes user feedback about a cell's generated code and uses
+    Claude to regenerate the code incorporating the feedback. All necessary
+    context is provided to Claude including the original cell plan, previous
+    code, and user feedback.
+
+    Args:
+        workflow_id: ID of the workflow
+        cell_id: ID of the cell to regenerate
+        request: CellFeedbackRequest with user feedback
+
+    Returns:
+        dict: New generated code and status
+
+    Raises:
+        HTTPException: 400 if feedback missing, 404 if workflow/cell not found
+    """
+    try:
+        feedback = request.feedback.strip()
+
+        logger.info("Received feedback for cell {} in workflow {}: {}".format(
+            cell_id, workflow_id, feedback[:100]
+        ))
+
+        # Verify workflow exists
+        workflow = workflow_executor.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="Workflow not found: {}".format(workflow_id)
+            )
+
+        # Get workflow plan
+        plan = workflow_executor.get_workflow_plan(workflow_id)
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found for workflow: {}".format(workflow_id)
+            )
+
+        # Find the cell in the plan
+        cell = None
+        for c in plan.cells:
+            if c.id == cell_id:
+                cell = c
+                break
+
+        if not cell:
+            raise HTTPException(
+                status_code=404,
+                detail="Cell not found: {}".format(cell_id)
+            )
+
+        # Regenerate the cell code with feedback
+        executor = CellExecutor()
+
+        # Build comprehensive feedback context message for Claude
+        feedback_context = """CURRENT CODE DESCRIPTION:
+{code_description}
+
+USER FEEDBACK ON CODE:
+{feedback}
+
+INSTRUCTIONS:
+Please regenerate the complete cell code incorporating the user's feedback above.
+- Address all points in the user's feedback
+- Maintain the same inputs and outputs as specified in the cell plan
+- Follow all coding guidelines and best practices from the cell generation prompt
+- Keep the code standalone with full API documentation
+- Update the DESCRIPTION section to reflect any changes made""".format(
+            code_description=cell.code_description or "No description available",
+            feedback=feedback
+        )
+
+        # Use the executor's fix_cell_code method
+        # This method already handles Claude integration and prompt loading properly
+        new_code = await executor.fix_cell_code(
+            cell=cell,
+            error_message=feedback_context,
+            shared_context=plan.shared_context_schema or {},
+            workflow_description=workflow.description
+        )
+
+        if not new_code:
+            raise Exception("Failed to regenerate code with feedback")
+
+        # Update the cell with new code
+        cell.generated_code = new_code
+        cell.status = CellStatus.READY
+
+        logger.info("Successfully regenerated code for cell {} with user feedback".format(cell_id))
+
+        return {
+            "success": True,
+            "message": "Cell code regenerated successfully",
+            "new_code": new_code
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to process cell feedback: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to process cell feedback: {}".format(str(e))
+        )
+
+
+@api_router.get("/workflows/{workflow_id}/executions/{execution_id}/ai-tools", tags=["Execution"])
+async def get_execution_ai_tools(workflow_id: str, execution_id: str):
+    """
+    Get AI tool execution details for a workflow execution.
+    
+    Returns detailed information about all AI tool calls made during workflow execution,
+    including input parameters, queries, and outputs for transparency and debugging.
+    
+    Args:
+        workflow_id: ID of the parent workflow
+        execution_id: Unique identifier of the execution
+        
+    Returns:
+        List of AI tool execution details with inputs and outputs
+        
+    Raises:
+        HTTPException: 404 if execution not found, 400 if execution doesn't belong to workflow
+    """
+    try:
+        # Verify execution exists and belongs to workflow
+        execution = workflow_executor.get_execution(execution_id)
+        if not execution:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Execution {execution_id} not found"
+            )
+        
+        if execution.workflow_id != workflow_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Execution {execution_id} does not belong to workflow {workflow_id}"
+            )
+
+        # Get AI tool execution details
+        ai_tool_executions = workflow_executor.get_ai_tool_executions(execution_id)
+        
+        logger.info(f"📊 Retrieved {len(ai_tool_executions)} AI tool executions for execution {execution_id}")
+        
+        return ai_tool_executions
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get AI tool executions for execution {execution_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get AI tool executions: {str(e)}"
         )
 
 @api_router.get("/workflows/{workflow_id}/executions/{execution_id}/pdf", tags=["Execution"])

@@ -32,20 +32,17 @@ COPY --from=dependencies /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY api/ /app/api/
-COPY frontend/ /app/frontend/
 COPY index.html /app/
 COPY lighton-logo.png /app/
-COPY start_full_system.py /app/
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Expose ports
-# 8000 for FastAPI backend
-# 3000 for frontend
-EXPOSE 8000 3000
+# Expose port
+# 8000 for FastAPI backend (also serves frontend)
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
@@ -56,5 +53,5 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/home/appuser/.local/bin:$PATH"
 
-# Default command: start full system (backend + frontend)
-CMD ["python", "start_full_system.py"]
+# Default command: start FastAPI backend (serves both API and frontend)
+CMD ["uvicorn", "api.index:app", "--host", "0.0.0.0", "--port", "8000"]

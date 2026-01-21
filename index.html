@@ -292,6 +292,866 @@ Architecture:
             font-size: 14px;
             margin-bottom: 15px;
         }
+        
+        /* Progress tracking styles */
+        .progress-step {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .progress-step:last-child {
+            border-bottom: none;
+        }
+        
+        .progress-checkbox {
+            margin-right: 12px;
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .progress-step-content {
+            flex: 1;
+        }
+        
+        .progress-step-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 2px;
+        }
+        
+        .progress-step-details {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .progress-step.pending .progress-checkbox {
+            color: #ccc;
+        }
+        
+        .progress-step.running .progress-checkbox {
+            color: #007bff;
+            animation: spin 1s linear infinite;
+        }
+        
+        .progress-step.completed .progress-checkbox {
+            color: #28a745;
+        }
+        
+        .progress-step.error .progress-checkbox {
+            color: #dc3545;
+        }
+        
+        .progress-step.error .progress-step-details {
+            color: #dc3545;
+            font-weight: 500;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Cell-based workflow styles */
+        .cell-based-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 10px 0;
+            padding: 10px;
+            background: #f0f7ff;
+            border-radius: 6px;
+            border: 1px solid #cce0ff;
+        }
+
+        .cell-based-toggle input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .cell-based-toggle label {
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .cell-based-toggle .toggle-description {
+            font-size: 12px;
+            color: #666;
+            margin-left: auto;
+        }
+
+        /* Cell plan display */
+        .cell-plan-container {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .cell-plan-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .cell-plan-title {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .cell-plan-badge {
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+
+        .cell-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 12px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .cell-item.pending {
+            border-left-color: #6c757d;
+        }
+
+        .cell-item.generating {
+            border-left-color: #ffc107;
+            background: #fffef0;
+        }
+
+        .cell-item.ready {
+            border-left-color: #17a2b8;
+        }
+
+        .cell-item.executing {
+            border-left-color: #007bff;
+            background: #f0f7ff;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .cell-item.retrying {
+            border-left-color: #ffc107;
+            background: #fffbf0;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .cell-item.completed {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+
+        .cell-item.failed {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .cell-number {
+            width: 28px;
+            height: 28px;
+            background: #e9ecef;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 12px;
+            color: #495057;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .cell-item.completed .cell-number {
+            background: #28a745;
+            color: white;
+        }
+
+        .cell-item.executing .cell-number {
+            background: #007bff;
+            color: white;
+        }
+
+        .cell-item.failed .cell-number {
+            background: #dc3545;
+            color: white;
+        }
+
+        .cell-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .cell-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .cell-description {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 6px;
+        }
+
+        .cell-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 11px;
+            color: #888;
+        }
+
+        .cell-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .cell-output {
+            margin-top: 12px;
+            padding: 0;
+            background: transparent;
+        }
+
+        .cell-output-header {
+            font-size: 11px;
+            font-weight: 600;
+            color: #2e7d32;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .cell-output-header::before {
+            content: "📊";
+            font-size: 14px;
+        }
+
+        .cell-output-variables {
+            background: #e8f5e9;
+            border: 2px solid #4caf50;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .cell-output-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #4caf50;
+        }
+
+        .cell-output-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .cell-output-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #1b5e20;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .cell-output-value {
+            font-size: 13px;
+            color: #2e7d32;
+            font-family: 'Courier New', Consolas, monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.5;
+        }
+
+        .cell-output-console {
+            margin-top: 8px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #666;
+            font-family: monospace;
+            white-space: pre-wrap;
+            border-left: 3px solid #9e9e9e;
+            /* No max-height - show full output */
+            overflow-y: visible;
+        }
+
+        /* Test Example Styles */
+        .test-example {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .test-example-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .test-example-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: #495057;
+        }
+
+        .test-example-remove {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .test-example-remove:hover {
+            background: #c82333;
+        }
+
+        .test-example-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .test-example-files {
+            margin-top: 10px;
+        }
+
+        .test-example-files-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        /* Example Tabs for Cell Outputs */
+        .example-tabs {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .example-tab {
+            padding: 8px 16px;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .example-tab::after {
+            content: '▶';
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+
+        .example-tab:hover {
+            background: #dee2e6;
+        }
+
+        .example-tab.expanded {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .example-tab.expanded::after {
+            content: '▼';
+        }
+
+        .example-tab.pending {
+            opacity: 0.5;
+            font-style: italic;
+        }
+
+        .example-tab.pending::after {
+            content: '⏳';
+        }
+
+        .example-output {
+            display: none;
+            margin-top: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+
+        .example-output.expanded {
+            display: block;
+        }
+
+        .cell-output-pending {
+            padding: 20px;
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+
+        .cell-output-empty {
+            padding: 15px;
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+
+        .cell-approval-buttons {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .cell-approval-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .cell-rerun-btn {
+            background: #007bff;
+            color: white;
+        }
+
+        .cell-rerun-btn:hover {
+            background: #0056b3;
+            transform: translateY(-1px);
+        }
+
+        .cell-feedback-btn {
+            background: #dc3545;
+            color: white;
+        }
+
+        .cell-feedback-btn:hover {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+
+        .cell-feedback-input-container {
+            margin-top: 12px;
+            display: none;
+        }
+
+        .cell-feedback-input-container.visible {
+            display: block;
+        }
+
+        .cell-feedback-textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px;
+            border: 2px solid #dc3545;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            resize: vertical;
+        }
+
+        .cell-feedback-submit {
+            margin-top: 8px;
+            padding: 8px 16px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cell-feedback-submit:hover {
+            background: #c82333;
+        }
+
+        .cell-feedback-cancel {
+            margin-top: 8px;
+            margin-left: 8px;
+            padding: 8px 16px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cell-feedback-cancel:hover {
+            background: #5a6268;
+        }
+
+        .cell-error {
+            margin-top: 10px;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #c62828;
+        }
+
+        .cell-status-icon {
+            margin-left: auto;
+            font-size: 18px;
+        }
+
+        .cell-time {
+            font-size: 11px;
+            color: #888;
+            margin-left: 8px;
+        }
+
+        .cell-code-toggle {
+            cursor: pointer;
+            padding: 4px 8px;
+            margin-left: 8px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #6c757d;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .cell-code-toggle:hover {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .cell-code-toggle.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .cell-description-section {
+            margin-top: 10px;
+            padding: 14px;
+            background: #e7f3ff;
+            border: 2px solid #0066cc;
+            border-radius: 6px;
+        }
+
+        .cell-description-header {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0066cc;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .cell-description-content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #1a1a1a;
+            white-space: pre-wrap;
+        }
+
+        .cell-code-section {
+            margin-top: 10px;
+            padding: 12px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .cell-code-section.visible {
+            display: block;
+        }
+
+        .cell-code-header {
+            font-size: 11px;
+            font-weight: 600;
+            color: #6c757d;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .cell-code-content {
+            font-size: 12px;
+            color: #212529;
+            font-family: 'Courier New', Consolas, monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            background: white;
+            padding: 10px;
+            border-radius: 3px;
+            border: 1px solid #e9ecef;
+        }
+
+        /* Collapsible sections */
+        .collapsible-section {
+            margin-bottom: 10px;
+        }
+
+        .collapsible-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #495057;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .collapsible-toggle:hover {
+            background: #e9ecef;
+            border-color: #ced4da;
+        }
+
+        .collapsible-toggle.expanded {
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+            border-bottom: none;
+            background: #e7f3ff;
+            border-color: #0066cc;
+            color: #0066cc;
+        }
+
+        .collapsible-toggle .toggle-icon {
+            font-size: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .collapsible-toggle.expanded .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            display: none;
+            padding: 14px;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+        }
+
+        .collapsible-content.expanded {
+            display: block;
+            border-color: #0066cc;
+        }
+
+        /* AI Reasoning and Feedback section */
+        .ai-reasoning-section {
+            margin-top: 10px;
+        }
+
+        .ai-reasoning-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            color: #856404;
+            transition: all 0.2s ease;
+        }
+
+        .ai-reasoning-toggle:hover {
+            background: #ffeeba;
+        }
+
+        .ai-reasoning-toggle.has-feedback {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+
+        .ai-reasoning-toggle.has-retries {
+            background: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+
+        .ai-reasoning-content {
+            display: none;
+            margin-top: 10px;
+            padding: 12px;
+            background: #fffbf0;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .ai-reasoning-content.visible {
+            display: block;
+        }
+
+        .ai-reasoning-item {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #ffe69c;
+        }
+
+        .ai-reasoning-item:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .ai-reasoning-item-header {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 6px;
+        }
+
+        .ai-reasoning-item-feedback {
+            background: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            color: #333;
+        }
+
+        /* Compact logs toggle */
+        .logs-toggle-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 12px 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 0;
+            transition: all 0.2s ease;
+        }
+
+        .logs-toggle-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .logs-toggle-btn.expanded {
+            border-radius: 6px 6px 0 0;
+        }
+
+        .logs-toggle-btn .log-count {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .logs-container.collapsed {
+            display: none;
+        }
+
+        /* Examples toggle */
+        .examples-toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #6c757d;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: white;
+            margin-bottom: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .examples-toggle-btn:hover {
+            background: #5a6268;
+        }
+
+        .examples-toggle-btn .toggle-icon {
+            font-size: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .examples-toggle-btn.expanded .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        #testExamplesContainer.collapsed {
+            display: none;
+        }
     </style>
     <!-- jsPDF Library for client-side PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -337,28 +1197,48 @@ Architecture:
     <!-- Step 3: Test Workflow -->
     <div class="container">
         <h2>3. Test Workflow</h2>
-        <p>Enter your query and optionally attach documents:</p>
-        
-        <!-- Query Input -->
-        <input type="text" id="testQuery" placeholder="What is LightOn's main technology platform?" />
-        
-        <!-- Document Upload Section -->
-        <div style="margin: 15px 0;">
-            <label style="display: block; margin-bottom: 8px; font-weight: bold;">📎 Attach Documents (Optional):</label>
-            <div class="file-upload-area" id="queryUploadArea" ondrop="handleQueryDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
-                <p>📎 Drag and drop files here or <button onclick="document.getElementById('queryFileInput').click()">browse files</button></p>
-                <input type="file" id="queryFileInput" multiple style="display: none;" onchange="handleQueryFileSelect(event)">
-                <p style="font-size: 12px; color: #666;">Upload documents to analyze with your query</p>
-                <p style="font-size: 11px; color: #888; margin-top: 5px;">Note: In this demo, attached documents will be automatically deleted after workflow execution.</p>
+
+        <!-- Examples toggle and container -->
+        <div style="margin-bottom: 15px;">
+            <button class="examples-toggle-btn expanded" id="examplesToggleBtn" onclick="toggleExamples()">
+                <span>📝 Test Examples</span>
+                <span id="examplesCount">(0)</span>
+                <span class="toggle-icon">▼</span>
+            </button>
+        </div>
+
+        <!-- Test Examples Container -->
+        <div id="testExamplesContainer" style="margin-bottom: 20px;">
+            <!-- Test examples will be added here dynamically -->
+        </div>
+
+        <!-- Add Example Button -->
+        <button onclick="addTestExample()" id="addExampleButton" style="background: #6c757d; margin-bottom: 15px;" disabled>+ Add Test Example</button>
+
+        <!-- Execute All Tests Button -->
+        <button onclick="executeAllTests()" id="testButton" disabled>▶ Run Tests</button>
+
+        <!-- Cell-based execution progress section -->
+        <div id="cellProgressSection" style="margin-top: 15px; display: none;">
+            <div class="cell-plan-container">
+                <div class="cell-plan-header">
+                    <span class="cell-plan-title">📊 Cell-by-Cell Execution Progress</span>
+                    <span class="cell-plan-badge" id="cellProgressBadge">0/0 cells</span>
+                </div>
+                <div id="cellProgressList">
+                    <!-- Cell items will be dynamically inserted here -->
+                </div>
             </div>
-            
-            <div id="queryUploadStatus"></div>
-            <ul class="file-list" id="queryFilesList"></ul>
+
+            <!-- Download buttons - shown after all cells complete -->
+            <div id="workflowDownloadButtons" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
+                <div style="font-weight: 600; margin-bottom: 10px; color: #495057;">📥 Export Options</div>
+                <button onclick="downloadReportPDF()" id="reportButton" disabled style="background: #6f42c1; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer;">📄 Download as Report</button>
+                <button onclick="downloadWorkflowPackage()" id="packageButton" disabled style="background: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 4px; margin-left: 10px; cursor: pointer;">📦 Download Workflow Package</button>
+                <button onclick="downloadMCPPackage()" id="mcpPackageButton" disabled style="background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; margin-left: 10px; cursor: pointer;">🔧 Download MCP Package</button>
+            </div>
         </div>
         
-        <button onclick="executeWorkflowWithQuery()" id="testButton" disabled>Test Workflow</button>
-        <button onclick="downloadWorkflowPackage()" id="packageButton" disabled style="background: #28a745; margin-left: 10px;">📦 Download Workflow Package</button>
-        <button onclick="downloadMCPPackage()" id="mcpPackageButton" disabled style="background: #007bff; margin-left: 10px;">🔧 Download MCP Package</button>
         <div id="testResult" style="margin-top: 15px;"></div>
     </div>
 
@@ -367,20 +1247,19 @@ Architecture:
         <h2>4. Edit workflow</h2>
         <p>Edit the workflow description above and regenerate the workflow to refine its behavior. You can modify the natural language description to add new steps, change the logic, or improve the workflow based on your test results. After testing, go back to step 1 or 2, update your workflow description, and regenerate to create an improved version.</p>
         
-        <!-- Monitoring Helper Section -->
+        <!-- Monitoring Helper Section - Collapsible -->
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
-            <h3 style="color: #666; font-size: 16px; margin-bottom: 15px;">📊 Monitor Workflow Execution</h3>
-            <p style="color: #666; font-size: 14px; margin-bottom: 15px;">Monitor every step of workflow execution with detailed information:</p>
-            <ul style="font-size: 12px; color: #666; margin: 10px 0;">
-                <li>🔍 API endpoints called and payloads sent</li>
-                <li>📊 Document IDs, file IDs, and search queries</li>
-                <li>💬 Response content and analysis results</li>
-                <li>📄 Document chunks and file processing details</li>
-                <li>⚡ Step-by-step workflow execution flow</li>
-                <li>❌ Error handling and fallback mechanisms</li>
-            </ul>
-            <button onclick="clearLogs()" class="clear-logs">Clear Logs</button>
-            <div class="logs-container" id="logsContainer">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <button class="logs-toggle-btn" id="logsToggleBtn" onclick="toggleLogs()">
+                    <span>📊 Execution Logs</span>
+                    <span style="display: flex; align-items: center; gap: 8px;">
+                        <span class="log-count" id="logCount">0 entries</span>
+                        <span class="toggle-icon">▼</span>
+                    </span>
+                </button>
+                <button onclick="clearLogs()" class="clear-logs" style="margin-left: auto;">Clear</button>
+            </div>
+            <div class="logs-container collapsed" id="logsContainer">
                 <div class="log-entry">
                     <span class="log-timestamp">[Ready]</span> <span class="log-response">Waiting for API activity...</span>
                 </div>
@@ -704,6 +1583,171 @@ if __name__ == "__main__":
         let logCounter = 0;              // Counter for log entry IDs
         let queryAttachedFiles = [];     // Files attached to current query
 
+        // Multi-example testing variables
+        let testExamples = [];           // Array of test examples {id, query, fileIds}
+        let testExampleCounter = 0;      // Counter for generating example IDs
+        let currentExampleOutputs = {};  // Cell outputs per example: {cellId: {exampleId: {output, variables}}}
+        let currentWorkflowPlan = null;  // Current workflow plan with cells
+        let currentCells = [];           // Array of cell definitions
+        let cellEventSource = null;      // SSE connection for cell streaming
+
+        // AI Reasoning and Feedback tracking
+        // Stores evaluation feedback and retry attempts for each cell
+        let cellAIFeedback = {};         // {cellId: [{attempt, feedback, issues, suggestedFix, output, passed}]}
+
+        // =============================================================
+        // COLLAPSIBLE SECTION TOGGLE FUNCTIONS
+        // =============================================================
+
+        /**
+         * Toggle logs visibility.
+         */
+        function toggleLogs() {
+            const logsContainer = document.getElementById('logsContainer');
+            const toggleBtn = document.getElementById('logsToggleBtn');
+            const isCollapsed = logsContainer.classList.contains('collapsed');
+
+            if (isCollapsed) {
+                logsContainer.classList.remove('collapsed');
+                toggleBtn.classList.add('expanded');
+            } else {
+                logsContainer.classList.add('collapsed');
+                toggleBtn.classList.remove('expanded');
+            }
+        }
+
+        /**
+         * Toggle test examples visibility.
+         */
+        function toggleExamples() {
+            const container = document.getElementById('testExamplesContainer');
+            const toggleBtn = document.getElementById('examplesToggleBtn');
+            const isCollapsed = container.classList.contains('collapsed');
+
+            if (isCollapsed) {
+                container.classList.remove('collapsed');
+                toggleBtn.classList.add('expanded');
+            } else {
+                container.classList.add('collapsed');
+                toggleBtn.classList.remove('expanded');
+            }
+        }
+
+        /**
+         * Update examples count display.
+         */
+        function updateExamplesCount() {
+            const countEl = document.getElementById('examplesCount');
+            if (countEl) {
+                countEl.textContent = `(${testExamples.length})`;
+            }
+        }
+
+        /**
+         * Toggle cell description visibility.
+         */
+        function toggleCellDescription(cellId) {
+            const descSection = document.getElementById(`cell-description-${cellId}`);
+            if (!descSection) return;
+
+            const toggle = descSection.querySelector('.collapsible-toggle');
+            const content = descSection.querySelector('.collapsible-content');
+
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                toggle.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                toggle.classList.add('expanded');
+            }
+        }
+
+        /**
+         * Toggle AI reasoning and feedback visibility for a cell.
+         */
+        function toggleAIReasoning(cellId) {
+            const content = document.getElementById(`ai-reasoning-content-${cellId}`);
+            if (content) {
+                content.classList.toggle('visible');
+            }
+        }
+
+        /**
+         * Store AI evaluation feedback for a cell.
+         */
+        function storeAIFeedback(cellId, attempt, feedback, issues, suggestedFix, output, passed) {
+            if (!cellAIFeedback[cellId]) {
+                cellAIFeedback[cellId] = [];
+            }
+            cellAIFeedback[cellId].push({
+                attempt,
+                feedback,
+                issues: issues || [],
+                suggestedFix,
+                output,
+                passed,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        /**
+         * Render AI reasoning section for a cell.
+         */
+        function renderAIReasoningSection(cellId) {
+            const feedback = cellAIFeedback[cellId];
+            if (!feedback || feedback.length === 0) return '';
+
+            const hasRetries = feedback.length > 1 || feedback.some(f => !f.passed);
+            const btnClass = hasRetries ? 'has-retries' : 'has-feedback';
+            const retryCount = feedback.filter(f => !f.passed).length;
+
+            let contentHTML = '';
+            feedback.forEach((item, index) => {
+                const statusIcon = item.passed ? '✅' : '❌';
+                const statusText = item.passed ? 'Passed' : 'Failed';
+                contentHTML += `
+                    <div class="ai-reasoning-item">
+                        <div class="ai-reasoning-item-header">
+                            ${statusIcon} Attempt ${item.attempt} - ${statusText}
+                        </div>
+                        <div class="ai-reasoning-item-feedback">
+                            <strong>Feedback:</strong> ${item.feedback || 'No feedback provided'}
+                            ${item.issues && item.issues.length > 0 ? `
+                                <br><br><strong>Issues:</strong>
+                                <ul style="margin: 5px 0 0 20px; padding: 0;">
+                                    ${item.issues.map(issue => `<li>${issue}</li>`).join('')}
+                                </ul>
+                            ` : ''}
+                            ${item.suggestedFix ? `<br><br><strong>Suggested Fix:</strong> ${item.suggestedFix}` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            return `
+                <div class="ai-reasoning-section">
+                    <button class="ai-reasoning-toggle ${btnClass}" onclick="toggleAIReasoning('${cellId}')">
+                        🤖 AI Reasoning ${retryCount > 0 ? `(${retryCount} retries)` : ''}
+                    </button>
+                    <div class="ai-reasoning-content" id="ai-reasoning-content-${cellId}">
+                        ${contentHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Update log count display.
+         */
+        function updateLogCount() {
+            const logsContainer = document.getElementById('logsContainer');
+            const logCountEl = document.getElementById('logCount');
+            if (logsContainer && logCountEl) {
+                const count = logsContainer.querySelectorAll('.log-entry').length;
+                logCountEl.textContent = `${count} entries`;
+            }
+        }
+
         // =============================================================
         // FILE UPLOAD AND MANAGEMENT FUNCTIONS
         // =============================================================
@@ -946,6 +1990,7 @@ if __name__ == "__main__":
             
             logsContainer.appendChild(logEntry);
             logsContainer.scrollTop = logsContainer.scrollHeight;
+            updateLogCount();
             return logId;
         }
 
@@ -1431,24 +2476,33 @@ if __name__ == "__main__":
         
         /**
          * Create a new workflow from user description.
-         * Calls AI service to generate executable code from natural language.
+         * Creates a cell-based workflow with step-by-step execution plan.
          */
         async function createWorkflow() {
             const description = document.getElementById('workflowDescription').value.trim();
             const name = document.getElementById('workflowName').value.trim();
             const resultDiv = document.getElementById('workflowResult');
-            
+
             if (!description) {
                 showResult(resultDiv, 'Please enter a workflow description', 'error');
                 addLog('❌ No workflow description provided', 'error');
                 return;
             }
 
-            showResult(resultDiv, 'Creating workflow...', 'loading');
-            addLog('🚀 Starting workflow creation...', 'info');
+            await createCellBasedWorkflow(description, name, resultDiv);
+        }
+
+        /**
+         * Create a cell-based workflow with step-by-step execution plan.
+         * Breaks the workflow into discrete cells that execute sequentially.
+         */
+        async function createCellBasedWorkflow(description, name, resultDiv) {
+            showResult(resultDiv, 'Creating cell-based workflow... Planning execution steps...', 'loading');
+            addLog('🚀 Starting cell-based workflow creation...', 'info');
+            addLog('📋 AI is breaking down the workflow into discrete steps...', 'info');
 
             try {
-                const { response, data } = await loggedFetch(`${API_BASE}/workflows`, {
+                const { response, data } = await loggedFetch(`${API_BASE}/workflows-cell-based`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1457,19 +2511,52 @@ if __name__ == "__main__":
                         description: description,
                         name: name || null
                     })
-                }, 'CREATE WORKFLOW');
+                }, 'CREATE WORKFLOW (CELL-BASED)');
 
                 if (response.ok) {
                     currentWorkflowId = data.id;
+                    currentWorkflowPlan = data.plan;
+                    currentCells = data.cells || [];
+
                     document.getElementById('testButton').disabled = false;
+                    document.getElementById('addExampleButton').disabled = false;
                     document.getElementById('packageButton').disabled = false;
                     document.getElementById('mcpPackageButton').disabled = false;
 
-                    const resultMessage = `✅ Workflow created successfully!\n\nID: ${data.id}\nName: ${data.name || 'Unnamed'}\nStatus: ${data.status}\n\nGenerated Code:\n${data.generated_code || 'No code generated'}`;
+                    // Initialize with one test example
+                    if (testExamples.length === 0) {
+                        addTestExample();
+                    }
+
+                    addLog(`✅ Cell-based workflow created with ${currentCells.length} steps`, 'response');
+
+                    // Build result message with cell plan
+                    let resultMessage = `✅ Cell-Based Workflow Created!\n\n`;
+                    resultMessage += `ID: ${data.id}\n`;
+                    resultMessage += `Name: ${data.name || 'Unnamed'}\n`;
+                    resultMessage += `Status: ${data.status}\n`;
+                    resultMessage += `Mode: Cell-Based (Step-by-Step)\n`;
+                    resultMessage += `Total Cells: ${currentCells.length}\n\n`;
+                    resultMessage += `═══════════════════════════════════════\n`;
+                    resultMessage += `EXECUTION PLAN\n`;
+                    resultMessage += `═══════════════════════════════════════\n\n`;
+
+                    currentCells.forEach((cell, index) => {
+                        resultMessage += `Step ${cell.step_number}: ${cell.name}\n`;
+                        resultMessage += `  └─ ${cell.description}\n`;
+                        resultMessage += `  └─ Inputs: ${cell.inputs_required.join(', ') || 'none'}\n`;
+                        resultMessage += `  └─ Outputs: ${cell.outputs_produced.join(', ') || 'none'}\n`;
+                        resultMessage += `  └─ Tools: ${cell.paradigm_tools_used.join(', ') || 'none'}\n\n`;
+                    });
 
                     showResult(resultDiv, resultMessage, 'success');
+
+                    // Log each cell
+                    currentCells.forEach(cell => {
+                        addLog(`📦 Cell ${cell.step_number}: ${cell.name} [${cell.paradigm_tools_used.join(', ')}]`, 'workflow-step');
+                    });
                 } else {
-                    showResult(resultDiv, `❌ Error: ${data.detail || 'Failed to create workflow'}`, 'error');
+                    showResult(resultDiv, `❌ Error: ${data.detail || 'Failed to create cell-based workflow'}`, 'error');
                 }
             } catch (error) {
                 showResult(resultDiv, `❌ Network Error: ${error.message}`, 'error');
@@ -1477,241 +2564,1344 @@ if __name__ == "__main__":
         }
 
         /**
-         * Execute a workflow with user query and optional file attachments.
-         * Runs the generated workflow code and displays results with detailed logging.
+         * Add a new test example
          */
-        async function executeWorkflowWithQuery() {
+        function addTestExample() {
+            testExampleCounter++;
+            const exampleId = `example-${testExampleCounter}`;
+
+            const example = {
+                id: exampleId,
+                query: '',
+                fileIds: [],
+                fileMetadata: []
+            };
+
+            testExamples.push(example);
+            renderTestExamples();
+
+            addLog(`➕ Added test example ${testExamples.length}`, 'info');
+        }
+
+        /**
+         * Remove a test example
+         */
+        function removeTestExample(exampleId) {
+            const index = testExamples.findIndex(ex => ex.id === exampleId);
+            if (index !== -1) {
+                testExamples.splice(index, 1);
+                renderTestExamples();
+                addLog(`🗑️ Removed test example`, 'info');
+            }
+        }
+
+        /**
+         * Render all test examples in the UI
+         */
+        function renderTestExamples() {
+            const container = document.getElementById('testExamplesContainer');
+
+            if (testExamples.length === 0) {
+                container.innerHTML = '<p style="color: #6c757d; font-style: italic;">No test examples yet. Click "Add Test Example" to get started.</p>';
+                updateExamplesCount();
+                return;
+            }
+
+            container.innerHTML = testExamples.map((example, index) => `
+                <div class="test-example" id="test-example-${example.id}">
+                    <div class="test-example-header">
+                        <span class="test-example-title">📝 Example ${index + 1}</span>
+                        <button class="test-example-remove" onclick="removeTestExample('${example.id}')">✕ Remove</button>
+                    </div>
+                    <input
+                        type="text"
+                        class="test-example-input"
+                        id="input-${example.id}"
+                        placeholder="Enter test query (e.g., What is the revenue for Q3?)"
+                        value="${example.query || ''}"
+                        onchange="updateTestExample('${example.id}', this.value)"
+                    />
+
+                    <!-- File Upload Section for this example -->
+                    <div style="margin: 12px 0;">
+                        <label style="display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #495057;">📎 Attach Documents (Optional):</label>
+                        <div class="file-upload-area"
+                             id="upload-area-${example.id}"
+                             ondrop="handleExampleFileDrop(event, '${example.id}')"
+                             ondragover="handleDragOver(event)"
+                             ondragleave="handleDragLeave(event)">
+                            <p style="margin: 0; font-size: 12px;">📎 Drag and drop files here or
+                                <button type="button" onclick="document.getElementById('file-input-${example.id}').click()"
+                                        style="background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer; padding: 0; font-size: 12px;">
+                                    browse files
+                                </button>
+                            </p>
+                            <input type="file"
+                                   id="file-input-${example.id}"
+                                   multiple
+                                   style="display: none;"
+                                   onchange="handleExampleFileSelect(event, '${example.id}')">
+                            <p style="font-size: 10px; color: #666; margin: 4px 0 0 0;">Upload documents to analyze with this query</p>
+                        </div>
+                        <div id="upload-status-${example.id}" style="margin-top: 6px;"></div>
+                        <ul class="file-list" id="file-list-${example.id}" style="margin-top: 8px; padding-left: 20px;"></ul>
+                    </div>
+                </div>
+            `).join('');
+
+            // Reconstruct file lists from stored metadata
+            testExamples.forEach(example => {
+                const filesList = document.getElementById(`file-list-${example.id}`);
+                if (filesList && example.fileMetadata && example.fileMetadata.length > 0) {
+                    // Clear any existing content
+                    filesList.innerHTML = '';
+
+                    // Add each file from metadata
+                    example.fileMetadata.forEach(fileData => {
+                        const listItem = document.createElement('li');
+                        listItem.innerHTML = `
+                            <div class="file-info">
+                                <strong>${fileData.filename}</strong> (ID: ${fileData.id})
+                                <br><small>${fileData.bytes} bytes • Status: ${fileData.status}</small>
+                            </div>
+                            <div class="file-actions">
+                                <button onclick="removeExampleFile(${fileData.id}, '${example.id}')" class="remove-file" title="Remove file">🗑️</button>
+                            </div>
+                        `;
+                        listItem.id = `file-${example.id}-${fileData.id}`;
+                        filesList.appendChild(listItem);
+                    });
+                }
+            });
+
+            updateExamplesCount();
+        }
+
+        /**
+         * Update a test example's query
+         */
+        function updateTestExample(exampleId, query) {
+            const example = testExamples.find(ex => ex.id === exampleId);
+            if (example) {
+                example.query = query;
+            }
+        }
+
+        /**
+         * Handle file drop for a specific test example
+         */
+        function handleExampleFileDrop(event, exampleId) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const uploadArea = document.getElementById(`upload-area-${exampleId}`);
+            uploadArea.classList.remove('dragover');
+
+            const files = Array.from(event.dataTransfer.files);
+            uploadExampleFiles(files, exampleId);
+        }
+
+        /**
+         * Handle file selection for a specific test example
+         */
+        function handleExampleFileSelect(event, exampleId) {
+            const files = Array.from(event.target.files);
+            uploadExampleFiles(files, exampleId);
+        }
+
+        /**
+         * Upload files for a specific test example
+         */
+        async function uploadExampleFiles(files, exampleId) {
+            const example = testExamples.find(ex => ex.id === exampleId);
+            if (!example) return;
+
+            const statusDiv = document.getElementById(`upload-status-${exampleId}`);
+            const filesList = document.getElementById(`file-list-${exampleId}`);
+
+            for (const file of files) {
+                try {
+                    statusDiv.innerHTML = `<div class="result loading">Uploading ${file.name}...</div>`;
+                    addLog(`📤 Uploading file for Example: ${file.name}`, 'info');
+
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('collection_type', 'private');
+
+                    const { response, data } = await loggedFetch(`${API_BASE}/files/upload`, {
+                        method: 'POST',
+                        body: formData
+                    }, `UPLOAD FILE: ${file.name}`);
+
+                    if (response.ok) {
+                        // Add to example's file IDs
+                        example.fileIds.push(data.id);
+
+                        // Store file metadata
+                        if (!example.fileMetadata) {
+                            example.fileMetadata = [];
+                        }
+                        example.fileMetadata.push(data);
+
+                        // Update UI
+                        const listItem = document.createElement('li');
+                        listItem.innerHTML = `
+                            <div class="file-info">
+                                <strong>${data.filename}</strong> (ID: ${data.id})
+                                <br><small>${data.bytes} bytes • Status: ${data.status}</small>
+                            </div>
+                            <div class="file-actions">
+                                <button onclick="removeExampleFile(${data.id}, '${exampleId}')" class="remove-file" title="Remove file">🗑️</button>
+                            </div>
+                        `;
+                        listItem.id = `file-${exampleId}-${data.id}`;
+                        filesList.appendChild(listItem);
+
+                        statusDiv.innerHTML = `<div class="result success">✅ ${file.name} uploaded!</div>`;
+                        addLog(`✅ File uploaded successfully: ID ${data.id}`, 'response');
+
+                        // Update file count display
+                        const filesCountSpan = document.getElementById(`files-${exampleId}`);
+                        if (filesCountSpan) {
+                            filesCountSpan.textContent = `${example.fileIds.length} file(s)`;
+                        }
+
+                    } else {
+                        statusDiv.innerHTML = `<div class="result error">❌ Failed to upload ${file.name}</div>`;
+                        addLog(`❌ Upload failed: ${data.detail || 'Unknown error'}`, 'error');
+                    }
+
+                } catch (error) {
+                    statusDiv.innerHTML = `<div class="result error">❌ Network error uploading ${file.name}</div>`;
+                    addLog(`❌ Upload network error: ${error.message}`, 'error');
+                }
+            }
+
+            // Clear file input
+            const fileInput = document.getElementById(`file-input-${exampleId}`);
+            if (fileInput) {
+                fileInput.value = '';
+            }
+
+            // Clear status after 3 seconds
+            setTimeout(() => {
+                if (statusDiv) statusDiv.innerHTML = '';
+            }, 3000);
+        }
+
+        /**
+         * Remove a file from a specific test example
+         */
+        async function removeExampleFile(fileId, exampleId) {
+            const example = testExamples.find(ex => ex.id === exampleId);
+            if (!example) return;
+
+            if (!confirm('Are you sure you want to remove this file?')) return;
+
+            try {
+                addLog(`🗑️ Removing file ID: ${fileId}`, 'info');
+
+                const { response, data } = await loggedFetch(`${API_BASE}/files/${fileId}`, {
+                    method: 'DELETE'
+                }, `DELETE FILE: ${fileId}`);
+
+                if (response.ok) {
+                    // Remove from example's file IDs
+                    example.fileIds = example.fileIds.filter(id => id !== fileId);
+
+                    // Remove from file metadata
+                    if (example.fileMetadata) {
+                        example.fileMetadata = example.fileMetadata.filter(f => f.id !== fileId);
+                    }
+
+                    // Remove from UI
+                    const listItem = document.getElementById(`file-${exampleId}-${fileId}`);
+                    if (listItem) {
+                        listItem.remove();
+                    }
+
+                    // Update file count display
+                    const filesCountSpan = document.getElementById(`files-${exampleId}`);
+                    if (filesCountSpan) {
+                        filesCountSpan.textContent = example.fileIds.length > 0 ? `${example.fileIds.length} file(s)` : 'None';
+                    }
+
+                    addLog(`✅ File removed successfully`, 'response');
+
+                } else {
+                    addLog(`❌ Failed to remove file: ${data.detail || 'Unknown error'}`, 'error');
+                }
+
+            } catch (error) {
+                addLog(`❌ Error removing file: ${error.message}`, 'error');
+            }
+        }
+
+        /**
+         * Execute workflow on all test examples
+         */
+        async function executeAllTests() {
             if (!currentWorkflowId) {
                 alert('Please create a workflow first');
                 addLog('❌ No workflow to execute', 'error');
                 return;
             }
 
-            const query = document.getElementById('testQuery').value.trim();
-            const resultDiv = document.getElementById('testResult');
-            
-            if (!query) {
-                showResult(resultDiv, 'Please enter a query', 'error');
-                addLog('❌ No query provided', 'error');
+            if (testExamples.length === 0) {
+                alert('Please add at least one test example');
+                addLog('❌ No test examples to execute', 'error');
                 return;
             }
 
-            // Check if files are attached
-            const hasAttachments = queryAttachedFiles.length > 0;
-            const attachmentIds = queryAttachedFiles.map(file => file.id);
-
-            showResult(resultDiv, 'Executing workflow... (this may take up to 5 minutes for document analysis)', 'loading');
-            addLog('🚀 Starting workflow execution...', 'info');
-            addLog(`🎯 WORKFLOW ID: ${currentWorkflowId}`, 'response');
-            addLog(`📝 USER QUERY: ${query}`, 'query');
-            
-            if (hasAttachments) {
-                addLog(`📎 ATTACHED DOCUMENTS: ${attachmentIds.length} files [${attachmentIds.join(', ')}]`, 'docs');
+            // Validate all examples have queries
+            const emptyExamples = testExamples.filter(ex => !ex.query.trim());
+            if (emptyExamples.length > 0) {
+                alert(`Please enter queries for all test examples (${emptyExamples.length} missing)`);
+                return;
             }
 
-            try {
-                // Prepare execution payload with attached files
-                let executionPayload = {
-                    user_input: query
-                };
-                
-                if (hasAttachments) {
-                    executionPayload.attached_file_ids = attachmentIds;
-                }
+            addLog(`🚀 Starting multi-example test with ${testExamples.length} example(s)`, 'workflow-start');
 
-                const { response, data } = await loggedFetch(`${API_BASE}/workflows/${currentWorkflowId}/execute`, {
+            // Clear previous outputs
+            currentExampleOutputs = {};
+
+            // Execute using cell-based workflow with evaluation
+            await executeCellBasedMultiExample();
+        }
+        /**
+         * Execute cell-based workflow with multiple test examples
+         * Uses LLM-as-judge evaluation with smoke test approach:
+         * 1. For each cell, execute first example (smoke test)
+         * 2. Evaluate output with Claude
+         * 3. If evaluation fails, fix code and retry (up to 5 times)
+         * 4. Once evaluation passes, run remaining examples
+         */
+        async function executeCellBasedMultiExample() {
+            addLog(`🧪 Running cell-based workflow with ${testExamples.length} test examples (with LLM evaluation)`, 'workflow-start');
+
+            // Initialize cell progress display
+            initializeCellProgressDisplay();
+
+            // Prepare examples for the API
+            const examples = testExamples.map((example, index) => ({
+                id: example.id,
+                user_input: example.query,
+                attached_file_ids: example.fileIds.length > 0 ? example.fileIds : null
+            }));
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/execute-with-evaluation`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(executionPayload)
-                }, 'EXECUTE WORKFLOW WITH QUERY');
+                    body: JSON.stringify({ examples })
+                });
 
-                if (response.ok) {
-                    const executionTime = data.execution_time ? `${data.execution_time.toFixed(2)}s` : 'N/A';
-                    
-                    addLog(`⚡ WORKFLOW EXECUTION COMPLETED in ${executionTime}`, 'workflow-step');
-                    
-                    // Enhanced workflow result parsing
-                    if (data.result) {
-                        addLog('📄 ANALYZING WORKFLOW EXECUTION DETAILS...', 'workflow-step');
-                        
-                        const result = data.result;
-                        
-                        // Look for specific workflow steps and log them with details
-                        if (result.includes('WORKFLOW STEP: Paradigm Search')) {
-                            addLog('🔍 STEP DETECTED: Paradigm Document Search executed', 'workflow-step');
-                        }
-                        
-                        if (result.includes('WORKFLOW STEP: Document Analysis')) {
-                            addLog('📊 STEP DETECTED: Document Analysis executed', 'workflow-step');
-                        }
-                        
-                        if (result.includes('WORKFLOW STEP: Ask Question About File')) {
-                            addLog('❓ STEP DETECTED: File Question executed', 'workflow-step');
-                        }
-                        
-                        if (result.includes('WORKFLOW STEP: Chat Completion')) {
-                            addLog('💬 STEP DETECTED: AI Chat Completion executed', 'workflow-step');
-                        }
-                        
-                        // Extract and log search queries
-                        const searchQueries = result.match(/SEARCH QUERY: ([^\n]+)/g);
-                        if (searchQueries) {
-                            searchQueries.forEach((query, i) => {
-                                const queryText = query.replace('SEARCH QUERY: ', '');
-                                addLog(`🔍 SEARCH QUERY ${i+1}: ${queryText}`, 'query');
-                            });
-                        }
-                        
-                        // Extract and log analysis queries
-                        const analysisQueries = result.match(/ANALYSIS QUERY: ([^\n]+)/g);
-                        if (analysisQueries) {
-                            analysisQueries.forEach((query, i) => {
-                                const queryText = query.replace('ANALYSIS QUERY: ', '');
-                                addLog(`📊 ANALYSIS QUERY ${i+1}: ${queryText}`, 'query');
-                            });
-                        }
-                        
-                        // Extract and log file questions
-                        const fileQuestions = result.match(/QUESTION: ([^\n]+)/g);
-                        if (fileQuestions) {
-                            fileQuestions.forEach((question, i) => {
-                                const questionText = question.replace('QUESTION: ', '');
-                                addLog(`❓ FILE QUESTION ${i+1}: ${questionText}`, 'query');
-                            });
-                        }
-                        
-                        // Extract and log document IDs
-                        const docIdMatches = result.match(/DOCUMENT IDS: ([^\n]+)/g);
-                        if (docIdMatches) {
-                            docIdMatches.forEach((match, i) => {
-                                const docIds = match.replace('DOCUMENT IDS: ', '');
-                                addLog(`📋 DOCUMENT IDS USED ${i+1}: ${docIds}`, 'docs');
-                            });
-                        }
-                        
-                        // Extract and log file IDs
-                        const fileIdMatches = result.match(/FILE ID: (\d+)/g);
-                        if (fileIdMatches) {
-                            fileIdMatches.forEach((match, i) => {
-                                const fileId = match.replace('FILE ID: ', '');
-                                addLog(`📁 FILE ID PROCESSED ${i+1}: ${fileId}`, 'docs');
-                            });
-                        }
-                        
-                        // Extract and log API endpoints
-                        const endpointMatches = result.match(/ENDPOINT: ([^\n]+)/g);
-                        if (endpointMatches) {
-                            endpointMatches.forEach((match, i) => {
-                                const endpoint = match.replace('ENDPOINT: ', '');
-                                addLog(`📡 API ENDPOINT ${i+1}: ${endpoint}`, 'endpoint');
-                            });
-                        }
-                        
-                        // Extract and log response content
-                        const responseMatches = result.match(/(SEARCH RESULT|ANALYSIS RESULT|FILE QUESTION RESULT): ([^\n]+)/g);
-                        if (responseMatches) {
-                            responseMatches.forEach((match, i) => {
-                                const [type, content] = match.split(': ');
-                                addLog(`💬 ${type} ${i+1}: ${content.substring(0, 150)}...`, 'response');
-                            });
-                        }
-                        
-                        // Look for error patterns
-                        const errorMatches = result.match(/❌ ([^\n]+)/g);
-                        if (errorMatches) {
-                            errorMatches.forEach((match, i) => {
-                                const error = match.replace('❌ ', '');
-                                addLog(`❌ ERROR ${i+1}: ${error}`, 'error');
-                            });
-                        }
-                        
-                        // Look for attached file processing
-                        if (hasAttachments) {
-                            addLog(`📎 PROCESSED ${attachmentIds.length} ATTACHED FILE(S): [${attachmentIds.join(', ')}]`, 'docs');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+
+                // Process the SSE stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const event = JSON.parse(line.slice(6));
+                                handleEvaluationEvent(event);
+                            } catch (e) {
+                                console.warn('Failed to parse SSE event:', line);
+                            }
                         }
                     }
-                    
-                    if (data.status === 'completed') {
-                        addLog('✅ WORKFLOW EXECUTION COMPLETED SUCCESSFULLY', 'response');
+                }
 
-                        let resultMessage = `✅ Workflow executed successfully!\n\nExecution ID: ${data.execution_id}\nStatus: ${data.status}\nExecution Time: ${executionTime}`;
+                addLog(`\n🎉 Workflow execution with evaluation completed!`, 'workflow-start');
+                showResult(document.getElementById('testResult'), '✅ Multi-example test with evaluation completed!', 'success');
 
-                        if (hasAttachments) {
-                            resultMessage += `\nProcessed ${attachmentIds.length} attached document(s)`;
-                        }
+            } catch (error) {
+                addLog(`❌ Multi-example test failed: ${error.message}`, 'error');
+                showResult(document.getElementById('testResult'), `❌ Error: ${error.message}`, 'error');
+            }
+        }
 
-                        resultMessage += `\n\n=== RESULT ===\n${data.result}`;
+        /**
+         * Handle events from the execute-with-evaluation endpoint
+         * Includes standard cell events plus evaluation-specific events
+         */
+        function handleEvaluationEvent(event) {
+            switch (event.type) {
+                case 'workflow_start':
+                    addLog(`📊 Starting workflow: ${event.total_cells} cells, ${event.total_examples} examples`, 'workflow-start');
+                    if (event.evaluation_enabled) {
+                        addLog(`🔍 LLM evaluation enabled (smoke test approach)`, 'info');
+                    }
+                    break;
 
-                        showResult(resultDiv, resultMessage, 'success');
+                case 'cell_generating':
+                    addLog(`\n📋 === CELL ${event.step_number}: "${event.cell_name}" ===`, 'workflow-step');
+                    addLog(`  🔄 Generating code...`, 'info');
+                    updateCellDisplay(event.cell_id, 'generating', '🔄 Generating...');
+                    break;
 
-                        // Add PDF download button
-                        const pdfButtonDiv = document.createElement('div');
-                        pdfButtonDiv.style.cssText = 'margin-top: 15px;';
-                        pdfButtonDiv.innerHTML = `<button onclick="downloadPDFFromData()" style="background: #28a745; padding: 12px 20px; font-size: 14px; display: inline-flex; align-items: center; gap: 8px;">📄 Download PDF Report</button>`;
-                        resultDiv.appendChild(pdfButtonDiv);
+                case 'cell_ready':
+                    addLog(`  ✓ Code ready`, 'info');
+                    updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code, null, event.code_description);
+                    break;
 
-                        // Store execution data for PDF generation
-                        window.lastExecutionData = {
-                            execution_id: data.execution_id,
-                            status: data.status,
-                            execution_time: executionTime,
-                            result: data.result
-                        };
-
-                        // Add tip about Paradigm tool
-                        const tipDiv = document.createElement('div');
-                        tipDiv.style.cssText = 'background: #e3f2fd; padding: 10px; border-radius: 4px; margin-top: 10px; border-left: 4px solid #2196f3; font-size: 12px;';
-                        tipDiv.innerHTML = '<strong>💡 Tip:</strong> The demo workflow is available in Paradigm under the tool "Workflow demo". To run your newly generated workflow, go to Admin → Third Party Tools → Workflow demo tool and change the workflow ID in the URL address to the format shown above (e.g., "afe2e40e-3514-4445-b1c9-80ce24571837").';
-                        resultDiv.appendChild(tipDiv);
-                        
-                        // Automatically delete uploaded documents from Paradigm after testing
-                        if (hasAttachments) {
-                            await cleanupUploadedDocuments(attachmentIds);
-                        }
-                        
-                        // Clear attachments after successful execution
-                        queryAttachedFiles = [];
-                        document.getElementById('queryFilesList').innerHTML = '';
-                        document.getElementById('queryUploadStatus').innerHTML = '';
-                        
+                case 'cell_executing':
+                    if (event.is_smoke_test) {
+                        addLog(`  🧪 Running smoke test (Example 1)...`, 'info');
+                        updateCellDisplay(event.cell_id, 'executing', '🧪 Smoke test...');
                     } else {
-                        addLog(`⚠️ WORKFLOW STATUS: ${data.status}`, 'error');
-                        showResult(resultDiv, 
-                            `⚠️ Workflow execution status: ${data.status}\n\nExecution ID: ${data.execution_id}\nExecution Time: ${executionTime}\nError: ${data.error || 'Unknown error'}`, 
-                            'error'
-                        );
-                        
-                        // Clean up documents even if workflow failed
-                        if (hasAttachments) {
-                            await cleanupUploadedDocuments(attachmentIds);
-                            queryAttachedFiles = [];
-                            document.getElementById('queryFilesList').innerHTML = '';
-                            document.getElementById('queryUploadStatus').innerHTML = '';
-                        }
+                        addLog(`  🔹 Running Example ${event.example_index + 1}...`, 'info');
                     }
-                } else {
-                    showResult(resultDiv, `❌ Error: ${data.detail || 'Failed to execute workflow'}`, 'error');
-                    
-                    // Clean up documents even if API call failed
-                    if (hasAttachments) {
-                        await cleanupUploadedDocuments(attachmentIds);
-                        queryAttachedFiles = [];
-                        document.getElementById('queryFilesList').innerHTML = '';
-                        document.getElementById('queryUploadStatus').innerHTML = '';
+                    break;
+
+                case 'cell_smoke_test_completed':
+                    addLog(`  ✅ Smoke test completed`, 'response');
+                    break;
+
+                case 'cell_evaluating':
+                    addLog(`  🔍 Evaluating output with LLM (attempt ${event.evaluation_attempt})...`, 'info');
+                    updateCellDisplay(event.cell_id, 'executing', `🔍 Evaluating (${event.evaluation_attempt}/5)...`);
+                    break;
+
+                case 'cell_evaluation_passed':
+                    addLog(`  ✅ Evaluation PASSED`, 'response');
+                    if (event.feedback) {
+                        addLog(`     Feedback: ${event.feedback.substring(0, 200)}${event.feedback.length > 200 ? '...' : ''}`, 'info');
+                    }
+                    // Store AI feedback for reasoning display
+                    storeAIFeedback(
+                        event.cell_id,
+                        event.evaluation_attempt || 1,
+                        event.feedback || '',
+                        [],
+                        null,
+                        event.output || '',
+                        true
+                    );
+                    break;
+
+                case 'cell_evaluation_failed':
+                    addLog(`  ⚠️ Evaluation FAILED (attempt ${event.evaluation_attempt}/${event.max_attempts})`, 'error');
+                    if (event.feedback) {
+                        addLog(`     Feedback: ${event.feedback.substring(0, 200)}${event.feedback.length > 200 ? '...' : ''}`, 'info');
+                    }
+                    if (event.issues && event.issues.length > 0) {
+                        addLog(`     Issues: ${event.issues.join('; ')}`, 'info');
+                    }
+                    // Store AI feedback for reasoning display
+                    storeAIFeedback(
+                        event.cell_id,
+                        event.evaluation_attempt,
+                        event.feedback || '',
+                        event.issues || [],
+                        event.suggested_fix || null,
+                        event.output || '',
+                        false
+                    );
+                    break;
+
+                case 'cell_evaluation_max_retries':
+                    addLog(`  ⚠️ Max evaluation retries reached, proceeding anyway`, 'error');
+                    break;
+
+                case 'cell_fixing_from_evaluation':
+                    addLog(`  🔧 Fixing code based on evaluation feedback...`, 'info');
+                    updateCellDisplay(event.cell_id, 'generating', '🔧 Fixing code...');
+                    break;
+
+                case 'cell_code_fixed':
+                    const reason = event.fix_reason === 'evaluation_feedback' ? 'evaluation feedback' : 'execution error';
+                    addLog(`  ✓ Code fixed (${reason})`, 'info');
+                    updateCellDisplay(event.cell_id, 'ready', '✓ Code fixed', null, null, event.full_code, null, null);
+                    break;
+
+                case 'cell_retrying':
+                    addLog(`  🔄 Retrying (attempt ${event.attempt}/${event.max_attempts})...`, 'info');
+                    if (event.reason === 'execution_error') {
+                        addLog(`     Previous error: ${event.previous_error.substring(0, 150)}...`, 'error');
+                    }
+                    break;
+
+                case 'cell_example_completed':
+                    // Store the output for this example
+                    if (!currentExampleOutputs[event.cell_id]) {
+                        currentExampleOutputs[event.cell_id] = {};
+                    }
+                    currentExampleOutputs[event.cell_id][event.example_id] = {
+                        output: event.output || '',
+                        variables: event.variable_values || {}
+                    };
+
+                    const completedCount = Object.keys(currentExampleOutputs[event.cell_id]).length;
+                    const totalExamples = testExamples.length;
+                    const statusText = completedCount === totalExamples
+                        ? '✅ Completed'
+                        : `⚡ Running (${completedCount}/${totalExamples})`;
+
+                    updateCellDisplayWithExamples(event.cell_id, completedCount === totalExamples ? 'completed' : 'executing', statusText);
+                    addLog(`  ✅ Example ${event.example_index + 1} completed`, 'response');
+                    break;
+
+                case 'cell_example_failed':
+                    addLog(`  ❌ Example ${event.example_index + 1} failed: ${event.error}`, 'error');
+                    break;
+
+                case 'cell_completed':
+                    addLog(`  ✅ Cell completed for all ${event.total_examples} examples`, 'response');
+                    updateCellDisplayWithExamples(event.cell_id, 'completed', '✅ Completed');
+                    break;
+
+                case 'cell_failed':
+                    addLog(`  ❌ Cell FAILED: ${event.error}`, 'error');
+                    updateCellDisplay(event.cell_id, 'failed', `❌ Failed: ${event.error}`);
+                    break;
+
+                case 'workflow_completed':
+                    addLog(`\n🎉 Workflow completed: ${event.completed_cells}/${event.total_cells} cells, ${event.total_examples} examples`, 'workflow-start');
+                    // Show and enable download buttons
+                    const downloadBtnsContainer = document.getElementById('workflowDownloadButtons');
+                    if (downloadBtnsContainer) {
+                        downloadBtnsContainer.style.display = 'block';
+                    }
+                    document.getElementById('reportButton').disabled = false;
+                    document.getElementById('packageButton').disabled = false;
+                    document.getElementById('mcpPackageButton').disabled = false;
+                    break;
+
+                case 'workflow_failed':
+                    addLog(`\n❌ Workflow FAILED: ${event.error}`, 'error');
+                    break;
+
+                case 'error':
+                    addLog(`❌ Error: ${event.error}`, 'error');
+                    break;
+
+                default:
+                    console.log('Unknown event type:', event.type, event);
+            }
+        }
+
+        /**
+         * Execute a single cell for a single example
+         * Calls the new backend endpoint that executes one cell at a time
+         */
+        async function executeSingleCellForExample(cell, example, executionContext) {
+            const payload = {
+                user_input: example.query,
+                attached_file_ids: example.fileIds.length > 0 ? example.fileIds : null,
+                execution_context: Object.keys(executionContext).length > 0 ? executionContext : null
+            };
+
+            const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/cells/${cell.id}/execute-single`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+            }
+
+            return await response.json();
+        }
+
+        /**
+         * Execute a single example through all workflow cells
+         * NOTE: This function is now DEPRECATED in favor of cell-by-cell execution
+         */
+        async function executeSingleExample(example, exampleNumber, cells) {
+            const payload = {
+                user_input: example.query,
+                stream: true
+            };
+            if (example.fileIds.length > 0) {
+                payload.attached_file_ids = example.fileIds;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/execute-stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6);
+                            if (dataStr === '[DONE]') continue;
+
+                            try {
+                                const event = JSON.parse(dataStr);
+                                await handleCellEventForExample(event, example.id, exampleNumber);
+                            } catch (e) {
+                                console.error('Failed to parse SSE event:', e);
+                            }
+                        }
                     }
                 }
             } catch (error) {
-                showResult(resultDiv, `❌ Network Error: ${error.message}`, 'error');
-                
-                // Clean up documents even if network error occurred
-                if (hasAttachments) {
-                    await cleanupUploadedDocuments(attachmentIds);
-                    queryAttachedFiles = [];
-                    document.getElementById('queryFilesList').innerHTML = '';
-                    document.getElementById('queryUploadStatus').innerHTML = '';
+                addLog(`❌ Example ${exampleNumber} failed: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        /**
+         * Handle cell events for a specific example
+         */
+        async function handleCellEventForExample(event, exampleId, exampleNumber) {
+            switch (event.type) {
+                case 'workflow_start':
+                    addLog(`  ⏳ Starting workflow for example ${exampleNumber}...`, 'info');
+                    break;
+
+                case 'cell_generating':
+                    // Only log once for all examples (first example only)
+                    if (exampleNumber === 1) {
+                        updateCellDisplay(event.cell_id, 'generating', '🔄 Generating code...');
+                    }
+                    break;
+
+                case 'cell_ready':
+                    if (exampleNumber === 1) {
+                        updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code || event.code_preview, null, event.code_description);
+                    }
+                    break;
+
+                case 'cell_executing':
+                    addLog(`  ⚡ Executing cell for example ${exampleNumber}: ${event.cell_name}`, 'info');
+                    break;
+
+                case 'cell_completed':
+                    // Store output for this example
+                    if (!currentExampleOutputs[event.cell_id]) {
+                        currentExampleOutputs[event.cell_id] = {};
+                    }
+                    currentExampleOutputs[event.cell_id][exampleId] = {
+                        output: event.output || '',
+                        variables: event.variable_values || {}
+                    };
+
+                    addLog(`  ✅ Cell completed for example ${exampleNumber}/${testExamples.length}`, 'response');
+
+                    // Update cell display IMMEDIATELY after each example completes
+                    // This shows the output as soon as it's available, not waiting for all examples
+                    const completedCount = Object.keys(currentExampleOutputs[event.cell_id] || {}).length;
+                    const status = completedCount === testExamples.length ? 'completed' : 'executing';
+                    const statusText = completedCount === testExamples.length ? '✅ Completed' : `⚡ Running (${completedCount}/${testExamples.length})`;
+
+                    updateCellDisplayWithExamples(event.cell_id, status, statusText);
+                    addLog(`  📊 Updated display: ${completedCount}/${testExamples.length} examples complete`, 'info');
+
+                    break;
+
+                case 'cell_failed':
+                    addLog(`  ❌ Cell failed for example ${exampleNumber}: ${event.error}`, 'error');
+                    throw new Error(`Cell ${event.cell_name} failed: ${event.error}`);
+
+                case 'workflow_completed':
+                    addLog(`  🎉 Workflow completed for example ${exampleNumber}`, 'response');
+                    break;
+
+                case 'workflow_failed':
+                    throw new Error(`Workflow failed: ${event.error}`);
+            }
+        }
+
+        /**
+         * Update cell display with multiple example outputs using tabs
+         */
+        function updateCellDisplayWithExamples(cellId, status, statusText) {
+            console.log(`DEBUG updateCellDisplayWithExamples: cellId=${cellId}, status=${status}`);
+
+            try {
+                const cellDiv = document.getElementById(`cell-item-${cellId}`);
+                if (!cellDiv) {
+                    console.error(`DEBUG: Cell div not found for ${cellId}`);
+                    return;
                 }
+
+                console.log(`DEBUG: Found cell div for ${cellId}`);
+
+                // Update status
+                cellDiv.className = `cell-item ${status}`;
+
+                // Get outputs for this cell
+                const exampleOutputsForCell = currentExampleOutputs[cellId] || {};
+                console.log(`DEBUG: exampleOutputsForCell keys:`, Object.keys(exampleOutputsForCell));
+
+                // Create output section with tabs
+                let outputDiv = cellDiv.querySelector('.cell-output');
+                if (!outputDiv) {
+                    outputDiv = document.createElement('div');
+                    outputDiv.className = 'cell-output';
+                    const cellContent = cellDiv.querySelector('.cell-content');
+                    if (!cellContent) {
+                        console.error(`DEBUG: Cell content div not found for ${cellId}`);
+                        return;
+                    }
+                    cellContent.appendChild(outputDiv);
+                }
+
+            // Build tabs HTML - each tab is a toggle button, all collapsed by default
+            let outputHTML = '<div class="example-tabs">';
+            testExamples.forEach((example, index) => {
+                const hasOutput = exampleOutputsForCell[example.id];
+                const tabClass = hasOutput ? '' : ' pending';
+                outputHTML += `<div class="example-tab${tabClass}" id="example-tab-${cellId}-${example.id}" onclick="toggleExampleOutput('${cellId}', '${example.id}')">Example ${index + 1}</div>`;
+            });
+            outputHTML += '</div>';
+
+            // Build output content for each example - all collapsed by default
+            testExamples.forEach((example, index) => {
+                const exampleOutput = exampleOutputsForCell[example.id];
+
+                outputHTML += `<div class="example-output" id="example-output-${cellId}-${example.id}">`;
+
+                // Check if this example has completed yet
+                if (!exampleOutput) {
+                    // Example hasn't run yet or is still running
+                    outputHTML += `<div class="cell-output-pending">⏳ Waiting for this example to complete...</div>`;
+                } else {
+                    // Show variable values if provided
+                    const variables = exampleOutput.variables;
+                    if (variables && Object.keys(variables).length > 0) {
+                        outputHTML += '<div class="cell-output-header">📊 Cell Outputs</div>';
+                        outputHTML += '<div class="cell-output-variables">';
+
+                        for (const [key, value] of Object.entries(variables)) {
+                            outputHTML += `
+                                <div class="cell-output-item">
+                                    <div class="cell-output-label">${key}</div>
+                                    <div class="cell-output-value">${value}</div>
+                                </div>
+                            `;
+                        }
+
+                        outputHTML += '</div>';
+                    }
+
+                    // Show console output if provided
+                    if (exampleOutput.output) {
+                        outputHTML += `<div class="cell-output-console">${exampleOutput.output}</div>`;
+                    }
+
+                    // Show message if no output at all
+                    if (!exampleOutput.output && (!variables || Object.keys(variables).length === 0)) {
+                        outputHTML += `<div class="cell-output-empty">No output produced</div>`;
+                    }
+                }
+
+                outputHTML += '</div>';
+            });
+
+            // Add action buttons
+            outputHTML += `
+                <div class="cell-approval-buttons" id="cell-approval-buttons-${cellId}">
+                    <button class="cell-approval-btn cell-rerun-btn"
+                            onclick="rerunCell('${cellId}', '${currentWorkflowId}')">
+                        ▶ Rerun Cell
+                    </button>
+                    <button class="cell-approval-btn cell-feedback-btn"
+                            onclick="toggleCellFeedback('${cellId}')">
+                        ✎ Request Changes
+                    </button>
+                </div>
+                <div class="cell-feedback-input-container" id="cell-feedback-${cellId}">
+                    <textarea class="cell-feedback-textarea"
+                              id="cell-feedback-textarea-${cellId}"
+                              placeholder="Describe the changes you want..."></textarea>
+                    <button class="cell-feedback-submit"
+                            onclick="submitCellFeedback('${cellId}', '${currentWorkflowId}')">
+                        Submit Feedback
+                    </button>
+                    <button class="cell-feedback-cancel"
+                            onclick="toggleCellFeedback('${cellId}')">
+                        Cancel
+                    </button>
+                </div>
+            `;
+
+            // Add AI reasoning section if there's feedback for this cell
+            outputHTML += renderAIReasoningSection(cellId);
+
+            console.log(`DEBUG: Setting outputDiv.innerHTML with ${testExamples.length} example tabs and buttons`);
+            outputDiv.innerHTML = outputHTML;
+            console.log(`DEBUG: outputDiv.innerHTML set successfully, length=${outputHTML.length}`);
+
+                // Verify tabs were created
+                const tabs = cellDiv.querySelectorAll('.example-tab');
+                const buttons = cellDiv.querySelectorAll('.cell-approval-btn');
+                console.log(`DEBUG: Found ${tabs.length} tabs and ${buttons.length} buttons after update`);
+            } catch (error) {
+                console.error('DEBUG: Error in updateCellDisplayWithExamples:', error);
+            }
+        }
+
+        /**
+         * Toggle example output visibility (click to expand/collapse).
+         */
+        function toggleExampleOutput(cellId, exampleId) {
+            const tab = document.getElementById(`example-tab-${cellId}-${exampleId}`);
+            const output = document.getElementById(`example-output-${cellId}-${exampleId}`);
+
+            if (!tab || !output) return;
+
+            // Toggle the expanded state
+            const isExpanded = tab.classList.contains('expanded');
+
+            if (isExpanded) {
+                // Collapse
+                tab.classList.remove('expanded');
+                output.classList.remove('expanded');
+            } else {
+                // Expand
+                tab.classList.add('expanded');
+                output.classList.add('expanded');
+            }
+        }
+
+        async function executeCellBasedWorkflow(query, attachmentIds, resultDiv) {
+            showResult(resultDiv, 'Starting cell-based execution...', 'loading');
+
+            // Initialize cell progress display
+            initializeCellProgressDisplay();
+
+            addLog('🚀 Starting cell-based workflow execution...', 'info');
+            addLog(`🎯 WORKFLOW ID: ${currentWorkflowId}`, 'response');
+            addLog(`📝 USER QUERY: ${query}`, 'query');
+            addLog(`📦 CELLS TO EXECUTE: ${currentCells.length}`, 'workflow-step');
+
+            if (attachmentIds.length > 0) {
+                addLog(`📎 ATTACHED DOCUMENTS: ${attachmentIds.length} files [${attachmentIds.join(', ')}]`, 'docs');
+            }
+
+            // Close any existing event source
+            if (cellEventSource) {
+                cellEventSource.close();
+            }
+
+            // Prepare payload
+            const payload = {
+                user_input: query,
+                stream: true
+            };
+            if (attachmentIds.length > 0) {
+                payload.attached_file_ids = attachmentIds;
+            }
+
+            try {
+                // Use fetch with streaming for SSE
+                const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/execute-stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Process complete SSE messages
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const jsonStr = line.substring(6);
+                            if (jsonStr.trim()) {
+                                try {
+                                    const event = JSON.parse(jsonStr);
+                                    handleCellExecutionEvent(event, resultDiv);
+                                } catch (e) {
+                                    console.error('Failed to parse SSE event:', e, jsonStr);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                addLog('✅ Cell-based execution stream completed', 'response');
+
+            } catch (error) {
+                addLog(`❌ Cell execution error: ${error.message}`, 'error');
+                showResult(resultDiv, `❌ Execution Error: ${error.message}`, 'error');
+                hideCellProgressDisplay();
+            }
+        }
+
+        /**
+         * Initialize the cell progress display with current cells.
+         */
+        function initializeCellProgressDisplay() {
+            const progressSection = document.getElementById('cellProgressSection');
+            const progressList = document.getElementById('cellProgressList');
+            const badge = document.getElementById('cellProgressBadge');
+
+            // Show the section
+            progressSection.style.display = 'block';
+
+            // Update badge
+            badge.textContent = `0/${currentCells.length} cells`;
+
+            // Build cell items
+            progressList.innerHTML = '';
+            currentCells.forEach(cell => {
+                const cellDiv = document.createElement('div');
+                cellDiv.className = 'cell-item pending';
+                cellDiv.id = `cell-item-${cell.id}`;
+
+                cellDiv.innerHTML = `
+                    <div class="cell-number">${cell.step_number}</div>
+                    <div class="cell-content">
+                        <div class="cell-name">${cell.name}</div>
+                        <div class="cell-description">${cell.description}</div>
+                        <div class="cell-meta">
+                            <span class="cell-meta-item">📥 ${cell.inputs_required.join(', ') || 'none'}</span>
+                            <span class="cell-meta-item">📤 ${cell.outputs_produced.join(', ') || 'none'}</span>
+                        </div>
+                    </div>
+                    <span class="cell-code-toggle" onclick="toggleCellCode('${cell.id}')" title="View code">👁️</span>
+                    <div class="cell-status-icon">⏳</div>
+                `;
+
+                progressList.appendChild(cellDiv);
+            });
+        }
+
+        /**
+         * Handle a cell execution SSE event and update the UI.
+         */
+        function handleCellExecutionEvent(event, resultDiv) {
+            const type = event.type;
+
+            switch (type) {
+                case 'workflow_start':
+                    addLog(`🎬 Workflow started with ${event.total_cells} cells`, 'workflow-step');
+                    break;
+
+                case 'cell_generating':
+                    updateCellDisplay(event.cell_id, 'generating', '🔄 Generating code...');
+                    addLog(`🔄 Generating code for: ${event.cell_name}`, 'info');
+                    break;
+
+                case 'cell_ready':
+                    updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code || event.code_preview, null, event.code_description);
+                    addLog(`✓ Code ready for: ${event.cell_name}`, 'response');
+                    break;
+
+                case 'cell_executing':
+                    updateCellDisplay(event.cell_id, 'executing', '⚡ Executing...');
+                    const attemptInfo = event.attempt > 1 ? ` (attempt ${event.attempt})` : '';
+                    addLog(`⚡ Executing cell: ${event.cell_name}${attemptInfo}`, 'workflow-step');
+                    break;
+
+                case 'cell_retrying':
+                    updateCellDisplay(event.cell_id, 'retrying', `🔄 Retrying (${event.attempt}/${event.max_attempts})...`);
+                    addLog(`🔄 Retrying cell: ${event.cell_name} (attempt ${event.attempt}/${event.max_attempts})`, 'info');
+                    addLog(`📋 Previous error: ${event.previous_error.substring(0, 150)}...`, 'detailed');
+                    break;
+
+                case 'cell_completed':
+                    updateCellDisplay(
+                        event.cell_id,
+                        'completed',
+                        `✅ Completed in ${event.execution_time?.toFixed(2) || '?'}s`,
+                        event.output,
+                        null,  // no error
+                        null,  // no code update
+                        event.variable_values  // pass the variable values
+                    );
+                    updateCellProgressBadge();
+                    const retryInfo = event.was_retried ? ` after ${event.attempt} attempts` : '';
+                    addLog(`✅ Cell completed: ${event.cell_name} (${event.execution_time?.toFixed(2)}s)${retryInfo}`, 'response');
+
+                    // Log variable outputs
+                    if (event.variable_values && Object.keys(event.variable_values).length > 0) {
+                        for (const [key, value] of Object.entries(event.variable_values)) {
+                            const preview = value.length > 100 ? value.substring(0, 100) + '...' : value;
+                            addLog(`📊 ${key}: ${preview}`, 'detailed');
+                        }
+                    }
+
+                    if (event.output) {
+                        addLog(`📄 Console: ${event.output.substring(0, 200)}${event.output.length > 200 ? '...' : ''}`, 'detailed');
+                    }
+                    break;
+
+                case 'cell_failed':
+                    const failedAttempts = event.attempts_made ? ` after ${event.attempts_made} attempts` : '';
+                    updateCellDisplay(event.cell_id, 'failed', `❌ Failed${failedAttempts}`, null, event.error);
+                    addLog(`❌ Cell failed: ${event.cell_name}${failedAttempts} - ${event.error}`, 'error');
+                    break;
+
+                case 'workflow_completed':
+                    addLog(`🎉 Workflow completed successfully!`, 'workflow-step');
+                    showResult(resultDiv, `✅ Workflow Completed!\n\n${event.final_result || 'No result'}`, 'success');
+                    break;
+
+                case 'workflow_failed':
+                    addLog(`❌ Workflow failed: ${event.error}`, 'error');
+                    showResult(resultDiv, `❌ Workflow Failed\n\nCompleted cells: ${event.completed_cells || 0}\n\nError: ${event.error}`, 'error');
+                    break;
+
+                case 'error':
+                    addLog(`❌ Error: ${event.error}`, 'error');
+                    showResult(resultDiv, `❌ Error: ${event.error}`, 'error');
+                    break;
+
+                default:
+                    console.log('Unknown event type:', type, event);
+            }
+        }
+
+        /**
+         * Update a cell's display in the progress list.
+         */
+        function updateCellDisplay(cellId, status, statusText, output = null, error = null, code = null, variableValues = null, codeDescription = null) {
+            const cellDiv = document.getElementById(`cell-item-${cellId}`);
+            if (!cellDiv) return;
+
+            // Update class
+            cellDiv.className = `cell-item ${status}`;
+
+            // Update status icon
+            const statusIcon = cellDiv.querySelector('.cell-status-icon');
+            if (statusIcon) {
+                switch (status) {
+                    case 'generating': statusIcon.textContent = '🔄'; break;
+                    case 'ready': statusIcon.textContent = '✓'; break;
+                    case 'executing': statusIcon.textContent = '⚡'; break;
+                    case 'retrying': statusIcon.textContent = '🔄'; break;
+                    case 'completed': statusIcon.textContent = '✅'; break;
+                    case 'failed': statusIcon.textContent = '❌'; break;
+                    default: statusIcon.textContent = '⏳';
+                }
+            }
+
+            // Add or update code description if provided (collapsible)
+            if (codeDescription) {
+                let descSection = cellDiv.querySelector('.cell-description-section');
+                if (!descSection) {
+                    descSection = document.createElement('div');
+                    descSection.className = 'cell-description-section collapsible-section';
+                    descSection.id = `cell-description-${cellId}`;
+                    // Insert before code section if it exists, otherwise append
+                    const codeSection = cellDiv.querySelector('.cell-code-section');
+                    if (codeSection) {
+                        cellDiv.querySelector('.cell-content').insertBefore(descSection, codeSection);
+                    } else {
+                        cellDiv.querySelector('.cell-content').appendChild(descSection);
+                    }
+                }
+                descSection.innerHTML = `
+                    <div class="collapsible-toggle" onclick="toggleCellDescription('${cellId}')">
+                        <span>📋 What This Cell Does</span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="cell-description-content">${codeDescription}</div>
+                    </div>
+                `;
+            }
+
+            // Add or update code section if provided
+            if (code) {
+                let codeSection = cellDiv.querySelector('.cell-code-section');
+                if (!codeSection) {
+                    codeSection = document.createElement('div');
+                    codeSection.className = 'cell-code-section';
+                    codeSection.id = `cell-code-${cellId}`;
+                    codeSection.innerHTML = `
+                        <div class="cell-code-header">Generated Code</div>
+                        <div class="cell-code-content"></div>
+                    `;
+                    cellDiv.querySelector('.cell-content').appendChild(codeSection);
+                }
+                const codeContent = codeSection.querySelector('.cell-code-content');
+                if (codeContent) {
+                    codeContent.textContent = code;
+                }
+            }
+
+            // Add output if provided
+            if (status === 'completed') {
+                let outputDiv = cellDiv.querySelector('.cell-output');
+                if (!outputDiv) {
+                    outputDiv = document.createElement('div');
+                    outputDiv.className = 'cell-output';
+                    cellDiv.querySelector('.cell-content').appendChild(outputDiv);
+                }
+
+                // Build output HTML
+                let outputHTML = '';
+
+                // Show variable values if provided
+                if (variableValues && Object.keys(variableValues).length > 0) {
+                    outputHTML += '<div class="cell-output-header">Cell Outputs</div>';
+                    outputHTML += '<div class="cell-output-variables">';
+
+                    for (const [key, value] of Object.entries(variableValues)) {
+                        outputHTML += `
+                            <div class="cell-output-item">
+                                <div class="cell-output-label">${key}</div>
+                                <div class="cell-output-value">${value}</div>
+                            </div>
+                        `;
+                    }
+
+                    outputHTML += '</div>';
+                }
+
+                // Show console output if provided
+                if (output) {
+                    outputHTML += `<div class="cell-output-console">${output}</div>`;
+                }
+
+                // Add action buttons for completed cells
+                outputHTML += `
+                    <div class="cell-approval-buttons" id="cell-approval-buttons-${cellId}">
+                        <button class="cell-approval-btn cell-rerun-btn"
+                                onclick="rerunCell('${cellId}', '${currentWorkflowId}')">
+                            ▶ Rerun Cell
+                        </button>
+                        <button class="cell-approval-btn cell-feedback-btn"
+                                onclick="toggleCellFeedback('${cellId}')">
+                            ✎ Request Changes
+                        </button>
+                    </div>
+                    <div class="cell-feedback-input-container" id="cell-feedback-${cellId}">
+                        <textarea class="cell-feedback-textarea"
+                                  id="cell-feedback-textarea-${cellId}"
+                                  placeholder="Describe the changes you want..."></textarea>
+                        <button class="cell-feedback-submit"
+                                onclick="submitCellFeedback('${cellId}', '${currentWorkflowId}')">
+                            Submit Feedback
+                        </button>
+                        <button class="cell-feedback-cancel"
+                                onclick="toggleCellFeedback('${cellId}')">
+                            Cancel
+                        </button>
+                    </div>
+                `;
+
+                outputDiv.innerHTML = outputHTML;
+            }
+
+            // Add error if provided
+            if (error && status === 'failed') {
+                let errorDiv = cellDiv.querySelector('.cell-error');
+                if (!errorDiv) {
+                    errorDiv = document.createElement('div');
+                    errorDiv.className = 'cell-error';
+                    cellDiv.querySelector('.cell-content').appendChild(errorDiv);
+                }
+                errorDiv.textContent = error;
+            }
+        }
+
+        /**
+         * Update the cell progress badge with completion count.
+         */
+        function updateCellProgressBadge() {
+            const badge = document.getElementById('cellProgressBadge');
+            const completedCells = document.querySelectorAll('.cell-item.completed').length;
+            badge.textContent = `${completedCells}/${currentCells.length} cells`;
+        }
+
+        /**
+         * Hide the cell progress display.
+         */
+        function hideCellProgressDisplay() {
+            document.getElementById('cellProgressSection').style.display = 'none';
+        }
+
+        /**
+         * Toggle the visibility of a cell's code section.
+         */
+        function toggleCellCode(cellId) {
+            const codeSection = document.getElementById(`cell-code-${cellId}`);
+            const toggle = document.querySelector(`#cell-item-${cellId} .cell-code-toggle`);
+
+            if (codeSection) {
+                codeSection.classList.toggle('visible');
+                if (toggle) {
+                    toggle.classList.toggle('active');
+                }
+            }
+        }
+
+        /**
+         * Show/hide cell feedback input
+         */
+        function toggleCellFeedback(cellId) {
+            const feedbackContainer = document.getElementById(`cell-feedback-${cellId}`);
+            const buttonsContainer = document.getElementById(`cell-approval-buttons-${cellId}`);
+
+            if (feedbackContainer) {
+                const isVisible = feedbackContainer.classList.contains('visible');
+                if (isVisible) {
+                    feedbackContainer.classList.remove('visible');
+                    if (buttonsContainer) buttonsContainer.style.display = 'flex';
+                } else {
+                    feedbackContainer.classList.add('visible');
+                    if (buttonsContainer) buttonsContainer.style.display = 'none';
+                    // Focus the textarea
+                    const textarea = feedbackContainer.querySelector('textarea');
+                    if (textarea) textarea.focus();
+                }
+            }
+        }
+
+        /**
+         * Approve a cell and continue to next
+         */
+        /**
+         * Rerun a cell with its current code.
+         */
+        async function rerunCell(cellId, workflowId) {
+            addLog(`▶ Rerunning cell...`, 'info');
+
+            // Mark cell as executing
+            updateCellDisplay(cellId, 'executing', '⚡ Rerunning cell...');
+
+            try {
+                const response = await fetch(`/api/workflows/${workflowId}/cells/${cellId}/rerun`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Rerun failed: ${response.status} - ${errorText}`);
+                }
+
+                const result = await response.json();
+
+                // Update cell display with new outputs
+                if (result.success) {
+                    // Format the variable values for display
+                    const variableValues = result.variable_values || {};
+
+                    updateCellDisplay(
+                        cellId,
+                        'completed',
+                        '✅ Cell rerun completed',
+                        result.output || '',
+                        null,
+                        result.code || null,
+                        variableValues
+                    );
+
+                    addLog(`✅ Cell rerun completed successfully`, 'response');
+
+                    // Log key outputs
+                    if (Object.keys(variableValues).length > 0) {
+                        addLog(`📊 Updated outputs: ${Object.keys(variableValues).join(', ')}`, 'info');
+                    }
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+            } catch (error) {
+                console.error('Rerun error:', error);
+                addLog(`❌ Cell rerun failed: ${error.message}`, 'error');
+                updateCellDisplay(cellId, 'failed', '❌ Rerun failed', null, error.message);
+            }
+        }
+
+        /**
+         * Submit feedback for a cell
+         */
+        async function submitCellFeedback(cellId, workflowId) {
+            const textarea = document.getElementById(`cell-feedback-textarea-${cellId}`);
+            const feedback = textarea?.value?.trim();
+
+            if (!feedback) {
+                alert('Please provide feedback before submitting.');
+                return;
+            }
+
+            addLog(`📝 User feedback: ${feedback.substring(0, 100)}...`, 'info');
+            addLog(`🔄 Regenerating cell with feedback...`, 'info');
+
+            // Hide feedback UI
+            toggleCellFeedback(cellId);
+
+            // Mark cell as generating
+            updateCellDisplay(cellId, 'generating', '🔄 Regenerating with feedback...');
+
+            try {
+                const response = await fetch(`/api/workflows/${workflowId}/cells/${cellId}/feedback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feedback: feedback })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Feedback submission failed: ${response.status} - ${errorText}`);
+                }
+
+                const result = await response.json();
+
+                // Update cell with new code
+                if (result.new_code) {
+                    updateCellDisplay(cellId, 'ready', '✓ Code updated with feedback', null, null, result.new_code);
+                    addLog(`✅ Cell code regenerated successfully`, 'response');
+                    addLog(`📝 New code available - review and approve to continue`, 'info');
+                }
+            } catch (error) {
+                console.error('Feedback error:', error);
+                addLog(`❌ Failed to regenerate with feedback: ${error.message}`, 'error');
+                updateCellDisplay(cellId, 'failed', '❌ Regeneration failed', null, error.message);
             }
         }
 
@@ -2084,6 +4274,259 @@ if __name__ == "__main__":
                 addLog(`❌ Failed to download package: ${error.message}`, 'error');
                 alert(`Failed to download package: ${error.message}`);
             }
+        }
+
+        /**
+         * Download workflow execution results as a PDF report.
+         *
+         * Generates a printable HTML report from all cell outputs
+         * and opens it in a new window for the user to save as PDF.
+         */
+        function downloadReportPDF() {
+            if (!currentWorkflowId) {
+                alert('Please create and execute a workflow first');
+                addLog('❌ No workflow results to export', 'error');
+                return;
+            }
+
+            addLog('📄 Generating PDF report...', 'info');
+
+            try {
+                // Get workflow description
+                const workflowDescription = document.getElementById('workflowDescription').value || 'Untitled Workflow';
+
+                // Build HTML report content
+                let reportHTML = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>Workflow Report - ${workflowDescription.substring(0, 50)}</title>
+                        <style>
+                            body {
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                max-width: 900px;
+                                margin: 0 auto;
+                                padding: 40px;
+                                line-height: 1.6;
+                                color: #333;
+                            }
+                            h1 {
+                                color: #2c3e50;
+                                border-bottom: 3px solid #3498db;
+                                padding-bottom: 15px;
+                                margin-bottom: 30px;
+                            }
+                            h2 {
+                                color: #34495e;
+                                margin-top: 40px;
+                                border-left: 4px solid #3498db;
+                                padding-left: 15px;
+                            }
+                            h3 {
+                                color: #7f8c8d;
+                                margin-top: 25px;
+                            }
+                            .workflow-description {
+                                background: #f8f9fa;
+                                padding: 20px;
+                                border-radius: 8px;
+                                margin-bottom: 30px;
+                                border-left: 4px solid #3498db;
+                            }
+                            .cell-section {
+                                margin-bottom: 40px;
+                                padding: 20px;
+                                background: #fafafa;
+                                border-radius: 8px;
+                                border: 1px solid #e0e0e0;
+                            }
+                            .cell-name {
+                                font-size: 1.3em;
+                                color: #2c3e50;
+                                margin-bottom: 10px;
+                            }
+                            .cell-description {
+                                color: #666;
+                                font-style: italic;
+                                margin-bottom: 15px;
+                            }
+                            .example-section {
+                                margin-top: 20px;
+                                padding: 15px;
+                                background: white;
+                                border-radius: 6px;
+                                border: 1px solid #ddd;
+                            }
+                            .example-title {
+                                font-weight: bold;
+                                color: #2980b9;
+                                margin-bottom: 10px;
+                            }
+                            .example-input {
+                                background: #e8f4f8;
+                                padding: 10px;
+                                border-radius: 4px;
+                                margin-bottom: 10px;
+                            }
+                            .example-input strong {
+                                color: #2980b9;
+                            }
+                            .output-variable {
+                                margin: 10px 0;
+                                padding: 10px;
+                                background: #e8f8e8;
+                                border-radius: 4px;
+                                border-left: 3px solid #27ae60;
+                            }
+                            .output-variable-name {
+                                font-weight: bold;
+                                color: #27ae60;
+                                margin-bottom: 5px;
+                            }
+                            .output-variable-value {
+                                font-family: 'Courier New', monospace;
+                                white-space: pre-wrap;
+                                word-break: break-word;
+                                font-size: 0.9em;
+                            }
+                            .console-output {
+                                background: #2d2d2d;
+                                color: #f8f8f2;
+                                padding: 15px;
+                                border-radius: 4px;
+                                font-family: monospace;
+                                white-space: pre-wrap;
+                                font-size: 0.85em;
+                                margin-top: 10px;
+                            }
+                            .timestamp {
+                                text-align: right;
+                                color: #999;
+                                font-size: 0.9em;
+                                margin-top: 30px;
+                                padding-top: 20px;
+                                border-top: 1px solid #ddd;
+                            }
+                            @media print {
+                                body { padding: 20px; }
+                                .cell-section { break-inside: avoid; }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>📊 Workflow Execution Report</h1>
+                        <div class="workflow-description">
+                            <strong>Workflow Description:</strong><br>
+                            ${escapeHTML(workflowDescription)}
+                        </div>
+                `;
+
+                // Iterate through each cell and its outputs
+                const cellItems = document.querySelectorAll('.cell-item');
+                let cellIndex = 0;
+
+                cellItems.forEach(cellItem => {
+                    cellIndex++;
+                    const cellId = cellItem.id.replace('cell-item-', '');
+                    const cellNameEl = cellItem.querySelector('.cell-item-name');
+                    const cellName = cellNameEl ? cellNameEl.textContent : 'Cell ' + cellIndex;
+                    const cellDescEl = cellItem.querySelector('.cell-description-full');
+                    const cellDesc = cellDescEl ? cellDescEl.textContent : '';
+
+                    reportHTML += `
+                        <div class="cell-section">
+                            <div class="cell-name">📋 Cell ${cellIndex}: ${escapeHTML(cellName)}</div>
+                            ${cellDesc ? '<div class="cell-description">' + escapeHTML(cellDesc) + '</div>' : ''}
+                    `;
+
+                    // Get outputs for this cell
+                    const cellOutputs = currentExampleOutputs[cellId] || {};
+
+                    // Add each example's output
+                    testExamples.forEach((example, exIndex) => {
+                        const exampleOutput = cellOutputs[example.id];
+                        reportHTML += `
+                            <div class="example-section">
+                                <div class="example-title">🔹 Example ${exIndex + 1}</div>
+                                <div class="example-input">
+                                    <strong>Input:</strong> ${escapeHTML(example.query || 'No input')}
+                                </div>
+                        `;
+
+                        if (exampleOutput) {
+                            // Show variables
+                            const variables = exampleOutput.variables || {};
+                            if (Object.keys(variables).length > 0) {
+                                for (const [key, value] of Object.entries(variables)) {
+                                    reportHTML += `
+                                        <div class="output-variable">
+                                            <div class="output-variable-name">${escapeHTML(key)}</div>
+                                            <div class="output-variable-value">${escapeHTML(String(value))}</div>
+                                        </div>
+                                    `;
+                                }
+                            }
+
+                            // Show console output
+                            if (exampleOutput.output) {
+                                reportHTML += `
+                                    <div class="console-output">${escapeHTML(exampleOutput.output)}</div>
+                                `;
+                            }
+
+                            if (!exampleOutput.output && Object.keys(variables).length === 0) {
+                                reportHTML += '<p style="color: #999;">No output produced</p>';
+                            }
+                        } else {
+                            reportHTML += '<p style="color: #999;">Output not available</p>';
+                        }
+
+                        reportHTML += '</div>';
+                    });
+
+                    reportHTML += '</div>';
+                });
+
+                // Add timestamp
+                reportHTML += `
+                        <div class="timestamp">
+                            Generated on: ${new Date().toLocaleString()}
+                        </div>
+                    </body>
+                    </html>
+                `;
+
+                // Open in new window and trigger print
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(reportHTML);
+                printWindow.document.close();
+
+                // Trigger print dialog after a short delay
+                setTimeout(() => {
+                    printWindow.print();
+                }, 500);
+
+                addLog('✅ Report generated - use Print dialog to save as PDF', 'success');
+
+            } catch (error) {
+                console.error('Report generation error:', error);
+                addLog(`❌ Failed to generate report: ${error.message}`, 'error');
+                alert(`Failed to generate report: ${error.message}`);
+            }
+        }
+
+        /**
+         * Escape HTML special characters to prevent XSS.
+         */
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
         /**

@@ -8,13 +8,12 @@ services:
       dockerfile: Dockerfile
     container_name: lighton-workflow-generator
     ports:
-      - "8000:8000"  # FastAPI backend
-      - "3000:3000"  # Frontend
+      - "8000:8000"  # FastAPI backend (also serves frontend at /)
     environment:
       # API Keys (to be set in .env file)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - PARADIGM_API_KEY=${PARADIGM_API_KEY}
-      - PARADIGM_API_BASE_URL=${PARADIGM_API_BASE_URL:-https://paradigm.lighton.ai}
+      - LIGHTON_API_KEY=${LIGHTON_API_KEY}
+      - LIGHTON_BASE_URL=${LIGHTON_BASE_URL:-https://paradigm.lighton.ai}
 
       # Redis configuration (optional - for serverless compatibility)
       # Supports both Vercel KV (automatic) and Upstash (manual) variables
@@ -31,7 +30,6 @@ services:
     volumes:
       # Mount source code for development (comment out for production)
       - ./api:/app/api
-      - ./frontend:/app/frontend
       - ./index.html:/app/index.html
 
       # Exclude venv and cache

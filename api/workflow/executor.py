@@ -4,9 +4,10 @@ import io
 import logging
 import json
 import os
+import re
 from contextlib import redirect_stdout, redirect_stderr
 from typing import Optional, Dict, Any, List
-from .models import Workflow, WorkflowExecution, ExecutionStatus
+from .models import Workflow, WorkflowExecution, ExecutionStatus, WorkflowPlan
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,13 @@ class WorkflowExecutor:
         # Fallback to in-memory if Redis not available
         self.workflows: Dict[str, Workflow] = {}
         self.executions: Dict[str, WorkflowExecution] = {}
+        # Progress tracking for active executions
+        self.progress_queues: Dict[str, List[Dict]] = {}  # execution_id -> progress_updates
+        self.ai_tool_executions: Dict[str, List[Dict]] = {}  # execution_id -> ai_tool_details
+        # Cell-based workflow plans storage
+        self.workflow_plans: Dict[str, WorkflowPlan] = {}  # workflow_id -> plan
+        # Execution context storage for cell reruns
+        self.execution_contexts: Dict[str, Dict[str, Any]] = {}  # workflow_id -> execution_context
 
         if self.use_redis:
             logger.info("✅ Using Redis (Upstash) for workflow storage")
@@ -73,7 +81,7 @@ class WorkflowExecutor:
     def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
         """Retrieve a stored workflow"""
         if self.use_redis:
-            workflow_data = redis_client.get(f"workflow:{workflow_id}")
+            workflow_data = redis_client.get("workflow:{}".format(workflow_id))
             if workflow_data:
                 # Parse JSON string back to Workflow object
                 workflow_dict = json.loads(workflow_data)
@@ -81,10 +89,150 @@ class WorkflowExecutor:
             return None
         else:
             return self.workflows.get(workflow_id)
-    
+
+    def store_workflow_plan(self, workflow_id: str, plan: WorkflowPlan) -> None:
+        """
+        Store a workflow plan for cell-based execution.
+
+        Args:
+            workflow_id: ID of the parent workflow
+            plan: The workflow plan with cell definitions
+        """
+        if self.use_redis:
+            # Store in Redis with 24h expiration
+            plan_data = json.dumps(plan.to_dict())
+            redis_client.setex(
+                "workflow_plan:{}".format(workflow_id),
+                86400,  # 24 hours TTL
+                plan_data
+            )
+            logger.info("Stored workflow plan for {} in Redis".format(workflow_id))
+        else:
+            self.workflow_plans[workflow_id] = plan
+            logger.info("Stored workflow plan for {} in memory".format(workflow_id))
+
+    def get_workflow_plan(self, workflow_id: str) -> Optional[WorkflowPlan]:
+        """
+        Retrieve a workflow plan.
+
+        Args:
+            workflow_id: ID of the parent workflow
+
+        Returns:
+            WorkflowPlan if found, None otherwise
+        """
+        if self.use_redis:
+            plan_data = redis_client.get("workflow_plan:{}".format(workflow_id))
+            if plan_data:
+                plan_dict = json.loads(plan_data)
+                return WorkflowPlan.from_dict(plan_dict)
+            return None
+        else:
+            return self.workflow_plans.get(workflow_id)
+
+    def store_execution_context(self, workflow_id: str, context: Dict[str, Any]) -> None:
+        """
+        Store execution context for a workflow (for cell reruns).
+
+        Args:
+            workflow_id: ID of the workflow
+            context: Current execution context with all variable values
+        """
+        if self.use_redis:
+            # Store in Redis with 24h expiration
+            context_data = json.dumps(context, default=str)
+            redis_client.setex(
+                "execution_context:{}".format(workflow_id),
+                86400,  # 24 hours TTL
+                context_data
+            )
+        else:
+            self.execution_contexts[workflow_id] = context
+
+    def get_execution_context(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Retrieve execution context for a workflow.
+
+        Args:
+            workflow_id: ID of the workflow
+
+        Returns:
+            Execution context dict, or empty dict if not found
+        """
+        if self.use_redis:
+            context_data = redis_client.get("execution_context:{}".format(workflow_id))
+            if context_data:
+                return json.loads(context_data)
+            return {}
+        else:
+            return self.execution_contexts.get(workflow_id, {})
+
+    def update_workflow_plan(self, workflow_id: str, plan: WorkflowPlan) -> None:
+        """
+        Update a workflow plan (e.g., after cell execution).
+
+        Args:
+            workflow_id: ID of the parent workflow
+            plan: The updated plan
+        """
+        self.store_workflow_plan(workflow_id, plan)
+
     def get_execution(self, execution_id: str) -> Optional[WorkflowExecution]:
         """Retrieve an execution record"""
         return self.executions.get(execution_id)
+    
+    def get_progress_updates(self, execution_id: str) -> List[Dict]:
+        """Get progress updates for a specific execution"""
+        return self.progress_queues.get(execution_id, [])
+    
+    def clear_progress_updates(self, execution_id: str) -> None:
+        """Clear progress updates for a completed execution"""
+        if execution_id in self.progress_queues:
+            del self.progress_queues[execution_id]
+            
+    def get_ai_tool_executions(self, execution_id: str) -> List[Dict]:
+        """Get AI tool execution details for a specific execution"""
+        return self.ai_tool_executions.get(execution_id, [])
+    
+    def clear_ai_tool_executions(self, execution_id: str) -> None:
+        """Clear AI tool execution details for a completed execution"""
+        if execution_id in self.ai_tool_executions:
+            del self.ai_tool_executions[execution_id]
+    
+    def _parse_progress_messages(self, content: str, execution_id: str) -> None:
+        """Parse progress messages and AI tool executions from output and store them"""
+        if not content:
+            return
+            
+        # Look for PROGRESS_UPDATE: {...} messages
+        progress_pattern = r'PROGRESS_UPDATE:\s*(\{.*?\})'
+        progress_matches = re.findall(progress_pattern, content, re.DOTALL)
+        
+        if execution_id not in self.progress_queues:
+            self.progress_queues[execution_id] = []
+        
+        for match in progress_matches:
+            try:
+                progress_data = json.loads(match)
+                self.progress_queues[execution_id].append(progress_data)
+                logger.info(f"📊 Progress update: {progress_data.get('step_name', 'Unknown')} - {progress_data.get('type', 'Unknown')}")
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ Failed to parse progress message: {match} - {e}")
+        
+        # Look for AI_TOOL_EXECUTION: {...} messages
+        ai_tool_pattern = r'AI_TOOL_EXECUTION:\s*(\{.*?\})'
+        ai_tool_matches = re.findall(ai_tool_pattern, content, re.DOTALL)
+        
+        if execution_id not in self.ai_tool_executions:
+            self.ai_tool_executions[execution_id] = []
+        
+        for match in ai_tool_matches:
+            try:
+                ai_tool_data = json.loads(match)
+                self.ai_tool_executions[execution_id].append(ai_tool_data)
+                logger.info(f"🔧 AI Tool execution: {ai_tool_data.get('tool_name', 'Unknown')} for step {ai_tool_data.get('step_id', 'Unknown')}")
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ Failed to parse AI tool execution message: {match} - {e}")
     
     async def execute_workflow(self, workflow_id: str, user_input: str, attached_file_ids: Optional[List[int]] = None) -> WorkflowExecution:
         """
@@ -117,7 +265,7 @@ class WorkflowExecutor:
         
         try:
             # Execute the workflow code
-            result = await self._execute_code_safely(workflow.generated_code, user_input, attached_file_ids)
+            result = await self._execute_code_safely(workflow.generated_code, user_input, attached_file_ids, execution.id)
             execution_time = time.time() - start_time
             
             execution.mark_completed(result, execution_time)
@@ -133,7 +281,7 @@ class WorkflowExecutor:
         
         return execution
     
-    async def _execute_code_safely(self, code: str, user_input: str, attached_file_ids: Optional[List[int]] = None) -> str:
+    async def _execute_code_safely(self, code: str, user_input: str, attached_file_ids: Optional[List[int]] = None, execution_id: Optional[str] = None) -> str:
         """
         Safely execute the generated workflow code with timeout
         
@@ -157,7 +305,7 @@ class WorkflowExecutor:
             
             # Execute with timeout
             result = await asyncio.wait_for(
-                self._run_code_with_capture(compiled_code, execution_globals, user_input),
+                self._run_code_with_capture(compiled_code, execution_globals, user_input, execution_id),
                 timeout=self.max_execution_time
             )
             
@@ -197,12 +345,28 @@ class WorkflowExecutor:
 
         return code
     
-    async def _run_code_with_capture(self, compiled_code, execution_globals: Dict[str, Any], user_input: str) -> str:
+    async def _run_code_with_capture(self, compiled_code, execution_globals: Dict[str, Any], user_input: str, execution_id: Optional[str] = None) -> str:
         """
-        Run compiled code and capture output
+        Run compiled code with real-time progress monitoring
         """
-        # Capture stdout and stderr
-        stdout_capture = io.StringIO()
+        # Custom print function that captures progress messages in real-time
+        original_print = print
+        def progress_print(*args, sep=' ', end='\n', file=None, flush=False):
+            # Convert args to string
+            message = sep.join(str(arg) for arg in args)
+            
+            # Check if this is a progress update or AI tool execution message
+            if execution_id and ("PROGRESS_UPDATE:" in message or "AI_TOOL_EXECUTION:" in message):
+                # Parse and store progress/AI tool data immediately
+                self._parse_progress_messages(message, execution_id)
+            
+            # Also call original print for logging
+            original_print(*args, sep=sep, end=end, file=file, flush=flush)
+        
+        # Replace print in execution environment
+        execution_globals['print'] = progress_print
+        
+        # Capture stderr only (stdout is handled by our custom print)
         stderr_capture = io.StringIO()
         
         try:
@@ -210,7 +374,7 @@ class WorkflowExecutor:
             logger.info(f"🔧 USER INPUT: {user_input}")
             logger.info(f"🔧 ATTACHED FILE IDS: {execution_globals.get('attached_file_ids', 'None')}")
             
-            with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+            with redirect_stderr(stderr_capture):
                 # Execute the compiled code (this includes all imports, classes, and function definitions)
                 logger.info(f"🔧 EXECUTING COMPILED CODE")
                 exec(compiled_code, execution_globals)
@@ -242,16 +406,16 @@ class WorkflowExecutor:
             
             # Include captured stderr in error message
             stderr_content = stderr_capture.getvalue()
-            stdout_content = stdout_capture.getvalue()
             
             if stderr_content:
                 logger.error(f"❌ STDERR CONTENT: {stderr_content}")
-            if stdout_content:
-                logger.info(f"📄 STDOUT CONTENT: {stdout_content}")
             
             if stderr_content:
                 raise Exception(f"{str(e)}. Stderr: {stderr_content}")
             raise e
+        finally:
+            # Restore original print function
+            execution_globals['print'] = original_print
     
     def _create_execution_environment(self, attached_file_ids: Optional[List[int]] = None) -> Dict[str, Any]:
         """
@@ -283,7 +447,6 @@ class WorkflowExecutor:
                 'max': max,
                 'abs': abs,
                 'round': round,
-                'print': print,
                 'isinstance': isinstance,
                 'hasattr': hasattr,
                 'getattr': getattr,
