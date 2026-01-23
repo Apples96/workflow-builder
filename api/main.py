@@ -71,6 +71,49 @@ from .api_clients import paradigm_client  # Updated import
 logging.basicConfig(level=logging.INFO if settings.debug else logging.WARNING)
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# EXECUTION STATE TRACKING
+# Tracks active workflow executions and their cancellation status
+# =============================================================================
+
+# Dictionary mapping workflow_id -> execution state
+# State: {"cancelled": bool, "started_at": datetime, "status": str}
+active_executions: Dict[str, Dict[str, Any]] = {}
+
+
+def is_execution_cancelled(workflow_id: str) -> bool:
+    """Check if execution for a workflow has been cancelled."""
+    state = active_executions.get(workflow_id)
+    return state.get("cancelled", False) if state else False
+
+
+def mark_execution_started(workflow_id: str):
+    """Mark a workflow execution as started."""
+    active_executions[workflow_id] = {
+        "cancelled": False,
+        "started_at": datetime.utcnow(),
+        "status": "running"
+    }
+
+
+def mark_execution_cancelled(workflow_id: str):
+    """Mark a workflow execution as cancelled."""
+    if workflow_id in active_executions:
+        active_executions[workflow_id]["cancelled"] = True
+        active_executions[workflow_id]["status"] = "cancelled"
+
+
+def mark_execution_completed(workflow_id: str):
+    """Mark a workflow execution as completed and clean up."""
+    if workflow_id in active_executions:
+        del active_executions[workflow_id]
+
+
+def get_execution_status(workflow_id: str) -> Optional[Dict[str, Any]]:
+    """Get the current execution status for a workflow."""
+    return active_executions.get(workflow_id)
+
+
 # API key validation helpers
 def validate_anthropic_api_key():
     """
@@ -648,6 +691,10 @@ async def create_cell_based_workflow(request: WorkflowCreateRequest):
                 step_number=cell.step_number,
                 name=cell.name,
                 description=cell.description,
+                layer=cell.layer,
+                sublayer_index=cell.sublayer_index,
+                display_step=cell.get_display_step(),
+                depends_on=cell.depends_on,
                 status=CellStatusEnum(cell.status.value),
                 inputs_required=cell.inputs_required,
                 outputs_produced=cell.outputs_produced,
@@ -664,6 +711,8 @@ async def create_cell_based_workflow(request: WorkflowCreateRequest):
         plan_response = WorkflowPlanResponse(
             id=plan.id,
             total_cells=len(plan.cells),
+            total_layers=plan.get_max_layer(),
+            is_parallel=plan.is_parallel_workflow(),
             cells=cells_response,
             shared_context_schema=plan.shared_context_schema,
             status=plan.status
@@ -740,20 +789,152 @@ async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteReq
                 }))
                 return
 
-            logger.info("Starting streaming execution for workflow: {}".format(workflow_id))
+            # Check if this is a parallel workflow
+            is_parallel = plan.is_parallel_workflow()
 
-            # Create cell executor and run stepwise
+            logger.info("Starting {} execution for workflow: {} ({} layers, {} cells)".format(
+                "PARALLEL" if is_parallel else "sequential",
+                workflow_id,
+                plan.get_max_layer(),
+                len(plan.cells)
+            ))
+
+            # Create cell executor
             executor = CellExecutor()
-            async for event in executor.execute_workflow_stepwise(
-                plan=plan,
-                user_input=request.user_input,
-                attached_file_ids=request.attached_file_ids,
-                workflow_description=workflow.description
-            ):
-                yield "data: {}\n\n".format(json.dumps(event))
+
+            # Use parallel execution if workflow has parallel layers, otherwise sequential
+            if is_parallel:
+                async for event in executor.execute_workflow_parallel(
+                    plan=plan,
+                    user_input=request.user_input,
+                    attached_file_ids=request.attached_file_ids,
+                    workflow_description=workflow.description
+                ):
+                    yield "data: {}\n\n".format(json.dumps(event))
+            else:
+                async for event in executor.execute_workflow_stepwise(
+                    plan=plan,
+                    user_input=request.user_input,
+                    attached_file_ids=request.attached_file_ids,
+                    workflow_description=workflow.description
+                ):
+                    yield "data: {}\n\n".format(json.dumps(event))
 
         except Exception as e:
             logger.error("Streaming execution error: {}".format(str(e)))
+            yield "data: {}\n\n".format(json.dumps({
+                "type": "error",
+                "error": str(e)
+            }))
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
+@api_router.post("/workflows/{workflow_id}/execute-parallel", tags=["Cell-Based Workflows"])
+async def execute_workflow_parallel(workflow_id: str, request: CellBasedExecuteRequest):
+    """
+    Execute a cell-based workflow with layer-based parallelization.
+
+    This endpoint executes the workflow using parallel layer execution:
+    - Cells in the same layer execute concurrently
+    - Each cell has its own retry + evaluation cycle
+    - Layer N+1 only starts after ALL cells in layer N complete
+    - Context is merged from all parallel cells before next layer
+
+    Event Types:
+        Layer events:
+            - layer_started: Beginning of layer execution
+            - layer_completed: All cells in layer finished
+            - layer_failed: One or more cells in layer failed
+
+        Cell events:
+            - cell_generating: Claude is generating code for a cell
+            - cell_ready: Cell code generated successfully
+            - cell_executing: Cell is now running
+            - cell_evaluating: LLM evaluation of output
+            - cell_evaluation_passed: Output passed evaluation
+            - cell_evaluation_failed: Output failed, will retry
+            - cell_completed: Cell finished with output
+            - cell_failed: Cell execution failed
+
+        Workflow events:
+            - workflow_start: Workflow execution beginning
+            - workflow_completed: All layers finished successfully
+            - workflow_failed: Workflow stopped due to layer failure
+
+    Args:
+        workflow_id: ID of the workflow to execute
+        request: Execution request with user input and optional file IDs
+
+    Returns:
+        StreamingResponse: SSE stream of execution events
+    """
+    validate_anthropic_api_key()
+    validate_lighton_api_key()
+
+    async def event_generator():
+        try:
+            # Get the workflow
+            workflow = workflow_executor.get_workflow(workflow_id)
+            if not workflow:
+                yield "data: {}\n\n".format(json.dumps({
+                    "type": "error",
+                    "error": "Workflow not found: {}".format(workflow_id)
+                }))
+                return
+
+            # Get the plan
+            plan = workflow_executor.get_workflow_plan(workflow_id)
+            if not plan:
+                yield "data: {}\n\n".format(json.dumps({
+                    "type": "error",
+                    "error": "Workflow plan not found. This may be a monolithic workflow."
+                }))
+                return
+
+            # Check if this is a parallel workflow
+            is_parallel = plan.is_parallel_workflow()
+
+            logger.info("Starting {} execution for workflow: {} ({} layers, {} cells)".format(
+                "parallel" if is_parallel else "sequential",
+                workflow_id,
+                plan.get_max_layer(),
+                len(plan.cells)
+            ))
+
+            # Create cell executor and run with parallel execution
+            executor = CellExecutor()
+
+            if is_parallel:
+                # Use parallel execution
+                async for event in executor.execute_workflow_parallel(
+                    plan=plan,
+                    user_input=request.user_input,
+                    attached_file_ids=request.attached_file_ids,
+                    workflow_description=workflow.description
+                ):
+                    yield "data: {}\n\n".format(json.dumps(event))
+            else:
+                # Fall back to sequential execution for non-parallel workflows
+                async for event in executor.execute_workflow_stepwise(
+                    plan=plan,
+                    user_input=request.user_input,
+                    attached_file_ids=request.attached_file_ids,
+                    workflow_description=workflow.description
+                ):
+                    yield "data: {}\n\n".format(json.dumps(event))
+
+        except Exception as e:
+            logger.error("Parallel execution error: {}".format(str(e)))
             yield "data: {}\n\n".format(json.dumps({
                 "type": "error",
                 "error": str(e)
@@ -835,6 +1016,9 @@ async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWit
                 workflow_id, len(request.examples)
             ))
 
+            # Mark execution as started (for stop functionality)
+            mark_execution_started(workflow_id)
+
             # Convert examples to the format expected by the executor
             examples = [
                 {
@@ -852,10 +1036,25 @@ async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWit
                 examples=examples,
                 workflow_description=workflow.description
             ):
+                # Check if execution was cancelled
+                if is_execution_cancelled(workflow_id):
+                    yield "data: {}\n\n".format(json.dumps({
+                        "type": "workflow_stopped",
+                        "message": "Execution stopped by user",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }))
+                    mark_execution_completed(workflow_id)
+                    return
+
                 yield "data: {}\n\n".format(json.dumps(event))
+
+                # If workflow completed or failed, clean up tracking
+                if event.get("type") in ["workflow_completed", "workflow_failed"]:
+                    mark_execution_completed(workflow_id)
 
         except Exception as e:
             logger.error("Execution with evaluation error: {}".format(str(e)))
+            mark_execution_completed(workflow_id)
             yield "data: {}\n\n".format(json.dumps({
                 "type": "error",
                 "error": str(e)
@@ -871,6 +1070,77 @@ async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWit
             "X-Accel-Buffering": "no"  # Disable nginx buffering
         }
     )
+
+
+@api_router.post("/workflows/{workflow_id}/stop", tags=["Cell-Based Workflows"])
+async def stop_workflow_execution(workflow_id: str):
+    """
+    Stop an in-progress workflow execution.
+
+    Cancels the execution after the current cell/layer completes.
+    The workflow can be re-run after stopping.
+
+    Args:
+        workflow_id: ID of the workflow to stop
+
+    Returns:
+        dict: Confirmation of cancellation request
+    """
+    execution_state = get_execution_status(workflow_id)
+
+    if not execution_state:
+        return {
+            "success": False,
+            "message": "No active execution found for this workflow",
+            "workflow_id": workflow_id
+        }
+
+    if execution_state.get("cancelled"):
+        return {
+            "success": True,
+            "message": "Execution already cancelled",
+            "workflow_id": workflow_id
+        }
+
+    mark_execution_cancelled(workflow_id)
+    logger.info(f"Execution cancelled for workflow: {workflow_id}")
+
+    return {
+        "success": True,
+        "message": "Execution will stop after current cell completes",
+        "workflow_id": workflow_id
+    }
+
+
+@api_router.get("/workflows/{workflow_id}/execution-status", tags=["Cell-Based Workflows"])
+async def get_workflow_execution_status(workflow_id: str):
+    """
+    Get the current execution status of a workflow.
+
+    Returns whether the workflow is currently executing, stopped, or idle.
+
+    Args:
+        workflow_id: ID of the workflow
+
+    Returns:
+        dict: Current execution status
+    """
+    execution_state = get_execution_status(workflow_id)
+
+    if not execution_state:
+        return {
+            "workflow_id": workflow_id,
+            "is_executing": False,
+            "status": "idle"
+        }
+
+    return {
+        "workflow_id": workflow_id,
+        "is_executing": execution_state.get("status") == "running",
+        "status": execution_state.get("status"),
+        "started_at": execution_state.get("started_at").isoformat() if execution_state.get("started_at") else None,
+        "cancelled": execution_state.get("cancelled", False)
+    }
 
 
 @api_router.get("/workflows/{workflow_id}/plan", response_model=WorkflowPlanResponse, tags=["Cell-Based Workflows"])
@@ -911,6 +1181,10 @@ async def get_workflow_plan(workflow_id: str):
                 step_number=cell.step_number,
                 name=cell.name,
                 description=cell.description,
+                layer=cell.layer,
+                sublayer_index=cell.sublayer_index,
+                display_step=cell.get_display_step(),
+                depends_on=cell.depends_on,
                 status=CellStatusEnum(cell.status.value),
                 inputs_required=cell.inputs_required,
                 outputs_produced=cell.outputs_produced,
@@ -927,6 +1201,8 @@ async def get_workflow_plan(workflow_id: str):
         return WorkflowPlanResponse(
             id=plan.id,
             total_cells=len(plan.cells),
+            total_layers=plan.get_max_layer(),
+            is_parallel=plan.is_parallel_workflow(),
             cells=cells_response,
             shared_context_schema=plan.shared_context_schema,
             status=plan.status
@@ -1515,46 +1791,43 @@ async def get_execution_pdf(workflow_id: str, execution_id: str):
 
 @api_router.post("/files/upload", response_model=FileUploadResponse, tags=["Files"])
 async def upload_file(
-    file: UploadFile = File(...),
-    collection_type: str = Form("private"),
-    workspace_id: Optional[int] = Form(None)
+    file: UploadFile = File(...)
 ):
     """
     Upload a file to Paradigm for document processing and analysis.
-    
+
     Files are automatically processed, indexed, and made available for use
-    in workflows. Supports various document formats and collection types
-    for organizing files within different scopes.
-    
+    in workflows. Uses the POST /api/v2/files endpoint which automatically
+    adds files to the user's documents collection.
+
     Args:
-        file: The file to upload (multipart/form-data)
-        collection_type: Collection scope - 'private', 'company', or 'workspace'
-        workspace_id: Required if collection_type is 'workspace'
-        
+        file: The file to upload (multipart/form-data, max 100MB)
+
     Returns:
         FileUploadResponse: File metadata including ID, size, and processing status
-        
+
     Raises:
         HTTPException: 503 if API keys are missing, 500 if upload fails
-        
+
     Note:
-        Files are processed asynchronously and may take time to become fully searchable
+        Files are processed asynchronously. The endpoint waits for embedding
+        to complete before returning, ensuring files are fully searchable.
     """
     # Validate required API keys
     validate_lighton_api_key()
-    
+
     try:
         logger.info(f"Uploading file: {file.filename}")
-        
+
         # Read file content
         file_content = await file.read()
-        
-        # Upload to Paradigm
+
+        # Upload to Paradigm using POST /api/v2/files endpoint
+        # Wait for embedding to ensure files are fully indexed before workflows can use them
         result = await paradigm_client.upload_file(
             file_content=file_content,
             filename=file.filename,
-            collection_type=collection_type,
-            workspace_id=workspace_id
+            wait_for_embedding=True
         )
         
         logger.info(f"File uploaded successfully: {result.get('id')}")
@@ -1746,11 +2019,34 @@ async def generate_workflow_package(workflow_id: str):
                 detail=f"Workflow not found: {workflow_id}"
             )
 
+        # Get the workflow code - either from generated_code or from cells
+        workflow_code = workflow.generated_code
+
+        # For cell-based workflows, use the combiner to create clean code
+        if not workflow_code:
+            plan = workflow_executor.get_workflow_plan(workflow_id)
+            if plan and plan.cells:
+                # Check if any cells have generated code
+                has_code = any(cell.generated_code for cell in plan.cells)
+                if has_code:
+                    from .workflow.workflow_combiner import combine_workflow_cells
+                    workflow_code = combine_workflow_cells(
+                        plan=plan,
+                        workflow_description=workflow.description or ""
+                    )
+                    logger.info(f"Combined {len(plan.cells)} cells into clean workflow code with parallelism support")
+
+        if not workflow_code:
+            raise HTTPException(
+                status_code=400,
+                detail="Workflow has no generated code. Please ensure the workflow has been executed at least once."
+            )
+
         # Use Claude to analyze workflow code and generate UI config automatically
         logger.info("Analyzing workflow code with Claude to generate UI configuration...")
         try:
             ui_config = await analyze_workflow_for_ui(
-                workflow_code=workflow.generated_code,
+                workflow_code=workflow_code,
                 workflow_name=workflow.name or "Unnamed Workflow",
                 workflow_description=workflow.description or "Generated workflow"
             )
@@ -1778,7 +2074,7 @@ async def generate_workflow_package(workflow_id: str):
         package_generator = WorkflowPackageGenerator(
             workflow_name=workflow.name or "Unnamed Workflow",
             workflow_description=simple_description,
-            workflow_code=workflow.generated_code,
+            workflow_code=workflow_code,
             ui_config=ui_config
         )
 
@@ -1856,6 +2152,29 @@ async def generate_mcp_package(workflow_id: str):
                 detail="Workflow not found: {}".format(workflow_id)
             )
 
+        # Get the workflow code - either from generated_code or from cells
+        workflow_code = workflow.generated_code
+
+        # For cell-based workflows, use the combiner to create clean code
+        if not workflow_code:
+            plan = workflow_executor.get_workflow_plan(workflow_id)
+            if plan and plan.cells:
+                # Check if any cells have generated code
+                has_code = any(cell.generated_code for cell in plan.cells)
+                if has_code:
+                    from .workflow.workflow_combiner import combine_workflow_cells
+                    workflow_code = combine_workflow_cells(
+                        plan=plan,
+                        workflow_description=workflow.description or ""
+                    )
+                    logger.info("Combined {} cells into clean workflow code for MCP package".format(len(plan.cells)))
+
+        if not workflow_code:
+            raise HTTPException(
+                status_code=400,
+                detail="Workflow has no generated code. Please ensure the workflow has been executed at least once."
+            )
+
         # Generate a simple, user-friendly description (1-3 lines)
         logger.info("Generating simple description...")
         try:
@@ -1879,7 +2198,7 @@ async def generate_mcp_package(workflow_id: str):
         mcp_generator = MCPPackageGenerator(
             workflow_name=workflow.name or "Unnamed Workflow",
             workflow_description=simple_description,
-            workflow_code=workflow.generated_code,
+            workflow_code=workflow_code,
             workflow_parameters=workflow_parameters,
             workflow_output_format=workflow_output_format
         )

@@ -44,281 +44,390 @@ Architecture:
     <title>Workflow Automation Test</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
     <style>
-        /* 
+        /*
          * CSS Styles for Workflow Automation Interface
-         * 
-         * Provides a clean, modern interface with:
-         * - Responsive design for desktop and mobile
-         * - Color-coded status indicators
-         * - Terminal-style logging interface
-         * - Drag-and-drop file upload styling
-         * - Button states and hover effects
+         * LightOn Visual Identity - Clean, minimalist design
+         *
+         * Color palette:
+         * - Primary: #00d4aa (LightOn cyan/teal)
+         * - Dark: #0f1419 (near black)
+         * - Text: #1a1a2e (dark blue-gray)
+         * - Light bg: #f7f8fa
          */
-        
+
+        :root {
+            --lo-primary: #00d4aa;
+            --lo-primary-hover: #00b894;
+            --lo-primary-light: #e0f7f3;
+            --lo-dark: #0f1419;
+            --lo-text: #1a1a2e;
+            --lo-text-light: #6b7280;
+            --lo-border: #e5e7eb;
+            --lo-bg: #f7f8fa;
+            --lo-white: #ffffff;
+            --lo-error: #ef4444;
+            --lo-success: #10b981;
+        }
+
         /* Base layout and typography */
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
+            background-color: var(--lo-bg);
+            color: var(--lo-text);
+            line-height: 1.5;
         }
+
         .container {
-            background: white;
+            background: var(--lo-white);
             padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom: 16px;
+            border: 1px solid var(--lo-border);
         }
-        h1, h2 {
-            color: #333;
+
+        h1 {
+            color: var(--lo-dark);
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 8px;
         }
-        textarea, input {
+
+        h2 {
+            color: var(--lo-dark);
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--lo-text);
+        }
+
+        p {
+            color: var(--lo-text-light);
+            font-size: 0.875rem;
+            margin-bottom: 12px;
+        }
+
+        textarea, input[type="text"], input[type="number"] {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
+            padding: 10px 12px;
+            border: 1px solid var(--lo-border);
+            border-radius: 8px;
+            font-size: 0.875rem;
             box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: var(--lo-white);
         }
+
+        textarea:focus, input:focus {
+            outline: none;
+            border-color: var(--lo-primary);
+            box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
+        }
+
         textarea {
-            height: 100px;
+            height: 90px;
             resize: vertical;
         }
+
+        /* Buttons - small and compact */
         button {
-            background: #007bff;
-            color: white;
-            padding: 10px 20px;
+            background: var(--lo-primary);
+            color: var(--lo-white);
+            padding: 8px 16px;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
-            margin-top: 10px;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            margin-top: 8px;
+            transition: background-color 0.2s, transform 0.1s;
         }
+
         button:hover {
-            background: #0056b3;
+            background: var(--lo-primary-hover);
         }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
         button:disabled {
-            background: #ccc;
+            background: #d1d5db;
             cursor: not-allowed;
+            transform: none;
         }
+
+        /* Secondary/outline button style */
+        button.secondary {
+            background: transparent;
+            color: var(--lo-primary);
+            border: 1px solid var(--lo-primary);
+        }
+
+        button.secondary:hover {
+            background: var(--lo-primary-light);
+        }
+
+        /* Small button variant */
+        button.btn-sm {
+            padding: 5px 10px;
+            font-size: 0.75rem;
+        }
+
         .result {
-            background: #f8f9fa;
-            padding: 15px;
-            border: 1px solid #e9ecef;
-            border-radius: 4px;
+            background: var(--lo-bg);
+            padding: 12px;
+            border: 1px solid var(--lo-border);
+            border-radius: 8px;
             white-space: pre-wrap;
-            font-family: monospace;
-            font-size: 12px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 0.75rem;
             max-height: 400px;
             overflow-y: auto;
         }
+
         .error {
-            background: #ffe6e6;
-            border-color: #ff9999;
-            color: #cc0000;
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: var(--lo-error);
         }
+
         .success {
-            background: #e6ffe6;
-            border-color: #99ff99;
-            color: #006600;
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+            color: var(--lo-success);
         }
+
         .loading {
-            color: #666;
+            color: var(--lo-text-light);
             font-style: italic;
         }
+
         .workflow-info {
-            background: #e7f3ff;
-            padding: 10px;
-            border-radius: 4px;
+            background: var(--lo-primary-light);
+            padding: 10px 12px;
+            border-radius: 8px;
             margin: 10px 0;
+            border-left: 3px solid var(--lo-primary);
         }
         .logs-container {
-            background: #1e1e1e;
-            color: #00ff00;
-            font-family: 'Courier New', monospace;
-            padding: 15px;
-            border-radius: 4px;
-            max-height: 600px;
-            overflow-y: auto;
-            font-size: 11px;
-            line-height: 1.4;
-        }
-        .log-entry {
-            margin-bottom: 8px;
-            padding: 4px 0;
-            border-bottom: 1px solid #333;
-        }
-        .log-timestamp {
-            color: #888;
-        }
-        .log-api-call {
-            color: #00ccff;
-            font-weight: bold;
-        }
-        .log-query {
-            color: #ffcc00;
-        }
-        .log-doc-ids {
-            color: #ff9900;
-        }
-        .log-response {
-            color: #00ff88;
-        }
-        .log-error {
-            color: #ff4444;
-        }
-        .log-workflow-step {
-            color: #ff00ff;
-            font-weight: bold;
-        }
-        .log-endpoint {
-            color: #00ffff;
-        }
-        .log-payload {
-            color: #ffaa00;
-        }
-        .log-chunk {
-            color: #aaffaa;
-            font-size: 10px;
-        }
-        .log-detailed {
-            color: #cccccc;
-            font-size: 10px;
-            margin-left: 15px;
-        }
-        .clear-logs {
-            background: #444;
-            color: white;
-            border: 1px solid #666;
-            padding: 5px 10px;
-            border-radius: 3px;
-            font-size: 11px;
-            margin-bottom: 10px;
-        }
-        .file-upload-area {
-            border: 2px dashed #ddd;
+            background: var(--lo-dark);
+            color: var(--lo-primary);
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            padding: 12px;
             border-radius: 8px;
-            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 0.6875rem;
+            line-height: 1.5;
+        }
+
+        .log-entry {
+            margin-bottom: 6px;
+            padding: 3px 0;
+            border-bottom: 1px solid #2a2a3a;
+        }
+
+        .log-timestamp {
+            color: #6b7280;
+        }
+
+        .log-api-call {
+            color: #60a5fa;
+            font-weight: 500;
+        }
+
+        .log-query {
+            color: #fbbf24;
+        }
+
+        .log-doc-ids {
+            color: #f97316;
+        }
+
+        .log-response {
+            color: var(--lo-primary);
+        }
+
+        .log-error {
+            color: #f87171;
+        }
+
+        .log-workflow-step {
+            color: #c084fc;
+            font-weight: 500;
+        }
+
+        .log-endpoint {
+            color: #22d3ee;
+        }
+
+        .log-payload {
+            color: #fb923c;
+        }
+
+        .log-chunk {
+            color: #86efac;
+            font-size: 0.625rem;
+        }
+
+        .log-detailed {
+            color: #9ca3af;
+            font-size: 0.625rem;
+            margin-left: 12px;
+        }
+
+        .clear-logs {
+            background: #374151;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.6875rem;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .clear-logs:hover {
+            background: #4b5563;
+        }
+
+        .file-upload-area {
+            border: 2px dashed var(--lo-border);
+            border-radius: 10px;
+            padding: 16px;
             text-align: center;
-            background: #fafafa;
+            background: var(--lo-bg);
             margin: 10px 0;
+            transition: border-color 0.2s, background-color 0.2s;
         }
         .file-upload-area.dragover {
-            border-color: #007bff;
-            background: #e7f3ff;
+            border-color: var(--lo-primary);
+            background: var(--lo-primary-light);
         }
+
         .file-list {
             list-style: none;
             padding: 0;
             margin: 10px 0;
         }
+
         .file-list li {
-            background: #f8f9fa;
+            background: var(--lo-bg);
             padding: 8px 12px;
             margin: 4px 0;
-            border-radius: 4px;
-            border-left: 4px solid #28a745;
+            border-radius: 6px;
+            border-left: 3px solid var(--lo-primary);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            font-size: 0.8125rem;
         }
+
         .file-info {
             flex-grow: 1;
         }
+
         .file-actions {
             display: flex;
-            gap: 8px;
+            gap: 6px;
         }
+
         .file-actions button {
             padding: 4px 8px;
-            font-size: 12px;
+            font-size: 0.6875rem;
             margin: 0;
         }
+
         .remove-file {
-            background: #dc3545;
+            background: var(--lo-error);
         }
+
         .remove-file:hover {
-            background: #c82333;
+            background: #dc2626;
         }
-        /* Add these styles to your existing CSS section */
-        h1 {
-            font-size: 32px; /* Increased to match the logo text size better */
-            font-weight: 700; /* Increased to bold to match the logo */
-            color: #000;
-            margin-bottom: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; /* More comprehensive font stack */
-            letter-spacing: -0.5px; /* Tighter letter spacing to match logo */
-            line-height: 1; /* Tighter line height */
+
+        /* App header/title */
+        .app-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 16px 0;
+            line-height: 1;
         }
 
         h1 img {
-            height: 52px;
+            height: 44px;
             width: auto;
-            margin-right: 10px;
-            margin-top: 3px;
+            margin-right: 8px;
             vertical-align: middle;
         }
 
         h1 span {
-            margin-top: 2px;
-            font-weight: 700; /* Ensure the span also has the same weight */
-            font-size: 32px; /* Ensure the span also has the same size */
+            font-weight: 600;
+            font-size: 1.5rem;
+            color: var(--lo-dark);
         }
+
         .container h3 {
-            color: #333;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            font-size: 16px;
+            color: var(--lo-text);
+            margin-top: 16px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
         }
 
         .container .helper-section {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--lo-border);
         }
 
         .container .helper-section h3 {
-            color: #666;
-            font-size: 16px;
-            margin-bottom: 15px;
+            color: var(--lo-text-light);
+            font-size: 0.875rem;
+            margin-bottom: 12px;
         }
 
         .container .helper-section p {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 15px;
+            color: var(--lo-text-light);
+            font-size: 0.8125rem;
+            margin-bottom: 12px;
         }
-        
+
         /* Progress tracking styles */
         .progress-step {
             display: flex;
             align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #e9ecef;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--lo-border);
         }
-        
+
         .progress-step:last-child {
             border-bottom: none;
         }
-        
+
         .progress-checkbox {
-            margin-right: 12px;
-            font-size: 16px;
-            width: 20px;
+            margin-right: 10px;
+            font-size: 14px;
+            width: 18px;
             text-align: center;
         }
-        
+
         .progress-step-content {
             flex: 1;
         }
-        
+
         .progress-step-name {
-            font-weight: 600;
-            color: #333;
+            font-weight: 500;
+            color: var(--lo-text);
+            font-size: 0.8125rem;
             margin-bottom: 2px;
         }
         
@@ -328,27 +437,27 @@ Architecture:
         }
         
         .progress-step.pending .progress-checkbox {
-            color: #ccc;
+            color: #d1d5db;
         }
-        
+
         .progress-step.running .progress-checkbox {
-            color: #007bff;
+            color: var(--lo-primary);
             animation: spin 1s linear infinite;
         }
-        
+
         .progress-step.completed .progress-checkbox {
-            color: #28a745;
+            color: var(--lo-success);
         }
-        
+
         .progress-step.error .progress-checkbox {
-            color: #dc3545;
+            color: var(--lo-error);
         }
-        
+
         .progress-step.error .progress-step-details {
-            color: #dc3545;
+            color: var(--lo-error);
             font-weight: 500;
         }
-        
+
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
@@ -386,80 +495,114 @@ Architecture:
 
         /* Cell plan display */
         .cell-plan-container {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
+            background: var(--lo-bg);
+            border: 1px solid var(--lo-border);
+            border-radius: 10px;
+            padding: 14px;
+            margin: 12px 0;
         }
 
         .cell-plan-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--lo-border);
         }
 
         .cell-plan-title {
             font-weight: 600;
-            color: #333;
-            font-size: 14px;
+            color: var(--lo-text);
+            font-size: 0.8125rem;
         }
 
         .cell-plan-badge {
-            background: #007bff;
+            background: var(--lo-primary);
             color: white;
             padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
+            border-radius: 10px;
+            font-size: 0.6875rem;
+            font-weight: 500;
         }
 
         .cell-item {
             display: flex;
             align-items: flex-start;
-            padding: 12px;
-            margin: 8px 0;
-            background: white;
-            border-radius: 6px;
-            border-left: 4px solid #dee2e6;
-            transition: all 0.3s ease;
+            padding: 10px;
+            margin: 6px 0;
+            background: var(--lo-white);
+            border-radius: 8px;
+            border-left: 3px solid var(--lo-border);
+            transition: all 0.2s ease;
         }
 
         .cell-item.pending {
-            border-left-color: #6c757d;
+            border-left-color: #9ca3af;
         }
 
         .cell-item.generating {
-            border-left-color: #ffc107;
-            background: #fffef0;
+            border-left-color: #f59e0b;
+            background: #fffbeb;
         }
 
         .cell-item.ready {
-            border-left-color: #17a2b8;
+            border-left-color: #06b6d4;
         }
 
         .cell-item.executing {
-            border-left-color: #007bff;
-            background: #f0f7ff;
+            border-left-color: var(--lo-primary);
+            background: var(--lo-primary-light);
             animation: pulse 1.5s ease-in-out infinite;
         }
 
         .cell-item.retrying {
-            border-left-color: #ffc107;
-            background: #fffbf0;
+            border-left-color: #f59e0b;
+            background: #fffbeb;
             animation: pulse 1.5s ease-in-out infinite;
         }
 
         .cell-item.completed {
-            border-left-color: #28a745;
-            background: #f0fff4;
+            border-left-color: var(--lo-success);
+            background: #ecfdf5;
         }
 
         .cell-item.failed {
-            border-left-color: #dc3545;
-            background: #fff5f5;
+            border-left-color: var(--lo-error);
+            background: #fef2f2;
+        }
+
+        .cell-item.stale {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+            opacity: 0.8;
+        }
+
+        .cell-item.stale::after {
+            content: '⚠️ Stale';
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            font-size: 0.6875rem;
+            color: #d97706;
+            font-weight: 500;
+        }
+
+        .stale-banner {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
+            color: #92400e;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stale-banner strong {
+            color: #78350f;
         }
 
         @keyframes pulse {
@@ -468,32 +611,32 @@ Architecture:
         }
 
         .cell-number {
-            width: 28px;
-            height: 28px;
-            background: #e9ecef;
+            width: 26px;
+            height: 26px;
+            background: #e5e7eb;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
-            font-size: 12px;
-            color: #495057;
-            margin-right: 12px;
+            font-size: 0.6875rem;
+            color: var(--lo-text-light);
+            margin-right: 10px;
             flex-shrink: 0;
         }
 
         .cell-item.completed .cell-number {
-            background: #28a745;
+            background: var(--lo-success);
             color: white;
         }
 
         .cell-item.executing .cell-number {
-            background: #007bff;
+            background: var(--lo-primary);
             color: white;
         }
 
         .cell-item.failed .cell-number {
-            background: #dc3545;
+            background: var(--lo-error);
             color: white;
         }
 
@@ -622,33 +765,33 @@ Architecture:
         }
 
         .test-example-title {
-            font-weight: 700;
-            font-size: 14px;
-            color: #495057;
+            font-weight: 600;
+            font-size: 0.8125rem;
+            color: var(--lo-text);
         }
 
         .test-example-remove {
-            background: #dc3545;
+            background: var(--lo-error);
             color: white;
             border: none;
-            padding: 4px 12px;
+            padding: 4px 10px;
             border-radius: 4px;
-            font-size: 11px;
+            font-size: 0.6875rem;
             cursor: pointer;
-            font-weight: 600;
+            font-weight: 500;
         }
 
         .test-example-remove:hover {
-            background: #c82333;
+            background: #dc2626;
         }
 
         .test-example-input {
             width: 100%;
             padding: 10px;
             margin-bottom: 10px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
-            font-size: 14px;
+            border: 1px solid var(--lo-border);
+            border-radius: 6px;
+            font-size: 0.8125rem;
         }
 
         .test-example-files {
@@ -656,8 +799,8 @@ Architecture:
         }
 
         .test-example-files-label {
-            font-size: 12px;
-            color: #6c757d;
+            font-size: 0.75rem;
+            color: var(--lo-text-light);
             margin-bottom: 5px;
             display: block;
         }
@@ -692,13 +835,13 @@ Architecture:
         }
 
         .example-tab:hover {
-            background: #dee2e6;
+            background: #eef0f2;
         }
 
         .example-tab.expanded {
-            background: #007bff;
+            background: var(--lo-primary);
             color: white;
-            border-color: #007bff;
+            border-color: var(--lo-primary);
         }
 
         .example-tab.expanded::after {
@@ -717,9 +860,9 @@ Architecture:
         .example-output {
             display: none;
             margin-top: 10px;
-            padding: 15px;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
+            padding: 12px;
+            background: var(--lo-bg);
+            border: 1px solid var(--lo-border);
             border-radius: 6px;
         }
 
@@ -728,11 +871,11 @@ Architecture:
         }
 
         .cell-output-pending {
-            padding: 20px;
+            padding: 16px;
             text-align: center;
-            color: #6c757d;
+            color: var(--lo-text-light);
             font-style: italic;
-            background: #f8f9fa;
+            background: var(--lo-bg);
             border-radius: 6px;
             margin: 10px 0;
         }
@@ -862,6 +1005,175 @@ Architecture:
             font-size: 11px;
             color: #888;
             margin-left: 8px;
+        }
+
+        /* Layer grouping styles for parallel execution */
+        .layer-group {
+            margin-bottom: 12px;
+            border: 1px solid var(--lo-border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .layer-group.executing {
+            border-color: var(--lo-primary);
+            box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.1);
+        }
+
+        .layer-group.completed {
+            border-color: var(--lo-success);
+        }
+
+        .layer-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--lo-bg);
+            border-bottom: 1px solid var(--lo-border);
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--lo-text);
+        }
+
+        .layer-group.executing .layer-header {
+            background: var(--lo-primary-light);
+            border-bottom-color: rgba(0, 212, 170, 0.3);
+        }
+
+        .layer-group.completed .layer-header {
+            background: #ecfdf5;
+            border-bottom-color: #a7f3d0;
+        }
+
+        .layer-number {
+            background: #9ca3af;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.6875rem;
+        }
+
+        .layer-group.executing .layer-number {
+            background: var(--lo-primary);
+        }
+
+        .layer-group.completed .layer-number {
+            background: var(--lo-success);
+        }
+
+        .layer-parallel-badge {
+            background: #f59e0b;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .layer-status {
+            margin-left: auto;
+            font-size: 0.6875rem;
+            color: var(--lo-text-light);
+        }
+
+        .layer-group.executing .layer-status {
+            color: var(--lo-primary);
+        }
+
+        .layer-group.completed .layer-status {
+            color: var(--lo-success);
+        }
+
+        .layer-cells {
+            padding: 10px;
+            background: var(--lo-white);
+        }
+
+        .layer-cells .cell-item {
+            margin-bottom: 8px;
+        }
+
+        .layer-cells .cell-item:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Collapsible deployment option styles */
+        .deploy-option {
+            border: 1px solid var(--lo-border);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .deploy-option-header {
+            display: flex;
+            align-items: center;
+            padding: 12px 14px;
+            background: var(--lo-bg);
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s ease;
+        }
+
+        .deploy-option-header:hover {
+            background: #eef0f2;
+        }
+
+        .deploy-option.expanded .deploy-option-header {
+            border-bottom: 1px solid var(--lo-border);
+        }
+
+        .deploy-option-icon {
+            font-size: 18px;
+            margin-right: 10px;
+        }
+
+        .deploy-option-title {
+            flex: 1;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--lo-text);
+        }
+
+        .deploy-option-badge {
+            background: var(--lo-primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            margin-right: 10px;
+        }
+
+        .deploy-option-chevron {
+            font-size: 12px;
+            color: var(--lo-text-light);
+            transition: transform 0.2s ease;
+        }
+
+        .deploy-option.expanded .deploy-option-chevron {
+            transform: rotate(180deg);
+        }
+
+        .deploy-option-content {
+            display: none;
+            padding: 14px;
+            background: var(--lo-white);
+            font-size: 0.8125rem;
+        }
+
+        .deploy-option.expanded .deploy-option-content {
+            display: block;
+        }
+
+        .deploy-option-summary {
+            color: var(--lo-text-light);
+            font-size: 0.75rem;
+            margin-left: 28px;
         }
 
         .cell-code-toggle {
@@ -1118,40 +1430,6 @@ Architecture:
         .logs-container.collapsed {
             display: none;
         }
-
-        /* Examples toggle */
-        .examples-toggle-btn {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
-            background: #6c757d;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            color: white;
-            margin-bottom: 10px;
-            transition: all 0.2s ease;
-        }
-
-        .examples-toggle-btn:hover {
-            background: #5a6268;
-        }
-
-        .examples-toggle-btn .toggle-icon {
-            font-size: 10px;
-            transition: transform 0.2s ease;
-        }
-
-        .examples-toggle-btn.expanded .toggle-icon {
-            transform: rotate(180deg);
-        }
-
-        #testExamplesContainer.collapsed {
-            display: none;
-        }
     </style>
     <!-- jsPDF Library for client-side PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1165,58 +1443,81 @@ Architecture:
     <!-- Step 1: Describe Workflow -->
     <div class="container">
         <h2>1. Describe Workflow</h2>
-        <p>Describe your desired workflow in natural language:</p>
-        <textarea id="rawWorkflowDescription" placeholder="Example: I want to search for documents about my question and then analyze them to provide a summary..." style="color: #999;"></textarea>
-        <button onclick="enhanceWorkflowDescription()">Enhance Description</button>
-        
-        <div id="enhancedDescriptionResult" style="margin-top: 15px;"></div>
-        <div id="enhancedDescription" style="display: none;"></div>
+        <p>Describe your desired workflow in natural language. Click to expand.</p>
+
+        <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
+            <div class="deploy-option-header">
+                <span class="deploy-option-icon">✏️</span>
+                <span class="deploy-option-title">Describe & Enhance Your Workflow</span>
+                <span class="deploy-option-chevron">▼</span>
+            </div>
+            <div class="deploy-option-content" onclick="event.stopPropagation()">
+                <p>Describe your desired workflow in natural language:</p>
+                <textarea id="rawWorkflowDescription" placeholder="Example: I want to search for documents about my question and then analyze them to provide a summary..." style="color: #999;"></textarea>
+                <button onclick="enhanceWorkflowDescription()">Enhance Description</button>
+
+                <div id="enhancedDescriptionResult" style="margin-top: 15px;"></div>
+                <div id="enhancedDescription" style="display: none;"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Step 2: Create Workflow -->
     <div class="container">
         <h2>2. Create Workflow</h2>
-        <p>Review and optionally edit the enhanced workflow description:</p>
-        <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 13px; color: #666;">
-            <strong>Available tools:</strong> document upload, chat, document search, document analysis, image analysis<br>
-            <strong>📚 API Reference:</strong> Detailed information about endpoints, parameters, and responses can be found in the <a href="https://paradigm.lighton.ai/api/schema/swagger-ui/#/" target="_blank" style="color: #007bff;">Paradigm API Swagger documentation</a><br>
-            <strong>💡 Tip:</strong> Use Step 1 above to get an enhanced workflow description, or manually enter your workflow here.
+        <p>Review and create your workflow from the description. Click to expand.</p>
+
+        <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
+            <div class="deploy-option-header">
+                <span class="deploy-option-icon">⚙️</span>
+                <span class="deploy-option-title">Create Workflow from Description</span>
+                <span class="deploy-option-chevron">▼</span>
+            </div>
+            <div class="deploy-option-content" onclick="event.stopPropagation()">
+                <p>Review and optionally edit the enhanced workflow description:</p>
+                <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 13px; color: #666;">
+                    <strong>Available tools:</strong> document upload, chat, document search, document analysis, image analysis<br>
+                    <strong>📚 API Reference:</strong> Detailed information about endpoints, parameters, and responses can be found in the <a href="https://paradigm.lighton.ai/api/schema/swagger-ui/#/" target="_blank" style="color: #00d4aa;">Paradigm API Swagger documentation</a><br>
+                    <strong>💡 Tip:</strong> Use Step 1 above to get an enhanced workflow description, or manually enter your workflow here.
+                </div>
+                <textarea id="workflowDescription" placeholder="Example: Search for documents about LightOn, then analyze those documents to summarize key information..." style="color: #999;"></textarea>
+                <button onclick="createWorkflow()">Create Workflow</button>
+
+                <!-- Tip about document storage -->
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #2196f3;">
+                    <strong>💡 Tip:</strong> If your workflow processes documents, they will be stored in your private Paradigm workspace. To avoid storing documents permanently, add a final step to your workflow description: "Delete all input documents after processing."
+                </div>
+
+                <div id="workflowResult"></div>
+            </div>
         </div>
-        <textarea id="workflowDescription" placeholder="Example: Search for documents about LightOn, then analyze those documents to summarize key information..." style="color: #999;"></textarea>
-        <input type="text" id="workflowName" placeholder="Workflow name (optional)" />
-        <button onclick="createWorkflow()">Create Workflow</button>
-        
-        <!-- Tip about document storage -->
-        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #2196f3;">
-            <strong>💡 Tip:</strong> If your workflow processes documents, they will be stored in your private Paradigm workspace. To avoid storing documents permanently, add a final step to your workflow description: "Delete all input documents after processing."
-        </div>
-        
-        <div id="workflowResult"></div>
     </div>
 
     <!-- Step 3: Test Workflow -->
     <div class="container">
         <h2>3. Test Workflow</h2>
+        <p>Add test examples to validate your workflow. Click to expand and configure test inputs.</p>
 
-        <!-- Examples toggle and container -->
-        <div style="margin-bottom: 15px;">
-            <button class="examples-toggle-btn expanded" id="examplesToggleBtn" onclick="toggleExamples()">
-                <span>📝 Test Examples</span>
-                <span id="examplesCount">(0)</span>
-                <span class="toggle-icon">▼</span>
-            </button>
+        <div class="deploy-option expanded" id="testExamplesOption" onclick="toggleDeployOption(this)">
+            <div class="deploy-option-header">
+                <span class="deploy-option-icon">📝</span>
+                <span class="deploy-option-title">Test Examples</span>
+                <span class="deploy-option-badge" id="examplesCount">0 examples</span>
+                <span class="deploy-option-chevron">▼</span>
+            </div>
+            <div class="deploy-option-content" onclick="event.stopPropagation()">
+                <!-- Test Examples Container -->
+                <div id="testExamplesContainer" style="margin-bottom: 15px;">
+                    <!-- Test examples will be added here dynamically -->
+                </div>
+
+                <!-- Add Example Button -->
+                <button onclick="addTestExample()" id="addExampleButton" style="background: #6c757d; margin-bottom: 15px;" disabled>+ Add Test Example</button>
+
+                <!-- Execute All Tests Button -->
+                <button onclick="executeAllTests()" id="testButton" disabled>▶ Run Tests</button>
+            </div>
         </div>
-
-        <!-- Test Examples Container -->
-        <div id="testExamplesContainer" style="margin-bottom: 20px;">
-            <!-- Test examples will be added here dynamically -->
-        </div>
-
-        <!-- Add Example Button -->
-        <button onclick="addTestExample()" id="addExampleButton" style="background: #6c757d; margin-bottom: 15px;" disabled>+ Add Test Example</button>
-
-        <!-- Execute All Tests Button -->
-        <button onclick="executeAllTests()" id="testButton" disabled>▶ Run Tests</button>
 
         <!-- Cell-based execution progress section -->
         <div id="cellProgressSection" style="margin-top: 15px; display: none;">
@@ -1234,8 +1535,8 @@ Architecture:
             <div id="workflowDownloadButtons" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
                 <div style="font-weight: 600; margin-bottom: 10px; color: #495057;">📥 Export Options</div>
                 <button onclick="downloadReportPDF()" id="reportButton" disabled style="background: #6f42c1; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer;">📄 Download as Report</button>
-                <button onclick="downloadWorkflowPackage()" id="packageButton" disabled style="background: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 4px; margin-left: 10px; cursor: pointer;">📦 Download Workflow Package</button>
-                <button onclick="downloadMCPPackage()" id="mcpPackageButton" disabled style="background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; margin-left: 10px; cursor: pointer;">🔧 Download MCP Package</button>
+                <button onclick="downloadWorkflowPackage()" id="packageButton" disabled style="background: #00d4aa; color: white; border: none; padding: 8px 14px; border-radius: 6px; margin-left: 8px; cursor: pointer; font-size: 0.8125rem;">📦 Download Workflow Package</button>
+                <button onclick="downloadMCPPackage()" id="mcpPackageButton" disabled style="background: #0891b2; color: white; border: none; padding: 8px 14px; border-radius: 6px; margin-left: 8px; cursor: pointer; font-size: 0.8125rem;">🔧 Download MCP Package</button>
             </div>
         </div>
         
@@ -1270,41 +1571,57 @@ Architecture:
     <!-- Step 5: Deploy Workflow -->
     <div class="container">
         <h2>5. Deploy your workflow</h2>
-        <p>Choose your deployment method based on your infrastructure and requirements.</p>
+        <p>Choose your deployment method based on your infrastructure and requirements. Click an option to expand.</p>
 
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
-            <h3>✅ Option A: Docker (Recommended - Easiest)</h3>
-            <p>Deploy your generated workflow with Docker for a complete, production-ready solution.</p>
-            <ol style="margin-left: 20px;">
-                <li><strong>Prerequisites:</strong> Install <a href="https://www.docker.com/get-started" target="_blank">Docker Desktop</a></li>
-                <li><strong>Download Workflow Package:</strong> After generating your workflow in Step 3, click the <strong>"Download Workflow Package"</strong> button to get a ZIP file</li>
-                <li><strong>Extract the Package:</strong> Unzip the downloaded file to your desired location (e.g., <code>C:\workflows\my-workflow\</code>)</li>
-                <li><strong>Configure Environment:</strong> In the extracted folder, you'll find a <code>.env.example</code> file. Either:
-                    <ul style="margin-left: 20px; margin-top: 5px;">
-                        <li><strong>Option 1:</strong> Rename <code>.env.example</code> to <code>.env</code> and edit it with your Paradigm API key</li>
-                        <li><strong>Option 2:</strong> Create a new <code>.env</code> file with:
-                            <pre style="background: #fff; padding: 10px; border-radius: 4px; margin: 10px 0;"><code>LIGHTON_API_KEY=your_paradigm_api_key_here
-LIGHTON_BASE_URL=https://paradigm.lighton.ai</code></pre>
-                        </li>
-                    </ul>
-                </li>
-                <li><strong>Start with Docker Compose:</strong> In the extracted folder, run:
-                    <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>docker compose up -d</code></pre>
-                </li>
-                <li><strong>Access Your Workflow API:</strong> Your workflow is now accessible at <code>http://localhost:8000/workflow</code></li>
-            </ol>
-
-            <div style="background: #d4edda; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #28a745;">
-                <strong>✅ Benefits:</strong>
-                <ul style="margin: 5px 0 0 20px;">
-                    <li>Complete deployment with FastAPI server included</li>
-                    <li>No complex configuration needed - just download, unzip, configure .env, and run</li>
-                    <li>Includes API endpoints with automatic documentation at <code>http://localhost:8000/docs</code></li>
-                    <li>Easy to scale and deploy on any Docker-compatible infrastructure (cloud VPS, on-premises, etc.)</li>
-                </ul>
+        <!-- Option A: Docker -->
+        <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
+            <div class="deploy-option-header">
+                <span class="deploy-option-icon">🐳</span>
+                <span class="deploy-option-title">Option A: Docker</span>
+                <span class="deploy-option-badge">Recommended</span>
+                <span class="deploy-option-chevron">▼</span>
             </div>
+            <div class="deploy-option-content" onclick="event.stopPropagation()">
+                <p>Deploy your generated workflow with Docker for a complete, production-ready solution.</p>
+                <ol style="margin-left: 20px;">
+                    <li><strong>Prerequisites:</strong> Install <a href="https://www.docker.com/get-started" target="_blank">Docker Desktop</a></li>
+                    <li><strong>Download Workflow Package:</strong> After generating your workflow in Step 3, click the <strong>"Download Workflow Package"</strong> button to get a ZIP file</li>
+                    <li><strong>Extract the Package:</strong> Unzip the downloaded file to your desired location (e.g., <code>C:\workflows\my-workflow\</code>)</li>
+                    <li><strong>Configure Environment:</strong> In the extracted folder, you'll find a <code>.env.example</code> file. Either:
+                        <ul style="margin-left: 20px; margin-top: 5px;">
+                            <li><strong>Option 1:</strong> Rename <code>.env.example</code> to <code>.env</code> and edit it with your Paradigm API key</li>
+                            <li><strong>Option 2:</strong> Create a new <code>.env</code> file with:
+                                <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0;"><code>LIGHTON_API_KEY=your_paradigm_api_key_here
+LIGHTON_BASE_URL=https://paradigm.lighton.ai</code></pre>
+                            </li>
+                        </ul>
+                    </li>
+                    <li><strong>Start with Docker Compose:</strong> In the extracted folder, run:
+                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>docker compose up -d</code></pre>
+                    </li>
+                    <li><strong>Access Your Workflow API:</strong> Your workflow is now accessible at <code>http://localhost:8000/workflow</code></li>
+                </ol>
 
-            <h3>☁️ Option B: Vercel Serverless</h3>
+                <div style="background: #ecfdf5; padding: 10px; border-radius: 6px; margin: 10px 0; border-left: 3px solid #00d4aa;">
+                    <strong>✅ Benefits:</strong>
+                    <ul style="margin: 5px 0 0 20px;">
+                        <li>Complete deployment with FastAPI server included</li>
+                        <li>No complex configuration needed - just download, unzip, configure .env, and run</li>
+                        <li>Includes API endpoints with automatic documentation at <code>http://localhost:8000/docs</code></li>
+                        <li>Easy to scale and deploy on any Docker-compatible infrastructure (cloud VPS, on-premises, etc.)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Option B: Vercel Serverless -->
+        <div class="deploy-option" onclick="toggleDeployOption(this)">
+            <div class="deploy-option-header">
+                <span class="deploy-option-icon">☁️</span>
+                <span class="deploy-option-title">Option B: Vercel Serverless</span>
+                <span class="deploy-option-chevron">▼</span>
+            </div>
+            <div class="deploy-option-content" onclick="event.stopPropagation()">
             <p>Deploy your workflow as a serverless function on Vercel for automatic scaling and global distribution.</p>
             <ol style="margin-left: 20px;">
                 <li><strong>Create a new directory for your API:</strong> Create a new folder on your computer for this deployment</li>
@@ -1364,22 +1681,31 @@ class handler(BaseHTTPRequestHandler):
             <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
                 <strong>⚠️ Important:</strong> Make sure to add your Paradigm API key as an environment variable in the Vercel dashboard for security. Never commit API keys to your code.
             </div>
+            </div>
+        </div>
 
-            <h3>🐍 Option C: Manual Python Deployment</h3>
-            <p>Deploy on your own infrastructure (VPS, cloud VM, or on-premises server).</p>
-            <ol style="margin-left: 20px;">
-                <li>Create a new Python file (e.g., <code>workflow_api.py</code>)</li>
-                <li>Add these dependencies to your <code>requirements.txt</code>:</li>
-            </ol>
-            <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>fastapi==0.104.1
+        <!-- Option C: Manual Python Deployment -->
+        <div class="deploy-option" onclick="toggleDeployOption(this)">
+            <div class="deploy-option-header">
+                <span class="deploy-option-icon">🐍</span>
+                <span class="deploy-option-title">Option C: Manual Python Deployment</span>
+                <span class="deploy-option-chevron">▼</span>
+            </div>
+            <div class="deploy-option-content" onclick="event.stopPropagation()">
+                <p>Deploy on your own infrastructure (VPS, cloud VM, or on-premises server).</p>
+                <ol style="margin-left: 20px;">
+                    <li>Create a new Python file (e.g., <code>workflow_api.py</code>)</li>
+                    <li>Add these dependencies to your <code>requirements.txt</code>:</li>
+                </ol>
+                <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>fastapi==0.104.1
 uvicorn==0.24.0
 python-multipart==0.0.6
 aiohttp==3.9.1
 python-dotenv==1.0.0</code></pre>
-            <ol style="margin-left: 20px;">
-                <li>Create your API file with this structure:</li>
-            </ol>
-            <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>from fastapi import FastAPI, HTTPException
+                <ol style="margin-left: 20px;">
+                    <li>Create your API file with this structure:</li>
+                </ol>
+                <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;"><code>from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 from typing import Optional
@@ -1408,124 +1734,102 @@ async def execute_workflow_endpoint(request: WorkflowRequest):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)</code></pre>
-            <ol style="margin-left: 20px;">
-                <li><strong>Add your Paradigm API key:</strong> Replace <code>"your-paradigm-api-key-here"</code> in the code above with your actual Paradigm API key</li>
-                <li><strong>Install dependencies:</strong> Run <code>pip install -r requirements.txt</code></li>
-                <li><strong>Run your API:</strong> Execute <code>python workflow_api.py</code></li>
-                <li><strong>Access your API:</strong> Your API will be available at <code>http://your-server:8000/workflow</code></li>
-            </ol>
-            
-            <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
-                <strong>🔑 Important:</strong> Make sure to add your Paradigm API key to the code before running. You can get this key from your Paradigm admin interface under API settings.
+                <ol style="margin-left: 20px;">
+                    <li><strong>Add your Paradigm API key:</strong> Replace <code>"your-paradigm-api-key-here"</code> in the code above with your actual Paradigm API key</li>
+                    <li><strong>Install dependencies:</strong> Run <code>pip install -r requirements.txt</code></li>
+                    <li><strong>Run your API:</strong> Execute <code>python workflow_api.py</code></li>
+                    <li><strong>Access your API:</strong> Your API will be available at <code>http://your-server:8000/workflow</code></li>
+                </ol>
+
+                <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
+                    <strong>🔑 Important:</strong> Make sure to add your Paradigm API key to the code before running. You can get this key from your Paradigm admin interface under API settings.
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Step 6: Integrate with Paradigm or Claude -->
+    <!-- Step 6: Integrate with Paradigm using MCP -->
     <div class="container">
-        <h2>6. Integrate your workflow with AI assistants</h2>
-        <p>Choose how to make your workflow accessible to AI assistants like Paradigm or Claude Desktop.</p>
+        <h2>6. Integrate your workflow with Paradigm using MCP</h2>
+        <p>Connect your generated workflow to Paradigm as an MCP server. Click to expand.</p>
 
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
-            <h3>🎯 Option A: MCP Server (Recommended for Claude Desktop)</h3>
-            <p><strong>⚠️ Status: Integration in Progress with Paradigm</strong></p>
-
-            <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
-                <strong>🐛 Known Issue with Paradigm:</strong> When uploading files in Paradigm's interface and using an MCP server, the <code>file_ids</code> are not correctly transmitted to the workflow. This bug is currently being investigated by the Paradigm team.
-                <p style="margin: 10px 0 0 0;"><strong>Workaround:</strong> Use Claude Desktop locally (fully functional) until the Paradigm bug is fixed.</p>
+        <div class="deploy-option" onclick="toggleDeployOption(this)">
+            <div class="deploy-option-header">
+                <span class="deploy-option-icon">🔧</span>
+                <span class="deploy-option-title">MCP Integration Setup</span>
+                <span class="deploy-option-chevron">▼</span>
             </div>
+            <div class="deploy-option-content" onclick="event.stopPropagation()">
+                <p>Connect your generated workflow to Paradigm as an MCP (Model Context Protocol) server, allowing Paradigm agents to query it as an external tool.</p>
 
-            <h4>✅ Works Perfectly with Claude Desktop:</h4>
-            <ol style="margin-left: 20px;">
-                <li><strong>Download MCP Package:</strong> After generating your workflow, click the "Download MCP Package" button to get a ZIP file containing the MCP server</li>
-                <li><strong>Extract the Package:</strong> Unzip the downloaded file to a location on your computer (e.g., <code>C:\mcp-servers\your-workflow\</code>)</li>
-                <li><strong>Install Dependencies:</strong> Open a terminal in the extracted folder and run:
-                    <pre style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 4px; margin: 10px 0;">pip install -r requirements.txt</pre>
-                </li>
-                <li><strong>Configure Claude Desktop:</strong> Edit your Claude Desktop config file:
-                    <ul style="margin-left: 20px;">
-                        <li><strong>Windows:</strong> <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
-                        <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
-                    </ul>
-                    Add your MCP server configuration:
-                    <pre style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 4px; margin: 10px 0; overflow-x: auto;">{
-  "mcpServers": {
-    "your-workflow-name": {
-      "command": "python",
-      "args": ["C:\\path\\to\\mcp-server\\server.py"],
-      "cwd": "C:\\path\\to\\mcp-server",
-      "env": {
-        "PARADIGM_API_KEY": "your_paradigm_api_key",
-        "PARADIGM_BASE_URL": "https://paradigm.lighton.ai"
-      }
-    }
-  }
-}</pre>
-                </li>
-                <li><strong>Restart Claude Desktop:</strong> Close and reopen Claude Desktop to load the MCP server</li>
-                <li><strong>Test Your Workflow:</strong> In Claude Desktop, you should see your workflow tool available. Try asking Claude to use it!</li>
-            </ol>
+                <div style="background: #dbeafe; padding: 12px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #3b82f6; font-size: 0.875rem;">
+                    <strong>ℹ️ What is MCP?</strong>
+                    <p style="margin: 8px 0 0 0;">MCP (Model Context Protocol) servers provide external knowledge, data, or tools that Paradigm agents can query. This enables connecting Paradigm with custom systems or third-party providers. Note that responses from an MCP server are not integrated into Paradigm's database - Paradigm depends on the MCP's own search engine, retrieval mechanism, or service quality.</p>
+                </div>
 
-            <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #ffc107;">
-                <strong>⏱️ Important - Timeout Limitation:</strong> Claude Desktop has a 4-minute timeout for MCP requests. Keep your workflows simple:
-                <ul style="margin-left: 20px; margin-top: 5px;">
-                    <li>Limit to 3-5 documents maximum per request</li>
-                    <li>Avoid complex multi-step workflows that take too long</li>
-                    <li>For longer workflows, consider using Option B (Third Party Tools)</li>
+                <div style="background: #fef3c7; padding: 12px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #f59e0b; font-size: 0.875rem;">
+                    <strong>⚠️ Alpha Feature:</strong> MCP server integration is currently in <strong>Alpha</strong> with Sunny Seal (agents required) and will transition to Beta with Tender Tiger. Only System Admins can add or edit MCP servers.
+                </div>
+
+                <h3 style="font-size: 1rem; margin-top: 20px;">Configuration Steps</h3>
+
+                <h4 style="font-size: 0.9rem; margin-top: 16px;">Step 1: Prepare Your MCP Server</h4>
+                <ol style="margin-left: 20px; font-size: 0.8125rem;">
+                    <li><strong>Download MCP Package:</strong> After generating your workflow, click the "Download MCP Package" button to get a ZIP file containing the MCP server</li>
+                    <li><strong>Deploy Your MCP Server:</strong> Deploy the MCP server to a publicly accessible URL:
+                        <ul style="margin-left: 20px;">
+                            <li>For Docker: Deploy to a server and ensure it's accessible (e.g., <code>https://your-server.com:8000</code>)</li>
+                            <li>For cloud hosting: Use services like Railway, Render, or your preferred hosting provider</li>
+                            <li>For development: Use a tunneling service like ngrok to expose your local server</li>
+                        </ul>
+                    </li>
+                    <li><strong>Note Your MCP Endpoint:</strong> Your MCP server will be accessible at a URL like <code>https://your-server.com:8000</code> (adjust based on your deployment)</li>
+                </ol>
+
+                <h4 style="font-size: 0.9rem; margin-top: 16px;">Step 2: Register the MCP Server in Paradigm</h4>
+                <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin: 10px 0; border-left: 3px solid #ffc107; font-size: 0.8125rem;">
+                    <strong>🔑 Admin Access Required:</strong> Only System Admins can configure MCP servers.
+                </div>
+                <ol style="margin-left: 20px; font-size: 0.8125rem;">
+                    <li><strong>Navigate to MCP Settings:</strong> In Paradigm, go to <strong>Admin &gt; MCP Servers</strong></li>
+                    <li><strong>Create New MCP Server:</strong> Click <strong>New</strong> to register your MCP server</li>
+                    <li><strong>Fill in Registration Details:</strong>
+                        <ul style="margin-left: 20px;">
+                            <li><strong>Name:</strong> A human-readable identifier for your workflow (e.g., <code>document-analysis-workflow</code>)</li>
+                            <li><strong>URL:</strong> The MCP server endpoint URL (e.g., <code>https://your-server.com:8000</code>)</li>
+                            <li><strong>Bearer Token:</strong> (Optional) Add authentication credentials if your MCP server requires them. The token will be stored encrypted.</li>
+                            <li><strong>Enabled:</strong> Toggle this to activate the MCP server</li>
+                        </ul>
+                    </li>
+                    <li><strong>Save Configuration:</strong> Click save to register the MCP server. At this point, the server is registered but not yet associated with any chat settings.</li>
+                </ol>
+
+                <h4 style="font-size: 0.9rem; margin-top: 16px;">Step 3: Enable MCP Server in Chat Settings</h4>
+                <ol style="margin-left: 20px; font-size: 0.8125rem;">
+                    <li><strong>Navigate to Chat Settings:</strong> Go to <strong>Chat Settings</strong> in Paradigm admin</li>
+                    <li><strong>Select Configuration:</strong> Choose the chat configuration where you want to use the MCP server</li>
+                    <li><strong>Enable Agent Mode:</strong> Make sure <strong>Agent mode</strong> is enabled for this chat configuration</li>
+                    <li><strong>Add MCP Server to Agent Tools:</strong> Under <strong>Agent Tools</strong>, add your registered MCP server to the tools list</li>
+                    <li><strong>Save Settings:</strong> Save the chat configuration</li>
+                </ol>
+
+                <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 16px; border-left: 4px solid #10b981; font-size: 0.8125rem;">
+                    <strong>✅ Ready to Use:</strong> Your MCP server is now available to Paradigm agents during chats. The agent will automatically query your workflow when relevant to the user's request.
+                </div>
+
+                <h4 style="font-size: 0.9rem; margin-top: 20px;">Example MCP Servers</h4>
+                <p style="font-size: 0.8125rem; margin-left: 20px;">LightOn provides several pre-built example MCP servers you can explore:</p>
+                <ul style="margin-left: 40px; font-size: 0.8125rem;">
+                    <li><strong>Arxiv MCP</strong> (<code>https://arxiv-mcp.replit.app</code>) - Query scientific publications</li>
+                    <li><strong>Wikipedia MCP</strong> (<code>https://wiki-mcp.replit.app</code>) - General knowledge retrieval</li>
+                    <li><strong>GitHub Issues MCP</strong> (<code>https://github-issues-mcp.replit.app</code>) - Repository issue queries</li>
+                    <li><strong>Weather MCP</strong> (<code>https://weather-mcp.replit.app</code>) - Real-time weather data</li>
+                    <li><strong>File System MCP</strong> (<code>https://fs-mcp.replit.app</code>) - Access local/cloud files</li>
                 </ul>
-            </div>
-        </div>
 
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;">
-            <h3>📡 Option B: Third Party Tools (Current Working Method)</h3>
-            <p>This option works reliably with Paradigm and has no timeout limitations. Best for production workflows.</p>
-
-            <h4>Setup Instructions:</h4>
-            <ol style="margin-left: 20px;">
-                <li><strong>Access Third Party Tools:</strong> In your Paradigm admin interface, navigate to the Third Party Tools section</li>
-                <li><strong>Create New Tool:</strong> Click "Add Third Party Tool"</li>
-                <li><strong>Fill in Basic Information:</strong>
-                    <ul style="margin-left: 20px;">
-                        <li><strong>Name:</strong> Give your workflow a descriptive name (e.g., "Document Analysis Workflow")</li>
-                        <li><strong>Enabled:</strong> Check this box to activate the tool</li>
-                        <li><strong>Description:</strong> Provide a detailed description of what your workflow does. Be specific about:
-                            <ul style="margin-left: 20px;">
-                                <li>What tasks it can perform</li>
-                                <li>What types of queries it handles</li>
-                                <li>Any limitations or requirements</li>
-                                <li>Example use cases</li>
-                            </ul>
-                            <strong>Example:</strong> "This workflow analyzes documents and provides detailed summaries. It can search through uploaded documents, extract key information, and generate comprehensive analysis reports. Works best with text-based documents and specific questions about document content."
-                        </li>
-                    </ul>
-                </li>
-                <li><strong>HTTP Configuration:</strong>
-                    <ul style="margin-left: 20px;">
-                        <li><strong>HTTP Method:</strong> Select "POST" (since your workflow expects POST requests)</li>
-                        <li><strong>Headers:</strong> Add any required headers (usually none needed for basic setup)</li>
-                        <li><strong>Require Document:</strong> Set to "No" (tools currently can't retrieve uploaded docs from the Paradigm UI)</li>
-                    </ul>
-                </li>
-                <li><strong>Creation Method:</strong> Select "Parameters/URL"</li>
-                <li><strong>URL:</strong> Enter your deployed API endpoint URL:
-                    <ul style="margin-left: 20px;">
-                        <li>For Docker: <code>http://your-server:8000/workflow</code></li>
-                        <li>For Vercel: <code>https://your-project.vercel.app/api/workflow</code></li>
-                        <li>For manual deployment: <code>http://your-server:8000/workflow</code></li>
-                    </ul>
-                </li>
-                <li><strong>Parameters:</strong> Configure the parameters your API expects:
-                    <ul style="margin-left: 20px;">
-                        <li><strong>Body Parameters:</strong> Add a parameter named "user_input" of type "string" (or "query" in some cases, but generally "user_input" is what the endpoint expects)</li>
-                    <li><strong>API Documentation:</strong> If deploying via FastAPI, you can view the full API documentation at "your API base URL/docs" (e.g., https://your-api.vercel.app/docs)</li>
-                        <li>If your API expects additional parameters, add them as needed</li>
-                    </ul>
-                </li>
-                <li><strong>Save and Deploy:</strong> Save your tool configuration, then navigate to Chat settings in the Paradigm admin and activate your third party tool using the arrow.</li>
-            </ol>
-            
-            <div style="background: #e3f2fd; padding: 10px; border-radius: 4px; margin-top: 15px;">
-                <strong>�� Important:</strong> The description you provide is crucial for tool routing. Paradigm uses this description to understand when to use your tool, so make it as detailed and accurate as possible.
+                <div style="background: var(--lo-primary-light); padding: 12px; border-radius: 8px; margin-top: 16px; border-left: 4px solid var(--lo-primary); font-size: 0.8125rem;">
+                    <strong>💡 Pro Tip:</strong> Make sure your workflow MCP server has clear tool descriptions and parameter definitions. Paradigm agents use these descriptions to understand when and how to use your workflow effectively.
+                </div>
             </div>
         </div>
     </div>
@@ -1595,6 +1899,10 @@ if __name__ == "__main__":
         // Stores evaluation feedback and retry attempts for each cell
         let cellAIFeedback = {};         // {cellId: [{attempt, feedback, issues, suggestedFix, output, passed}]}
 
+        // Execution state tracking
+        let isExecuting = false;         // Whether workflow is currently executing
+        let isResultsStale = false;      // Whether results are stale (code/examples changed after execution)
+
         // =============================================================
         // COLLAPSIBLE SECTION TOGGLE FUNCTIONS
         // =============================================================
@@ -1619,19 +1927,7 @@ if __name__ == "__main__":
         /**
          * Toggle test examples visibility.
          */
-        function toggleExamples() {
-            const container = document.getElementById('testExamplesContainer');
-            const toggleBtn = document.getElementById('examplesToggleBtn');
-            const isCollapsed = container.classList.contains('collapsed');
-
-            if (isCollapsed) {
-                container.classList.remove('collapsed');
-                toggleBtn.classList.add('expanded');
-            } else {
-                container.classList.add('collapsed');
-                toggleBtn.classList.remove('expanded');
-            }
-        }
+        // toggleExamples() removed - now using toggleDeployOption() for consistent UI
 
         /**
          * Update examples count display.
@@ -1639,7 +1935,8 @@ if __name__ == "__main__":
         function updateExamplesCount() {
             const countEl = document.getElementById('examplesCount');
             if (countEl) {
-                countEl.textContent = `(${testExamples.length})`;
+                const count = testExamples.length;
+                countEl.textContent = `${count} example${count !== 1 ? 's' : ''}`;
             }
         }
 
@@ -2461,7 +2758,7 @@ if __name__ == "__main__":
                         '• If you need to address questions or warnings → Refine your input above and enhance again<br>' +
                         '• You can also manually edit the description in Step 2 before generating code';
                     resultDiv.appendChild(instructionDiv);
-                    
+
                 } else {
                     showResult(resultDiv, `❌ Error: ${data.detail || 'Failed to enhance workflow description'}`, 'error');
                 }
@@ -2480,7 +2777,6 @@ if __name__ == "__main__":
          */
         async function createWorkflow() {
             const description = document.getElementById('workflowDescription').value.trim();
-            const name = document.getElementById('workflowName').value.trim();
             const resultDiv = document.getElementById('workflowResult');
 
             if (!description) {
@@ -2489,14 +2785,14 @@ if __name__ == "__main__":
                 return;
             }
 
-            await createCellBasedWorkflow(description, name, resultDiv);
+            await createCellBasedWorkflow(description, resultDiv);
         }
 
         /**
          * Create a cell-based workflow with step-by-step execution plan.
          * Breaks the workflow into discrete cells that execute sequentially.
          */
-        async function createCellBasedWorkflow(description, name, resultDiv) {
+        async function createCellBasedWorkflow(description, resultDiv) {
             showResult(resultDiv, 'Creating cell-based workflow... Planning execution steps...', 'loading');
             addLog('🚀 Starting cell-based workflow creation...', 'info');
             addLog('📋 AI is breaking down the workflow into discrete steps...', 'info');
@@ -2508,8 +2804,7 @@ if __name__ == "__main__":
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        description: description,
-                        name: name || null
+                        description: description
                     })
                 }, 'CREATE WORKFLOW (CELL-BASED)');
 
@@ -2533,7 +2828,6 @@ if __name__ == "__main__":
                     // Build result message with cell plan
                     let resultMessage = `✅ Cell-Based Workflow Created!\n\n`;
                     resultMessage += `ID: ${data.id}\n`;
-                    resultMessage += `Name: ${data.name || 'Unnamed'}\n`;
                     resultMessage += `Status: ${data.status}\n`;
                     resultMessage += `Mode: Cell-Based (Step-by-Step)\n`;
                     resultMessage += `Total Cells: ${currentCells.length}\n\n`;
@@ -2542,7 +2836,7 @@ if __name__ == "__main__":
                     resultMessage += `═══════════════════════════════════════\n\n`;
 
                     currentCells.forEach((cell, index) => {
-                        resultMessage += `Step ${cell.step_number}: ${cell.name}\n`;
+                        resultMessage += `Step ${cell.display_step || cell.step_number}: ${cell.name}\n`;
                         resultMessage += `  └─ ${cell.description}\n`;
                         resultMessage += `  └─ Inputs: ${cell.inputs_required.join(', ') || 'none'}\n`;
                         resultMessage += `  └─ Outputs: ${cell.outputs_produced.join(', ') || 'none'}\n`;
@@ -2553,7 +2847,7 @@ if __name__ == "__main__":
 
                     // Log each cell
                     currentCells.forEach(cell => {
-                        addLog(`📦 Cell ${cell.step_number}: ${cell.name} [${cell.paradigm_tools_used.join(', ')}]`, 'workflow-step');
+                        addLog(`📦 Cell ${cell.display_step || cell.step_number}: ${cell.name} [${cell.paradigm_tools_used.join(', ')}]`, 'workflow-step');
                     });
                 } else {
                     showResult(resultDiv, `❌ Error: ${data.detail || 'Failed to create cell-based workflow'}`, 'error');
@@ -2684,6 +2978,8 @@ if __name__ == "__main__":
             const example = testExamples.find(ex => ex.id === exampleId);
             if (example) {
                 example.query = query;
+                // Mark results as stale when examples change
+                markResultsStale();
             }
         }
 
@@ -2838,9 +3134,15 @@ if __name__ == "__main__":
         }
 
         /**
-         * Execute workflow on all test examples
+         * Execute workflow on all test examples (or stop if already executing)
          */
         async function executeAllTests() {
+            // If already executing, stop instead
+            if (isExecuting) {
+                await stopExecution();
+                return;
+            }
+
             if (!currentWorkflowId) {
                 alert('Please create a workflow first');
                 addLog('❌ No workflow to execute', 'error');
@@ -2853,20 +3155,119 @@ if __name__ == "__main__":
                 return;
             }
 
-            // Validate all examples have queries
-            const emptyExamples = testExamples.filter(ex => !ex.query.trim());
-            if (emptyExamples.length > 0) {
-                alert(`Please enter queries for all test examples (${emptyExamples.length} missing)`);
-                return;
-            }
-
             addLog(`🚀 Starting multi-example test with ${testExamples.length} example(s)`, 'workflow-start');
 
-            // Clear previous outputs
+            // Clear previous outputs and stale state
             currentExampleOutputs = {};
+            isResultsStale = false;
+            clearStaleIndicators();
 
             // Execute using cell-based workflow with evaluation
             await executeCellBasedMultiExample();
+        }
+
+        /**
+         * Stop the current workflow execution
+         */
+        async function stopExecution() {
+            if (!isExecuting || !currentWorkflowId) {
+                return;
+            }
+
+            addLog('🛑 Stopping execution...', 'warning');
+            updateTestButton('stopping');
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/stop`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    addLog('⏹️ Stop request sent - execution will stop after current cell', 'info');
+                } else {
+                    addLog(`⚠️ ${result.message}`, 'warning');
+                }
+            } catch (error) {
+                addLog(`❌ Failed to stop execution: ${error.message}`, 'error');
+            }
+        }
+
+        /**
+         * Update the test button state based on execution status
+         */
+        function updateTestButton(state) {
+            const btn = document.getElementById('testButton');
+            if (!btn) return;
+
+            switch (state) {
+                case 'running':
+                    btn.innerHTML = '■ Stop';
+                    btn.style.background = '#dc3545';
+                    btn.disabled = false;
+                    break;
+                case 'stopping':
+                    btn.innerHTML = '⏳ Stopping...';
+                    btn.style.background = '#ffc107';
+                    btn.disabled = true;
+                    break;
+                case 'idle':
+                default:
+                    btn.innerHTML = '▶ Run Tests';
+                    btn.style.background = '';
+                    btn.disabled = !currentWorkflowId;
+                    break;
+            }
+        }
+
+        /**
+         * Mark results as stale (after code or example changes)
+         */
+        function markResultsStale() {
+            if (!isExecuting && Object.keys(currentExampleOutputs).length > 0) {
+                isResultsStale = true;
+                showStaleIndicators();
+                addLog('⚠️ Results are now stale - rerun to see updated output', 'warning');
+            }
+        }
+
+        /**
+         * Show stale indicators on cells that have outputs
+         */
+        function showStaleIndicators() {
+            // Add stale class to all cell items that have outputs
+            document.querySelectorAll('.cell-item').forEach(item => {
+                const cellId = item.id?.replace('cell-', '');
+                if (cellId && currentExampleOutputs[cellId]) {
+                    item.classList.add('stale');
+                }
+            });
+
+            // Show stale banner
+            let banner = document.getElementById('staleBanner');
+            if (!banner) {
+                const progressSection = document.getElementById('cellProgressSection');
+                if (progressSection) {
+                    banner = document.createElement('div');
+                    banner.id = 'staleBanner';
+                    banner.className = 'stale-banner';
+                    banner.innerHTML = '⚠️ Results are stale. <strong>Rerun</strong> to see updated output.';
+                    progressSection.insertBefore(banner, progressSection.firstChild);
+                }
+            }
+            if (banner) banner.style.display = 'block';
+        }
+
+        /**
+         * Clear stale indicators
+         */
+        function clearStaleIndicators() {
+            isResultsStale = false;
+            document.querySelectorAll('.cell-item.stale').forEach(item => {
+                item.classList.remove('stale');
+            });
+            const banner = document.getElementById('staleBanner');
+            if (banner) banner.style.display = 'none';
         }
         /**
          * Execute cell-based workflow with multiple test examples
@@ -2877,6 +3278,10 @@ if __name__ == "__main__":
          * 4. Once evaluation passes, run remaining examples
          */
         async function executeCellBasedMultiExample() {
+            // Set execution state
+            isExecuting = true;
+            updateTestButton('running');
+
             addLog(`🧪 Running cell-based workflow with ${testExamples.length} test examples (with LLM evaluation)`, 'workflow-start');
 
             // Initialize cell progress display
@@ -2934,6 +3339,10 @@ if __name__ == "__main__":
             } catch (error) {
                 addLog(`❌ Multi-example test failed: ${error.message}`, 'error');
                 showResult(document.getElementById('testResult'), `❌ Error: ${error.message}`, 'error');
+            } finally {
+                // Reset execution state
+                isExecuting = false;
+                updateTestButton('idle');
             }
         }
 
@@ -2948,10 +3357,27 @@ if __name__ == "__main__":
                     if (event.evaluation_enabled) {
                         addLog(`🔍 LLM evaluation enabled (smoke test approach)`, 'info');
                     }
+                    if (event.is_parallel) {
+                        addLog(`⚡ Parallel execution enabled (${event.total_layers} layers)`, 'info');
+                    }
+                    break;
+
+                case 'layer_started':
+                    updateLayerDisplay(event.layer, 'executing');
+                    if (event.parallel) {
+                        addLog(`\n📦 LAYER ${event.layer} started (${event.cell_count} cells in PARALLEL)`, 'workflow-step');
+                    } else {
+                        addLog(`\n📦 LAYER ${event.layer} started`, 'workflow-step');
+                    }
+                    break;
+
+                case 'layer_completed':
+                    updateLayerDisplay(event.layer, 'completed');
+                    addLog(`✅ LAYER ${event.layer} completed`, 'response');
                     break;
 
                 case 'cell_generating':
-                    addLog(`\n📋 === CELL ${event.step_number}: "${event.cell_name}" ===`, 'workflow-step');
+                    addLog(`\n📋 === CELL ${event.display_step || event.step_number}: "${event.cell_name}" ===`, 'workflow-step');
                     addLog(`  🔄 Generating code...`, 'info');
                     updateCellDisplay(event.cell_id, 'generating', '🔄 Generating...');
                     break;
@@ -3086,6 +3512,14 @@ if __name__ == "__main__":
 
                 case 'workflow_failed':
                     addLog(`\n❌ Workflow FAILED: ${event.error}`, 'error');
+                    break;
+
+                case 'workflow_stopped':
+                    addLog(`\n⏹️ Workflow STOPPED by user`, 'warning');
+                    showResult(document.getElementById('testResult'), '⏹️ Execution stopped - you can modify and rerun', 'warning');
+                    // Reset execution state
+                    isExecuting = false;
+                    updateTestButton('idle');
                     break;
 
                 case 'error':
@@ -3480,6 +3914,7 @@ if __name__ == "__main__":
 
         /**
          * Initialize the cell progress display with current cells.
+         * Groups cells by layer to visualize parallel execution.
          */
         function initializeCellProgressDisplay() {
             const progressSection = document.getElementById('cellProgressSection');
@@ -3492,28 +3927,73 @@ if __name__ == "__main__":
             // Update badge
             badge.textContent = `0/${currentCells.length} cells`;
 
-            // Build cell items
-            progressList.innerHTML = '';
+            // Group cells by layer
+            const layerMap = {};
             currentCells.forEach(cell => {
-                const cellDiv = document.createElement('div');
-                cellDiv.className = 'cell-item pending';
-                cellDiv.id = `cell-item-${cell.id}`;
+                const layer = cell.layer || 1;
+                if (!layerMap[layer]) {
+                    layerMap[layer] = [];
+                }
+                layerMap[layer].push(cell);
+            });
 
-                cellDiv.innerHTML = `
-                    <div class="cell-number">${cell.step_number}</div>
-                    <div class="cell-content">
-                        <div class="cell-name">${cell.name}</div>
-                        <div class="cell-description">${cell.description}</div>
-                        <div class="cell-meta">
-                            <span class="cell-meta-item">📥 ${cell.inputs_required.join(', ') || 'none'}</span>
-                            <span class="cell-meta-item">📤 ${cell.outputs_produced.join(', ') || 'none'}</span>
-                        </div>
-                    </div>
-                    <span class="cell-code-toggle" onclick="toggleCellCode('${cell.id}')" title="View code">👁️</span>
-                    <div class="cell-status-icon">⏳</div>
+            // Sort layer numbers
+            const sortedLayers = Object.keys(layerMap).map(Number).sort((a, b) => a - b);
+
+            // Build layer-grouped display
+            progressList.innerHTML = '';
+
+            sortedLayers.forEach(layerNum => {
+                const layerCells = layerMap[layerNum];
+                const isParallel = layerCells.length > 1;
+
+                // Create layer group container
+                const layerGroup = document.createElement('div');
+                layerGroup.className = 'layer-group';
+                layerGroup.id = `layer-group-${layerNum}`;
+
+                // Create layer header
+                const layerHeader = document.createElement('div');
+                layerHeader.className = 'layer-header';
+                layerHeader.innerHTML = `
+                    <span class="layer-number">LAYER ${layerNum}</span>
+                    ${isParallel ? '<span class="layer-parallel-badge">⚡ PARALLEL</span>' : ''}
+                    <span class="layer-status" id="layer-status-${layerNum}">${layerCells.length} cell${layerCells.length > 1 ? 's' : ''}</span>
                 `;
 
-                progressList.appendChild(cellDiv);
+                // Create container for cells in this layer
+                const layerCellsContainer = document.createElement('div');
+                layerCellsContainer.className = 'layer-cells';
+
+                // Add cells to layer
+                layerCells.forEach(cell => {
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = 'cell-item pending';
+                    cellDiv.id = `cell-item-${cell.id}`;
+
+                    // Use display_step if available, otherwise construct from layer.sublayer_index
+                    const displayStep = cell.display_step || `${cell.layer || 1}.${cell.sublayer_index || 1}`;
+
+                    cellDiv.innerHTML = `
+                        <div class="cell-number">${displayStep}</div>
+                        <div class="cell-content">
+                            <div class="cell-name">${cell.name}</div>
+                            <div class="cell-description">${cell.description}</div>
+                            <div class="cell-meta">
+                                <span class="cell-meta-item">📥 ${cell.inputs_required.join(', ') || 'none'}</span>
+                                <span class="cell-meta-item">📤 ${cell.outputs_produced.join(', ') || 'none'}</span>
+                            </div>
+                        </div>
+                        <span class="cell-code-toggle" onclick="toggleCellCode('${cell.id}')" title="View code">👁️</span>
+                        <div class="cell-status-icon">⏳</div>
+                    `;
+
+                    layerCellsContainer.appendChild(cellDiv);
+                });
+
+                layerGroup.appendChild(layerHeader);
+                layerGroup.appendChild(layerCellsContainer);
+                progressList.appendChild(layerGroup);
             });
         }
 
@@ -3526,6 +4006,23 @@ if __name__ == "__main__":
             switch (type) {
                 case 'workflow_start':
                     addLog(`🎬 Workflow started with ${event.total_cells} cells`, 'workflow-step');
+                    if (event.is_parallel) {
+                        addLog(`⚡ Parallel execution enabled (${event.total_layers} layers)`, 'info');
+                    }
+                    break;
+
+                case 'layer_started':
+                    updateLayerDisplay(event.layer, 'executing');
+                    if (event.parallel) {
+                        addLog(`\n📦 LAYER ${event.layer} started (${event.cell_count} cells in PARALLEL)`, 'workflow-step');
+                    } else {
+                        addLog(`\n📦 LAYER ${event.layer} started`, 'workflow-step');
+                    }
+                    break;
+
+                case 'layer_completed':
+                    updateLayerDisplay(event.layer, 'completed');
+                    addLog(`✅ LAYER ${event.layer} completed`, 'response');
                     break;
 
                 case 'cell_generating':
@@ -3600,6 +4097,30 @@ if __name__ == "__main__":
 
                 default:
                     console.log('Unknown event type:', type, event);
+            }
+        }
+
+        /**
+         * Update a layer group's display status.
+         * @param {number} layerNum - The layer number
+         * @param {string} status - 'executing' or 'completed'
+         */
+        function updateLayerDisplay(layerNum, status) {
+            const layerGroup = document.getElementById(`layer-group-${layerNum}`);
+            if (!layerGroup) return;
+
+            // Remove previous status classes and add new one
+            layerGroup.classList.remove('executing', 'completed');
+            layerGroup.classList.add(status);
+
+            // Update layer status text
+            const layerStatus = document.getElementById(`layer-status-${layerNum}`);
+            if (layerStatus) {
+                if (status === 'executing') {
+                    layerStatus.textContent = '⚡ Running...';
+                } else if (status === 'completed') {
+                    layerStatus.textContent = '✅ Done';
+                }
             }
         }
 
@@ -3765,6 +4286,24 @@ if __name__ == "__main__":
         }
 
         /**
+         * Toggle a deployment option's expanded/collapsed state.
+         * Only one option can be expanded at a time.
+         */
+        function toggleDeployOption(element) {
+            const wasExpanded = element.classList.contains('expanded');
+
+            // Collapse all deploy options first
+            document.querySelectorAll('.deploy-option').forEach(opt => {
+                opt.classList.remove('expanded');
+            });
+
+            // If it wasn't expanded, expand it now
+            if (!wasExpanded) {
+                element.classList.add('expanded');
+            }
+        }
+
+        /**
          * Toggle the visibility of a cell's code section.
          */
         function toggleCellCode(cellId) {
@@ -3861,6 +4400,14 @@ if __name__ == "__main__":
          * Submit feedback for a cell
          */
         async function submitCellFeedback(cellId, workflowId) {
+            // Warn if execution is in progress
+            if (isExecuting) {
+                const proceed = confirm('Workflow is currently executing. Submitting feedback will stop execution and regenerate this cell. Continue?');
+                if (!proceed) return;
+                // Stop execution first
+                await stopExecution();
+            }
+
             const textarea = document.getElementById(`cell-feedback-textarea-${cellId}`);
             const feedback = textarea?.value?.trim();
 
@@ -3896,7 +4443,10 @@ if __name__ == "__main__":
                 if (result.new_code) {
                     updateCellDisplay(cellId, 'ready', '✓ Code updated with feedback', null, null, result.new_code);
                     addLog(`✅ Cell code regenerated successfully`, 'response');
-                    addLog(`📝 New code available - review and approve to continue`, 'info');
+                    addLog(`📝 New code available - rerun workflow to see updated output`, 'info');
+
+                    // Mark results as stale since cell code changed
+                    markResultsStale();
                 }
             } catch (error) {
                 console.error('Feedback error:', error);
@@ -4141,7 +4691,7 @@ if __name__ == "__main__":
                 "For each sentence in the user input, search for relevant documents, then format results as Question and Answer pairs.",
                 "Search for documents, extract key information using chat completion, then analyze specific documents for deeper insights."
             ];
-            
+
             // Set up example text behavior for raw workflow description
             const rawWorkflowTextarea = document.getElementById('rawWorkflowDescription');
             const rawExampleText = "I want to search for documents about my question and then analyze them to provide a summary.";
@@ -4279,8 +4829,9 @@ if __name__ == "__main__":
         /**
          * Download workflow execution results as a PDF report.
          *
-         * Generates a printable HTML report from all cell outputs
-         * and opens it in a new window for the user to save as PDF.
+         * Structure:
+         * 1. MAIN CONTENT: Final workflow output (last cell results) - well formatted
+         * 2. ANNEXE: Workflow details including metadata, execution time, and cell iterations
          */
         function downloadReportPDF() {
             if (!currentWorkflowId) {
@@ -4295,13 +4846,24 @@ if __name__ == "__main__":
                 // Get workflow description
                 const workflowDescription = document.getElementById('workflowDescription').value || 'Untitled Workflow';
 
+                // Get all cells
+                const cellItems = document.querySelectorAll('.cell-item');
+                const cellsArray = Array.from(cellItems);
+                const totalCells = cellsArray.length;
+
+                // Find the last cell (final output)
+                const lastCellItem = cellsArray[cellsArray.length - 1];
+                const lastCellId = lastCellItem ? lastCellItem.id.replace('cell-item-', '') : null;
+                const lastCellNameEl = lastCellItem ? lastCellItem.querySelector('.cell-item-name') : null;
+                const lastCellName = lastCellNameEl ? lastCellNameEl.textContent : 'Final Output';
+
                 // Build HTML report content
                 let reportHTML = `
                     <!DOCTYPE html>
                     <html>
                     <head>
                         <meta charset="UTF-8">
-                        <title>Workflow Report - ${workflowDescription.substring(0, 50)}</title>
+                        <title>Workflow Report - ${escapeHTML(workflowDescription.substring(0, 50))}</title>
                         <style>
                             body {
                                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -4313,19 +4875,87 @@ if __name__ == "__main__":
                             }
                             h1 {
                                 color: #2c3e50;
-                                border-bottom: 3px solid #3498db;
+                                border-bottom: 3px solid #27ae60;
                                 padding-bottom: 15px;
                                 margin-bottom: 30px;
                             }
                             h2 {
                                 color: #34495e;
                                 margin-top: 40px;
-                                border-left: 4px solid #3498db;
+                                border-left: 4px solid #27ae60;
                                 padding-left: 15px;
                             }
                             h3 {
                                 color: #7f8c8d;
                                 margin-top: 25px;
+                            }
+                            .main-result {
+                                background: linear-gradient(135deg, #f0fff4 0%, #e8f8e8 100%);
+                                padding: 30px;
+                                border-radius: 12px;
+                                margin-bottom: 40px;
+                                border: 2px solid #27ae60;
+                            }
+                            .main-result-title {
+                                font-size: 1.4em;
+                                color: #27ae60;
+                                margin-bottom: 20px;
+                                font-weight: bold;
+                            }
+                            .main-result-content {
+                                background: white;
+                                padding: 20px;
+                                border-radius: 8px;
+                                font-size: 1em;
+                                line-height: 1.8;
+                            }
+                            .main-result-variable {
+                                margin: 15px 0;
+                                padding: 15px;
+                                background: #fafffe;
+                                border-radius: 6px;
+                                border-left: 4px solid #27ae60;
+                            }
+                            .main-result-variable-name {
+                                font-weight: bold;
+                                color: #27ae60;
+                                font-size: 1.1em;
+                                margin-bottom: 10px;
+                            }
+                            .main-result-variable-value {
+                                font-family: 'Georgia', serif;
+                                white-space: pre-wrap;
+                                word-break: break-word;
+                                font-size: 1em;
+                                line-height: 1.8;
+                            }
+                            .annexe {
+                                margin-top: 60px;
+                                padding-top: 40px;
+                                border-top: 3px solid #bdc3c7;
+                            }
+                            .annexe-title {
+                                color: #7f8c8d;
+                                font-size: 1.8em;
+                                margin-bottom: 30px;
+                            }
+                            .metadata-section {
+                                background: #f8f9fa;
+                                padding: 20px;
+                                border-radius: 8px;
+                                margin-bottom: 30px;
+                            }
+                            .metadata-item {
+                                display: flex;
+                                margin: 8px 0;
+                            }
+                            .metadata-label {
+                                font-weight: bold;
+                                color: #555;
+                                min-width: 180px;
+                            }
+                            .metadata-value {
+                                color: #333;
                             }
                             .workflow-description {
                                 background: #f8f9fa;
@@ -4335,14 +4965,14 @@ if __name__ == "__main__":
                                 border-left: 4px solid #3498db;
                             }
                             .cell-section {
-                                margin-bottom: 40px;
+                                margin-bottom: 30px;
                                 padding: 20px;
                                 background: #fafafa;
                                 border-radius: 8px;
                                 border: 1px solid #e0e0e0;
                             }
                             .cell-name {
-                                font-size: 1.3em;
+                                font-size: 1.2em;
                                 color: #2c3e50;
                                 margin-bottom: 10px;
                             }
@@ -4352,8 +4982,8 @@ if __name__ == "__main__":
                                 margin-bottom: 15px;
                             }
                             .example-section {
-                                margin-top: 20px;
-                                padding: 15px;
+                                margin-top: 15px;
+                                padding: 12px;
                                 background: white;
                                 border-radius: 6px;
                                 border: 1px solid #ddd;
@@ -4361,44 +4991,44 @@ if __name__ == "__main__":
                             .example-title {
                                 font-weight: bold;
                                 color: #2980b9;
-                                margin-bottom: 10px;
+                                margin-bottom: 8px;
+                                font-size: 0.95em;
                             }
                             .example-input {
                                 background: #e8f4f8;
-                                padding: 10px;
+                                padding: 8px;
                                 border-radius: 4px;
-                                margin-bottom: 10px;
-                            }
-                            .example-input strong {
-                                color: #2980b9;
+                                margin-bottom: 8px;
+                                font-size: 0.9em;
                             }
                             .output-variable {
-                                margin: 10px 0;
-                                padding: 10px;
+                                margin: 8px 0;
+                                padding: 8px;
                                 background: #e8f8e8;
                                 border-radius: 4px;
                                 border-left: 3px solid #27ae60;
+                                font-size: 0.85em;
                             }
                             .output-variable-name {
                                 font-weight: bold;
                                 color: #27ae60;
-                                margin-bottom: 5px;
+                                margin-bottom: 4px;
                             }
                             .output-variable-value {
                                 font-family: 'Courier New', monospace;
                                 white-space: pre-wrap;
                                 word-break: break-word;
-                                font-size: 0.9em;
+                                font-size: 0.85em;
                             }
                             .console-output {
                                 background: #2d2d2d;
                                 color: #f8f8f2;
-                                padding: 15px;
+                                padding: 10px;
                                 border-radius: 4px;
                                 font-family: monospace;
                                 white-space: pre-wrap;
-                                font-size: 0.85em;
-                                margin-top: 10px;
+                                font-size: 0.8em;
+                                margin-top: 8px;
                             }
                             .timestamp {
                                 text-align: right;
@@ -4411,28 +5041,122 @@ if __name__ == "__main__":
                             @media print {
                                 body { padding: 20px; }
                                 .cell-section { break-inside: avoid; }
+                                .annexe { page-break-before: always; }
                             }
                         </style>
                     </head>
                     <body>
-                        <h1>📊 Workflow Execution Report</h1>
+                        <h1>📊 Workflow Results Report</h1>
+                `;
+
+                // ============================================
+                // SECTION 1: MAIN CONTENT - Final Output
+                // ============================================
+                reportHTML += `
+                    <div class="main-result">
+                        <div class="main-result-title">✅ Final Workflow Output</div>
+                        <div class="main-result-content">
+                `;
+
+                if (lastCellId) {
+                    const lastCellOutputs = currentExampleOutputs[lastCellId] || {};
+
+                    // Show final output for each example
+                    testExamples.forEach((example, exIndex) => {
+                        const exampleOutput = lastCellOutputs[example.id];
+
+                        if (testExamples.length > 1) {
+                            reportHTML += `<h3 style="color: #27ae60; margin-top: ${exIndex > 0 ? '30px' : '0'};">Example ${exIndex + 1} Result</h3>`;
+                        }
+
+                        if (exampleOutput) {
+                            const variables = exampleOutput.variables || {};
+                            if (Object.keys(variables).length > 0) {
+                                for (const [key, value] of Object.entries(variables)) {
+                                    reportHTML += `
+                                        <div class="main-result-variable">
+                                            <div class="main-result-variable-name">${escapeHTML(key)}</div>
+                                            <div class="main-result-variable-value">${escapeHTML(String(value))}</div>
+                                        </div>
+                                    `;
+                                }
+                            }
+
+                            if (exampleOutput.output) {
+                                reportHTML += `
+                                    <div style="margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 6px;">
+                                        <strong>Console Output:</strong>
+                                        <pre style="margin-top: 10px; white-space: pre-wrap;">${escapeHTML(exampleOutput.output)}</pre>
+                                    </div>
+                                `;
+                            }
+
+                            if (!exampleOutput.output && Object.keys(variables).length === 0) {
+                                reportHTML += '<p style="color: #999;">No output produced</p>';
+                            }
+                        } else {
+                            reportHTML += '<p style="color: #999;">Output not available</p>';
+                        }
+                    });
+                } else {
+                    reportHTML += '<p style="color: #999;">No workflow output available</p>';
+                }
+
+                reportHTML += `
+                        </div>
+                    </div>
+                `;
+
+                // ============================================
+                // SECTION 2: ANNEXE - Workflow Details
+                // ============================================
+                reportHTML += `
+                    <div class="annexe">
+                        <div class="annexe-title">📎 Annexe: Workflow Details</div>
+
+                        <!-- Metadata Section -->
+                        <div class="metadata-section">
+                            <h3 style="margin-top: 0; color: #555;">Execution Metadata</h3>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Workflow ID:</span>
+                                <span class="metadata-value">${escapeHTML(currentWorkflowId || 'N/A')}</span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Total Cells:</span>
+                                <span class="metadata-value">${totalCells}</span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Test Examples:</span>
+                                <span class="metadata-value">${testExamples.length}</span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Generated:</span>
+                                <span class="metadata-value">${new Date().toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        <!-- Workflow Description -->
                         <div class="workflow-description">
                             <strong>Workflow Description:</strong><br>
                             ${escapeHTML(workflowDescription)}
                         </div>
+
+                        <h3>Cell-by-Cell Execution Details</h3>
                 `;
 
-                // Iterate through each cell and its outputs
-                const cellItems = document.querySelectorAll('.cell-item');
+                // Iterate through each cell and its outputs for the annexe
                 let cellIndex = 0;
 
-                cellItems.forEach(cellItem => {
+                cellsArray.forEach(cellItem => {
                     cellIndex++;
                     const cellId = cellItem.id.replace('cell-item-', '');
                     const cellNameEl = cellItem.querySelector('.cell-item-name');
                     const cellName = cellNameEl ? cellNameEl.textContent : 'Cell ' + cellIndex;
                     const cellDescEl = cellItem.querySelector('.cell-description-full');
                     const cellDesc = cellDescEl ? cellDescEl.textContent : '';
+
+                    // Get layer info if available
+                    const layerBadge = cellItem.closest('.layer-group')?.querySelector('.layer-header')?.textContent || '';
 
                     reportHTML += `
                         <div class="cell-section">
@@ -4448,7 +5172,7 @@ if __name__ == "__main__":
                         const exampleOutput = cellOutputs[example.id];
                         reportHTML += `
                             <div class="example-section">
-                                <div class="example-title">🔹 Example ${exIndex + 1}</div>
+                                <div class="example-title">Example ${exIndex + 1}</div>
                                 <div class="example-input">
                                     <strong>Input:</strong> ${escapeHTML(example.query || 'No input')}
                                 </div>
@@ -4476,10 +5200,10 @@ if __name__ == "__main__":
                             }
 
                             if (!exampleOutput.output && Object.keys(variables).length === 0) {
-                                reportHTML += '<p style="color: #999;">No output produced</p>';
+                                reportHTML += '<p style="color: #999; font-size: 0.9em;">No output produced</p>';
                             }
                         } else {
-                            reportHTML += '<p style="color: #999;">Output not available</p>';
+                            reportHTML += '<p style="color: #999; font-size: 0.9em;">Output not available</p>';
                         }
 
                         reportHTML += '</div>';
@@ -4488,11 +5212,13 @@ if __name__ == "__main__":
                     reportHTML += '</div>';
                 });
 
-                // Add timestamp
+                // Close annexe and document
                 reportHTML += `
-                        <div class="timestamp">
-                            Generated on: ${new Date().toLocaleString()}
-                        </div>
+                    </div>
+
+                    <div class="timestamp">
+                        Report generated on: ${new Date().toLocaleString()}
+                    </div>
                     </body>
                     </html>
                 `;

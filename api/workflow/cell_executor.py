@@ -2,20 +2,28 @@
 Cell-Based Workflow Executor
 
 This module handles step-by-step execution of cell-based workflows.
-It executes cells sequentially, passing state between them, and yields
-events for real-time streaming to the frontend.
+It supports both sequential and parallel execution based on layer structure.
 
 Key Components:
-    - CellExecutor: Executes workflow cells one at a time
-    - State management between cells
+    - CellExecutor: Executes workflow cells with parallel layer support
+    - State management between cells and layers
     - Real-time event streaming via async generators
+    - Per-cell retry and LLM evaluation cycles
 
 The executor:
-    - Generates code for each cell on-demand
-    - Executes cells in dependency order
-    - Passes outputs from one cell to the next via execution context
+    - Generates code for each cell on-demand (parallel within layers)
+    - Executes cells in layer order (parallel within each layer)
+    - Passes outputs from one layer to the next via execution context
     - Yields SSE events for each stage of execution
     - Handles failures gracefully, preserving partial results
+    - Each cell has its own retry + evaluation cycle running in parallel
+
+Parallelization:
+    - Cells in the same layer execute concurrently
+    - Each cell runs its full retry + evaluation cycle independently
+    - A layer completes only when ALL cells reach final state
+    - Layer N+1 starts only after layer N completes
+    - Context is merged from all parallel cells before next layer
 """
 
 import asyncio
@@ -26,12 +34,42 @@ import time
 import re
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
-from typing import Optional, Dict, Any, List, AsyncGenerator
+from typing import Optional, Dict, Any, List, AsyncGenerator, Tuple
+from dataclasses import dataclass
 
 from .models import WorkflowCell, WorkflowPlan, CellStatus
 from .cell_generator import CellCodeGenerator
 from .cell_evaluator import CellOutputEvaluator, ExampleOutput, EvaluationResult
 from ..config import settings
+
+
+@dataclass
+class CellExecutionResult:
+    """
+    Result of executing a single cell with full retry/evaluation cycle.
+
+    Attributes:
+        cell: The cell that was executed
+        success: Whether the cell completed successfully
+        output: Human-readable output text
+        output_variables: Variables produced by the cell
+        events: List of events that occurred during execution
+        error: Error message if failed
+        attempts: Number of attempts made
+    """
+    cell: WorkflowCell
+    success: bool
+    output: str = ""
+    output_variables: Dict[str, Any] = None
+    events: List[Dict[str, Any]] = None
+    error: Optional[str] = None
+    attempts: int = 1
+
+    def __post_init__(self):
+        if self.output_variables is None:
+            self.output_variables = {}
+        if self.events is None:
+            self.events = []
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +98,14 @@ class CellExecutor:
         """
         Format output variables for display in the UI.
 
+        Shows the FULL output without any truncation so users can see
+        complete results for every cell.
+
         Args:
             variables: Dictionary of output variables
 
         Returns:
-            Dictionary with formatted string representations
+            Dictionary with formatted string representations (never truncated)
         """
         import json
 
@@ -74,30 +115,16 @@ class CellExecutor:
             if key in ["LIGHTON_API_KEY", "PARADIGM_API_KEY", "user_input", "attached_file_ids"]:
                 continue
 
-            # Format based on type
+            # Format based on type - NO TRUNCATION
             if isinstance(value, dict):
-                # Format dict as pretty JSON (limit to 500 chars)
-                formatted_json = json.dumps(value, indent=2, ensure_ascii=False)
-                if len(formatted_json) > 500:
-                    formatted[key] = formatted_json[:500] + "\n... (truncated)"
-                else:
-                    formatted[key] = formatted_json
+                # Format dict as pretty JSON (full content)
+                formatted[key] = json.dumps(value, indent=2, ensure_ascii=False)
             elif isinstance(value, list):
-                # Format lists nicely
-                if len(value) == 0:
-                    formatted[key] = "[]"
-                elif len(value) <= 5:
-                    # Show all items if 5 or fewer
-                    formatted[key] = json.dumps(value, indent=2, ensure_ascii=False)
-                else:
-                    # Show first 5 items
-                    formatted[key] = json.dumps(value[:5], indent=2, ensure_ascii=False) + "\n... ({} more items)".format(len(value) - 5)
+                # Format lists nicely (show all items)
+                formatted[key] = json.dumps(value, indent=2, ensure_ascii=False)
             elif isinstance(value, str):
-                # Truncate long strings
-                if len(value) > 500:
-                    formatted[key] = value[:500] + "... (truncated)"
-                else:
-                    formatted[key] = value
+                # Show full string
+                formatted[key] = value
             else:
                 # Numbers, booleans, etc.
                 formatted[key] = str(value)
@@ -935,12 +962,15 @@ CRITICAL RULES:
         """
         Execute workflow with smoke test evaluation for multiple examples.
 
-        Uses the "smoke test" approach:
-        1. For each cell, execute with first example
-        2. Evaluate the output using LLM as judge
-        3. If evaluation fails, fix code and retry (up to 5 times)
-        4. Once evaluation passes (or max retries), run remaining examples
-        5. Move to next cell
+        Uses layer-based parallelization with the "smoke test" approach:
+        1. Group cells by layer
+        2. For each layer, execute all cells in parallel
+        3. Each cell runs: smoke test -> evaluate -> retry if needed -> remaining examples
+        4. Wait for ALL cells in a layer to complete ALL examples before next layer
+        5. Context is merged from all cells before moving to next layer
+
+        This ensures proper layer synchronization while maintaining parallel execution
+        within layers and LLM evaluation for quality assurance.
 
         Args:
             plan: The workflow plan with cell definitions
@@ -951,6 +981,8 @@ CRITICAL RULES:
             dict: Event objects with type and relevant data
 
         Event Types (in addition to standard cell events):
+            - layer_started: Beginning of layer execution
+            - layer_completed: All cells in layer finished
             - cell_evaluating: Starting evaluation of smoke test output
             - cell_evaluation_passed: Evaluation passed
             - cell_evaluation_failed: Evaluation failed, will retry
@@ -967,7 +999,960 @@ CRITICAL RULES:
         total_cells = len(plan.cells)
         total_examples = len(examples)
 
-        logger.info("Starting execution with evaluation: {} cells, {} examples".format(
+        # Group cells by layer for proper synchronization
+        layers = plan.get_cells_by_layer()
+        total_layers = len(layers)
+        is_parallel = plan.is_parallel_workflow()
+
+        logger.info("Starting execution with evaluation: {} cells, {} examples, {} layers (parallel={})".format(
+            total_cells, total_examples, total_layers, is_parallel
+        ))
+
+        yield {
+            "type": "workflow_start",
+            "total_cells": total_cells,
+            "total_examples": total_examples,
+            "total_layers": total_layers,
+            "is_parallel": is_parallel,
+            "evaluation_enabled": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # Track execution contexts per example (each example has its own context flow)
+        # This is shared across all cells and updated as layers complete
+        example_contexts: List[Dict[str, Any]] = []
+        for i, example in enumerate(examples):
+            example_contexts.append({
+                "user_input": example.get("user_input", ""),
+                "attached_file_ids": example.get("attached_file_ids", [])
+            })
+
+        completed_cells = 0
+
+        # Execute layer by layer to ensure proper synchronization
+        for layer_num in sorted(layers.keys()):
+            layer_cells = layers[layer_num]
+            is_parallel_layer = len(layer_cells) > 1
+
+            # Emit layer started event
+            yield {
+                "type": "layer_started",
+                "layer": layer_num,
+                "cell_count": len(layer_cells),
+                "cells": [{"id": c.id, "name": c.name, "display_step": c.get_display_step()} for c in layer_cells],
+                "parallel": is_parallel_layer,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            # Create a queue for real-time event streaming
+            event_queue: asyncio.Queue = asyncio.Queue()
+
+            # Start layer execution in a separate task
+            layer_task = asyncio.create_task(
+                self._execute_layer_with_examples(
+                    layer_cells=layer_cells,
+                    examples=examples,
+                    example_contexts=example_contexts,
+                    workflow_description=workflow_description,
+                    plan=plan,
+                    event_queue=event_queue
+                )
+            )
+
+            # Stream events from the queue in real-time until layer completes
+            while not layer_task.done():
+                try:
+                    # Wait for events with a short timeout to check if task is done
+                    event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
+                    yield event
+                except asyncio.TimeoutError:
+                    continue
+
+            # Get the layer results
+            layer_results = await layer_task
+
+            # Drain any remaining events from the queue
+            while not event_queue.empty():
+                event = event_queue.get_nowait()
+                yield event
+
+            # Update example contexts with outputs from cells
+            for result in layer_results:
+                if result.get("success"):
+                    cell_outputs = result.get("example_outputs", {})
+                    for ex_idx, outputs in cell_outputs.items():
+                        if ex_idx < len(example_contexts):
+                            example_contexts[ex_idx].update(outputs)
+
+            # Check if all cells in layer succeeded
+            all_succeeded = all(r.get("success", False) for r in layer_results)
+            failed_cells = [r["cell"].name for r in layer_results if not r.get("success")]
+
+            if not all_succeeded:
+                yield {
+                    "type": "layer_failed",
+                    "layer": layer_num,
+                    "failed_cells": failed_cells,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+                yield {
+                    "type": "workflow_failed",
+                    "error": "Layer {} failed: cells {} did not complete".format(layer_num, failed_cells),
+                    "completed_cells": completed_cells,
+                    "failed_layer": layer_num,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                return
+
+            completed_cells += len(layer_cells)
+
+            # Emit layer completed event
+            yield {
+                "type": "layer_completed",
+                "layer": layer_num,
+                "cell_count": len(layer_cells),
+                "all_passed": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+        # All layers completed successfully
+        yield {
+            "type": "workflow_completed",
+            "total_cells": total_cells,
+            "completed_cells": completed_cells,
+            "total_examples": total_examples,
+            "total_layers": total_layers,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    async def _execute_layer_with_examples(
+        self,
+        layer_cells: List[WorkflowCell],
+        examples: List[Dict[str, Any]],
+        example_contexts: List[Dict[str, Any]],
+        workflow_description: str,
+        plan: WorkflowPlan,
+        event_queue: asyncio.Queue
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute all cells in a layer in parallel, each with full evaluation and all examples.
+
+        This method ensures that ALL cells in the layer complete ALL their examples
+        (including retries and evaluation cycles) before returning. Events are streamed
+        in real-time via the event_queue.
+
+        Args:
+            layer_cells: List of cells in this layer
+            examples: List of example inputs
+            example_contexts: Current execution contexts per example
+            workflow_description: Workflow description for code generation/fixing
+            plan: The workflow plan
+            event_queue: Queue to push events for real-time streaming
+
+        Returns:
+            List of results, one per cell, with output data (events already streamed)
+        """
+        if not layer_cells:
+            return []
+
+        # Execute all cells in parallel - each runs its full evaluation + examples cycle
+        tasks = [
+            self._execute_cell_with_all_examples_streaming(
+                cell=cell,
+                examples=examples,
+                example_contexts=[ctx.copy() for ctx in example_contexts],  # Each cell gets copies
+                workflow_description=workflow_description,
+                plan=plan,
+                event_queue=event_queue
+            )
+            for cell in layer_cells
+        ]
+
+        # Wait for ALL cells to complete before returning
+        results = await asyncio.gather(*tasks)
+        return list(results)
+
+    async def _execute_cell_with_all_examples(
+        self,
+        cell: WorkflowCell,
+        examples: List[Dict[str, Any]],
+        example_contexts: List[Dict[str, Any]],
+        workflow_description: str,
+        plan: WorkflowPlan
+    ) -> Dict[str, Any]:
+        """
+        Execute a single cell with full evaluation cycle and all examples.
+
+        This is the core execution logic for one cell:
+        1. Generate code
+        2. Run smoke test (first example)
+        3. Evaluate output with LLM
+        4. Fix and retry if evaluation fails (up to max_evaluation_retries)
+        5. Run remaining examples
+        6. Return results
+
+        Args:
+            cell: The cell to execute
+            examples: List of all example inputs
+            example_contexts: Execution contexts for each example
+            workflow_description: Workflow description
+            plan: The workflow plan
+
+        Returns:
+            Dict with success status, events, and example outputs
+        """
+        events: List[Dict[str, Any]] = []
+        cell_code = None
+        example_outputs: Dict[int, Dict[str, Any]] = {}  # example_idx -> outputs
+        total_examples = len(examples)
+
+        # === Phase 1: Generate initial code ===
+        cell.mark_generating()
+        events.append({
+            "type": "cell_generating",
+            "cell_id": cell.id,
+            "cell_name": cell.name,
+            "step_number": cell.step_number,
+            "layer": cell.layer,
+            "display_step": cell.get_display_step(),
+            "description": cell.description,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        try:
+            description, code = await self.cell_generator.generate_cell_code(
+                cell=cell,
+                available_context=plan.shared_context_schema,
+                workflow_description=workflow_description
+            )
+            cell_code = code
+            cell.mark_ready(code, description)
+
+            events.append({
+                "type": "cell_ready",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "code_preview": code[:300] + "..." if len(code) > 300 else code,
+                "full_code": code,
+                "code_description": description,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except Exception as e:
+            logger.error("Failed to generate code for cell '{}': {}".format(cell.name, str(e)))
+            cell.mark_failed(str(e))
+            events.append({
+                "type": "cell_failed",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "error": "Code generation failed: {}".format(str(e)),
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            return {"cell": cell, "success": False, "events": events, "example_outputs": {}}
+
+        # === Phase 2: Smoke test + evaluation loop ===
+        evaluation_attempt = 0
+        cell_passed_evaluation = False
+        smoke_test_result = None
+
+        while evaluation_attempt < self.max_evaluation_retries and not cell_passed_evaluation:
+            evaluation_attempt += 1
+
+            # Execute smoke test (first example)
+            smoke_test_context = example_contexts[0].copy()
+
+            events.append({
+                "type": "cell_executing",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "step_number": cell.step_number,
+                "is_smoke_test": True,
+                "evaluation_attempt": evaluation_attempt,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            try:
+                start_time = time.time()
+                smoke_test_result = await self._execute_cell_with_retry(
+                    cell=cell,
+                    code=cell_code,
+                    context=smoke_test_context,
+                    workflow_description=workflow_description
+                )
+                execution_time = time.time() - start_time
+
+                # Prepare output for evaluation
+                output_variables = smoke_test_result.get("variables", {})
+                formatted_outputs = self._format_output_variables(output_variables)
+
+                smoke_test_output = ExampleOutput(
+                    example_id="smoke_test",
+                    user_input=smoke_test_context.get("user_input", ""),
+                    output_text=smoke_test_result.get("output", ""),
+                    output_variables=output_variables,
+                    formatted_variables=formatted_outputs
+                )
+
+                events.append({
+                    "type": "cell_smoke_test_completed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "output": smoke_test_result.get("output", ""),
+                    "variables": list(output_variables.keys()),
+                    "variable_values": formatted_outputs,
+                    "execution_time": execution_time,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+            except Exception as e:
+                logger.warning("Smoke test execution failed for cell '{}': {}".format(cell.name, str(e)))
+
+                if evaluation_attempt >= self.max_evaluation_retries:
+                    cell.mark_failed(str(e))
+                    events.append({
+                        "type": "cell_failed",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "error": str(e),
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    return {"cell": cell, "success": False, "events": events, "example_outputs": {}}
+
+                # Try to fix with existing fix_cell_code method
+                events.append({
+                    "type": "cell_retrying",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "attempt": evaluation_attempt + 1,
+                    "max_attempts": self.max_evaluation_retries,
+                    "previous_error": str(e),
+                    "reason": "execution_error",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                cell_code = await self.fix_cell_code(
+                    cell=cell,
+                    failed_code=cell_code,
+                    error_message=str(e),
+                    execution_context=smoke_test_context,
+                    workflow_description=workflow_description,
+                    attempt_number=evaluation_attempt + 1
+                )
+                cell.mark_ready(cell_code, cell.code_description)
+
+                events.append({
+                    "type": "cell_code_fixed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "full_code": cell_code,
+                    "fix_reason": "execution_error",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                continue
+
+            # === Phase 3: Evaluate smoke test output ===
+            events.append({
+                "type": "cell_evaluating",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "evaluation_attempt": evaluation_attempt,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            evaluation_result = await self.cell_evaluator.evaluate_smoke_test_output(
+                cell=cell,
+                smoke_test_output=smoke_test_output,
+                workflow_description=workflow_description,
+                cell_code=cell_code
+            )
+
+            if evaluation_result.is_valid:
+                cell_passed_evaluation = True
+                events.append({
+                    "type": "cell_evaluation_passed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "feedback": evaluation_result.feedback,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            else:
+                logger.warning("Evaluation failed for cell '{}': {}".format(cell.name, evaluation_result.feedback))
+
+                events.append({
+                    "type": "cell_evaluation_failed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "feedback": evaluation_result.feedback,
+                    "issues": evaluation_result.issues,
+                    "evaluation_attempt": evaluation_attempt,
+                    "max_attempts": self.max_evaluation_retries,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                if evaluation_attempt >= self.max_evaluation_retries:
+                    logger.warning("Max evaluation retries reached for cell '{}', proceeding anyway".format(cell.name))
+                    events.append({
+                        "type": "cell_evaluation_max_retries",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "message": "Max evaluation retries reached, proceeding with current code",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    cell_passed_evaluation = True  # Force proceed
+                else:
+                    # Fix code based on evaluation feedback
+                    events.append({
+                        "type": "cell_fixing_from_evaluation",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "feedback": evaluation_result.feedback,
+                        "suggested_fix": evaluation_result.suggested_fix,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+                    cell_code = await self.fix_cell_code_from_evaluation(
+                        cell=cell,
+                        current_code=cell_code,
+                        evaluation_result=evaluation_result,
+                        execution_context=smoke_test_context,
+                        workflow_description=workflow_description,
+                        attempt_number=evaluation_attempt + 1
+                    )
+                    cell.mark_ready(cell_code, cell.code_description)
+
+                    events.append({
+                        "type": "cell_code_fixed",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "full_code": cell_code,
+                        "fix_reason": "evaluation_feedback",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+        # === Phase 4: Execute remaining examples ===
+        # First, update context for first example with smoke test results
+        if smoke_test_result:
+            example_contexts[0].update(smoke_test_result.get("variables", {}))
+            example_outputs[0] = smoke_test_result.get("variables", {})
+
+        # Store first example output
+        first_example_output = {
+            "output": smoke_test_result.get("output", "") if smoke_test_result else "",
+            "variables": list(smoke_test_result.get("variables", {}).keys()) if smoke_test_result else [],
+            "variable_values": self._format_output_variables(
+                smoke_test_result.get("variables", {})
+            ) if smoke_test_result else {}
+        }
+
+        events.append({
+            "type": "cell_example_completed",
+            "cell_id": cell.id,
+            "cell_name": cell.name,
+            "display_step": cell.get_display_step(),
+            "example_index": 0,
+            "example_id": examples[0].get("id", "example_0"),
+            "output": first_example_output["output"],
+            "variables": first_example_output["variables"],
+            "variable_values": first_example_output["variable_values"],
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        # Execute remaining examples (2, 3, ...)
+        for example_idx in range(1, total_examples):
+            example = examples[example_idx]
+            example_context = example_contexts[example_idx]
+
+            events.append({
+                "type": "cell_executing",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "step_number": cell.step_number,
+                "is_smoke_test": False,
+                "example_index": example_idx,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            try:
+                start_time = time.time()
+                example_result = await self._execute_cell_with_retry(
+                    cell=cell,
+                    code=cell_code,
+                    context=example_context,
+                    workflow_description=workflow_description
+                )
+                execution_time = time.time() - start_time
+
+                # Update context for this example
+                example_contexts[example_idx].update(example_result.get("variables", {}))
+                example_outputs[example_idx] = example_result.get("variables", {})
+
+                output_variables = example_result.get("variables", {})
+                formatted_outputs = self._format_output_variables(output_variables)
+
+                events.append({
+                    "type": "cell_example_completed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "example_index": example_idx,
+                    "example_id": example.get("id", "example_{}".format(example_idx)),
+                    "output": example_result.get("output", ""),
+                    "variables": list(output_variables.keys()),
+                    "variable_values": formatted_outputs,
+                    "execution_time": execution_time,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+            except Exception as e:
+                # Example execution failed - log but continue
+                logger.warning("Example {} execution failed for cell '{}': {}".format(
+                    example_idx, cell.name, str(e)
+                ))
+
+                events.append({
+                    "type": "cell_example_failed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "example_index": example_idx,
+                    "example_id": example.get("id", "example_{}".format(example_idx)),
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+        # === Cell completed for all examples ===
+        cell.mark_completed(
+            output="Completed for {} examples".format(total_examples),
+            variables={},
+            execution_time=0
+        )
+
+        events.append({
+            "type": "cell_completed",
+            "cell_id": cell.id,
+            "cell_name": cell.name,
+            "display_step": cell.get_display_step(),
+            "step_number": cell.step_number,
+            "layer": cell.layer,
+            "total_examples": total_examples,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        return {
+            "cell": cell,
+            "success": True,
+            "events": events,
+            "example_outputs": example_outputs
+        }
+
+    async def _execute_cell_with_all_examples_streaming(
+        self,
+        cell: WorkflowCell,
+        examples: List[Dict[str, Any]],
+        example_contexts: List[Dict[str, Any]],
+        workflow_description: str,
+        plan: WorkflowPlan,
+        event_queue: asyncio.Queue
+    ) -> Dict[str, Any]:
+        """
+        Execute a single cell with all examples, then evaluate (Alternative A approach).
+
+        This approach runs ALL examples before evaluation to ensure:
+        - All examples run with the same code
+        - All outputs are available for the next layer
+        - Evaluation can see patterns across all examples
+
+        Flow:
+        1. Generate code
+        2. Run ALL examples
+        3. Evaluate outputs from all examples
+        4. If evaluation fails → fix code → go back to step 2
+        5. If evaluation passes → cell complete with all outputs
+
+        Args:
+            cell: The cell to execute
+            examples: List of all example inputs
+            example_contexts: Execution contexts for each example
+            workflow_description: Workflow description
+            plan: The workflow plan
+            event_queue: Queue to push events for real-time streaming
+
+        Returns:
+            Dict with success status and example outputs (events already streamed)
+        """
+        cell_code = None
+        total_examples = len(examples)
+
+        async def emit(event: Dict[str, Any]):
+            """Helper to push event to queue."""
+            await event_queue.put(event)
+
+        # === Phase 1: Generate initial code ===
+        cell.mark_generating()
+        await emit({
+            "type": "cell_generating",
+            "cell_id": cell.id,
+            "cell_name": cell.name,
+            "step_number": cell.step_number,
+            "layer": cell.layer,
+            "display_step": cell.get_display_step(),
+            "description": cell.description,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        try:
+            description, code = await self.cell_generator.generate_cell_code(
+                cell=cell,
+                available_context=plan.shared_context_schema,
+                workflow_description=workflow_description
+            )
+            cell_code = code
+            cell.mark_ready(code, description)
+
+            await emit({
+                "type": "cell_ready",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "code_preview": code[:300] + "..." if len(code) > 300 else code,
+                "full_code": code,
+                "code_description": description,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except Exception as e:
+            logger.error("Failed to generate code for cell '{}': {}".format(cell.name, str(e)))
+            cell.mark_failed(str(e))
+            await emit({
+                "type": "cell_failed",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "error": "Code generation failed: {}".format(str(e)),
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            return {"cell": cell, "success": False, "example_outputs": {}}
+
+        # === Phase 2: Execute ALL examples + evaluation loop ===
+        evaluation_attempt = 0
+        cell_passed_evaluation = False
+
+        while evaluation_attempt < self.max_evaluation_retries and not cell_passed_evaluation:
+            evaluation_attempt += 1
+
+            # Reset outputs for this attempt - all examples will run with current code
+            example_outputs: Dict[int, Dict[str, Any]] = {}
+            example_results: List[Dict[str, Any]] = []
+            all_examples_succeeded = True
+            execution_error = None
+
+            await emit({
+                "type": "cell_executing_all_examples",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "step_number": cell.step_number,
+                "total_examples": total_examples,
+                "evaluation_attempt": evaluation_attempt,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            # Run ALL examples with current code
+            for example_idx in range(total_examples):
+                example = examples[example_idx]
+                example_context = example_contexts[example_idx].copy()
+
+                await emit({
+                    "type": "cell_executing",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "step_number": cell.step_number,
+                    "example_index": example_idx,
+                    "total_examples": total_examples,
+                    "evaluation_attempt": evaluation_attempt,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                try:
+                    start_time = time.time()
+                    example_result = await self._execute_cell_with_retry(
+                        cell=cell,
+                        code=cell_code,
+                        context=example_context,
+                        workflow_description=workflow_description
+                    )
+                    execution_time = time.time() - start_time
+
+                    output_variables = example_result.get("variables", {})
+                    formatted_outputs = self._format_output_variables(output_variables)
+
+                    # Store results
+                    example_outputs[example_idx] = output_variables
+                    example_results.append({
+                        "example_idx": example_idx,
+                        "example_id": example.get("id", "example_{}".format(example_idx)),
+                        "success": True,
+                        "output": example_result.get("output", ""),
+                        "variables": output_variables,
+                        "formatted_variables": formatted_outputs,
+                        "execution_time": execution_time
+                    })
+
+                    await emit({
+                        "type": "cell_example_completed",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "example_index": example_idx,
+                        "example_id": example.get("id", "example_{}".format(example_idx)),
+                        "output": example_result.get("output", ""),
+                        "variables": list(output_variables.keys()),
+                        "variable_values": formatted_outputs,
+                        "execution_time": execution_time,
+                        "evaluation_attempt": evaluation_attempt,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+                except Exception as e:
+                    logger.warning("Example {} execution failed for cell '{}': {}".format(
+                        example_idx, cell.name, str(e)
+                    ))
+                    all_examples_succeeded = False
+                    execution_error = str(e)
+
+                    example_results.append({
+                        "example_idx": example_idx,
+                        "example_id": example.get("id", "example_{}".format(example_idx)),
+                        "success": False,
+                        "error": str(e)
+                    })
+
+                    await emit({
+                        "type": "cell_example_failed",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "example_index": example_idx,
+                        "example_id": example.get("id", "example_{}".format(example_idx)),
+                        "error": str(e),
+                        "evaluation_attempt": evaluation_attempt,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+            # === Phase 3: Handle execution failures or evaluate outputs ===
+            if not all_examples_succeeded:
+                # Some examples failed - need to fix code
+                if evaluation_attempt >= self.max_evaluation_retries:
+                    cell.mark_failed(execution_error or "Multiple examples failed")
+                    await emit({
+                        "type": "cell_failed",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "error": execution_error or "Multiple examples failed after max retries",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    return {"cell": cell, "success": False, "example_outputs": example_outputs}
+
+                await emit({
+                    "type": "cell_retrying",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "attempt": evaluation_attempt + 1,
+                    "max_attempts": self.max_evaluation_retries,
+                    "previous_error": execution_error,
+                    "reason": "execution_error",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                # Fix code based on first error encountered
+                cell_code = await self.fix_cell_code(
+                    cell=cell,
+                    failed_code=cell_code,
+                    error_message=execution_error,
+                    execution_context=example_contexts[0],
+                    workflow_description=workflow_description,
+                    attempt_number=evaluation_attempt + 1
+                )
+                cell.mark_ready(cell_code, cell.code_description)
+
+                await emit({
+                    "type": "cell_code_fixed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "full_code": cell_code,
+                    "fix_reason": "execution_error",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                continue  # Retry all examples with fixed code
+
+            # All examples succeeded - now evaluate
+            await emit({
+                "type": "cell_evaluating",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "display_step": cell.get_display_step(),
+                "evaluation_attempt": evaluation_attempt,
+                "total_examples_evaluated": total_examples,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            # Build combined output for evaluation (using first example as primary)
+            first_result = example_results[0] if example_results else {}
+            evaluation_output = ExampleOutput(
+                example_id="all_examples",
+                user_input=examples[0].get("user_input", "") if examples else "",
+                output_text=first_result.get("output", ""),
+                output_variables=first_result.get("variables", {}),
+                formatted_variables=first_result.get("formatted_variables", {})
+            )
+
+            evaluation_result = await self.cell_evaluator.evaluate_smoke_test_output(
+                cell=cell,
+                smoke_test_output=evaluation_output,
+                workflow_description=workflow_description,
+                cell_code=cell_code
+            )
+
+            if evaluation_result.is_valid:
+                cell_passed_evaluation = True
+                await emit({
+                    "type": "cell_evaluation_passed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "feedback": evaluation_result.feedback,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            else:
+                logger.warning("Evaluation failed for cell '{}': {}".format(cell.name, evaluation_result.feedback))
+
+                await emit({
+                    "type": "cell_evaluation_failed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "feedback": evaluation_result.feedback,
+                    "issues": evaluation_result.issues,
+                    "evaluation_attempt": evaluation_attempt,
+                    "max_attempts": self.max_evaluation_retries,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                if evaluation_attempt >= self.max_evaluation_retries:
+                    logger.warning("Max evaluation retries reached for cell '{}', proceeding anyway".format(cell.name))
+                    await emit({
+                        "type": "cell_evaluation_max_retries",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "message": "Max evaluation retries reached, proceeding with current code",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    cell_passed_evaluation = True  # Force proceed
+                else:
+                    await emit({
+                        "type": "cell_fixing_from_evaluation",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "feedback": evaluation_result.feedback,
+                        "suggested_fix": evaluation_result.suggested_fix,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+                    cell_code = await self.fix_cell_code_from_evaluation(
+                        cell=cell,
+                        current_code=cell_code,
+                        evaluation_result=evaluation_result,
+                        execution_context=example_contexts[0],
+                        workflow_description=workflow_description,
+                        attempt_number=evaluation_attempt + 1
+                    )
+                    cell.mark_ready(cell_code, cell.code_description)
+
+                    await emit({
+                        "type": "cell_code_fixed",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "full_code": cell_code,
+                        "fix_reason": "evaluation_feedback",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    # Continue to retry all examples with fixed code
+
+        # === Phase 4: Update contexts and complete ===
+        # Update the original example_contexts with final outputs
+        for example_idx, outputs in example_outputs.items():
+            if example_idx < len(example_contexts):
+                example_contexts[example_idx].update(outputs)
+
+        # Cell completed for all examples
+        cell.mark_completed(
+            output="Completed for {} examples".format(total_examples),
+            variables={},
+            execution_time=0
+        )
+
+        await emit({
+            "type": "cell_completed",
+            "cell_id": cell.id,
+            "cell_name": cell.name,
+            "display_step": cell.get_display_step(),
+            "step_number": cell.step_number,
+            "layer": cell.layer,
+            "total_examples": total_examples,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        return {
+            "cell": cell,
+            "success": True,
+            "example_outputs": example_outputs
+        }
+
+    async def _execute_workflow_with_evaluation_sequential(
+        self,
+        plan: WorkflowPlan,
+        examples: List[Dict[str, Any]],
+        workflow_description: str = ""
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        DEPRECATED: Sequential execution for backward compatibility.
+
+        Execute workflow cell by cell without layer parallelization.
+        This is the old implementation kept for reference.
+        Use execute_workflow_with_evaluation instead.
+        """
+        if not examples:
+            yield {
+                "type": "error",
+                "error": "No examples provided for execution",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            return
+
+        total_cells = len(plan.cells)
+        total_examples = len(examples)
+
+        logger.info("Starting SEQUENTIAL execution with evaluation: {} cells, {} examples".format(
             total_cells, total_examples
         ))
 
@@ -989,7 +1974,7 @@ CRITICAL RULES:
 
         completed_cells = 0
 
-        # Execute each cell in order
+        # Execute each cell in order (OLD SEQUENTIAL METHOD)
         for cell in plan.cells:
             cell_code = None
             evaluation_attempt = 0
@@ -1416,6 +2401,543 @@ CRITICAL RULES:
         raise Exception("Cell execution failed after {} attempts: {}".format(
             max_retries, str(last_error)
         ))
+
+
+    async def execute_cell_with_full_validation(
+        self,
+        cell: WorkflowCell,
+        execution_context: Dict[str, Any],
+        workflow_description: str
+    ) -> CellExecutionResult:
+        """
+        Execute a single cell with complete retry and evaluation cycles.
+
+        This runs INDEPENDENTLY for each cell in a parallel layer.
+        Each cell goes through:
+        1. Code generation (if needed)
+        2. Code execution with retry on errors (up to max_retry_attempts)
+        3. LLM evaluation of output with retry on invalid (up to max_evaluation_retries)
+
+        Args:
+            cell: The cell to execute
+            execution_context: Input context (variables from previous layers)
+            workflow_description: Overall workflow description
+
+        Returns:
+            CellExecutionResult with success status, outputs, and events
+        """
+        events: List[Dict[str, Any]] = []
+        cell_code = cell.generated_code
+        attempt = 0
+        evaluation_attempt = 0
+        last_error = None
+
+        # Phase 1: Generate code if not already generated
+        if cell.status == CellStatus.PENDING or cell_code is None:
+            cell.mark_generating()
+            events.append({
+                "type": "cell_generating",
+                "cell_id": cell.id,
+                "cell_name": cell.name,
+                "step_number": cell.step_number,
+                "layer": cell.layer,
+                "sublayer_index": cell.sublayer_index,
+                "display_step": cell.get_display_step(),
+                "description": cell.description,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            try:
+                description, code = await self.cell_generator.generate_cell_code(
+                    cell=cell,
+                    available_context={},  # Context schema would be passed here
+                    workflow_description=workflow_description
+                )
+                cell_code = code
+                cell.mark_ready(code, description)
+                events.append({
+                    "type": "cell_ready",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "code_preview": code[:300] + "..." if len(code) > 300 else code,
+                    "full_code": code,
+                    "code_description": description,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            except Exception as e:
+                error_msg = "Code generation failed: {}".format(str(e))
+                cell.mark_failed(error_msg)
+                events.append({
+                    "type": "cell_failed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "error": error_msg,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                return CellExecutionResult(
+                    cell=cell,
+                    success=False,
+                    error=error_msg,
+                    events=events
+                )
+
+        # Phase 2: Execute with retry loop
+        while attempt < self.max_retry_attempts:
+            attempt += 1
+            is_retry = attempt > 1
+
+            try:
+                if is_retry:
+                    events.append({
+                        "type": "cell_retrying",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "attempt": attempt,
+                        "max_attempts": self.max_retry_attempts,
+                        "previous_error": last_error,
+                        "reason": "execution_error",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+                    # Fix the code based on error
+                    cell_code = await self.fix_cell_code(
+                        cell=cell,
+                        failed_code=cell_code,
+                        error_message=last_error,
+                        execution_context=execution_context,
+                        workflow_description=workflow_description,
+                        attempt_number=attempt
+                    )
+                    cell.mark_ready(cell_code, cell.code_description)
+
+                # Execute the cell
+                cell.mark_executing()
+                events.append({
+                    "type": "cell_executing",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "step_number": cell.step_number,
+                    "attempt": attempt,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                start_time = time.time()
+                cell_result = await self._execute_cell_code(
+                    cell_code,
+                    execution_context,
+                    cell.id
+                )
+                execution_time = time.time() - start_time
+
+                output_variables = cell_result.get("variables", {})
+                formatted_outputs = self._format_output_variables(output_variables)
+
+                # Execution succeeded - now do LLM evaluation
+                events.append({
+                    "type": "cell_executed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "output": cell_result.get("output", ""),
+                    "execution_time": execution_time,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                # Phase 3: LLM Evaluation loop
+                cell_passed_evaluation = False
+                evaluation_attempt = 0
+
+                while evaluation_attempt < self.max_evaluation_retries and not cell_passed_evaluation:
+                    evaluation_attempt += 1
+
+                    # Prepare output for evaluation
+                    smoke_test_output = ExampleOutput(
+                        example_id="cell_{}".format(cell.id),
+                        user_input=execution_context.get("user_input", ""),
+                        output_text=cell_result.get("output", ""),
+                        output_variables=output_variables,
+                        formatted_variables=formatted_outputs
+                    )
+
+                    events.append({
+                        "type": "cell_evaluating",
+                        "cell_id": cell.id,
+                        "cell_name": cell.name,
+                        "display_step": cell.get_display_step(),
+                        "evaluation_attempt": evaluation_attempt,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
+                    evaluation_result = await self.cell_evaluator.evaluate_smoke_test_output(
+                        cell=cell,
+                        smoke_test_output=smoke_test_output,
+                        workflow_description=workflow_description,
+                        cell_code=cell_code
+                    )
+
+                    if evaluation_result.is_valid:
+                        cell_passed_evaluation = True
+                        events.append({
+                            "type": "cell_evaluation_passed",
+                            "cell_id": cell.id,
+                            "cell_name": cell.name,
+                            "display_step": cell.get_display_step(),
+                            "feedback": evaluation_result.feedback,
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                    else:
+                        events.append({
+                            "type": "cell_evaluation_failed",
+                            "cell_id": cell.id,
+                            "cell_name": cell.name,
+                            "display_step": cell.get_display_step(),
+                            "feedback": evaluation_result.feedback,
+                            "issues": evaluation_result.issues,
+                            "evaluation_attempt": evaluation_attempt,
+                            "max_attempts": self.max_evaluation_retries,
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+
+                        if evaluation_attempt >= self.max_evaluation_retries:
+                            # Max retries reached, proceed anyway
+                            logger.warning(
+                                "Max evaluation retries reached for cell '{}', proceeding anyway".format(cell.name)
+                            )
+                            events.append({
+                                "type": "cell_evaluation_max_retries",
+                                "cell_id": cell.id,
+                                "cell_name": cell.name,
+                                "display_step": cell.get_display_step(),
+                                "message": "Max evaluation retries reached, proceeding with current output",
+                                "timestamp": datetime.utcnow().isoformat()
+                            })
+                            cell_passed_evaluation = True  # Force proceed
+                        else:
+                            # Fix code based on evaluation feedback
+                            events.append({
+                                "type": "cell_fixing_from_evaluation",
+                                "cell_id": cell.id,
+                                "cell_name": cell.name,
+                                "display_step": cell.get_display_step(),
+                                "feedback": evaluation_result.feedback,
+                                "suggested_fix": evaluation_result.suggested_fix,
+                                "timestamp": datetime.utcnow().isoformat()
+                            })
+
+                            cell_code = await self.fix_cell_code_from_evaluation(
+                                cell=cell,
+                                current_code=cell_code,
+                                evaluation_result=evaluation_result,
+                                execution_context=execution_context,
+                                workflow_description=workflow_description,
+                                attempt_number=evaluation_attempt + 1
+                            )
+                            cell.mark_ready(cell_code, cell.code_description)
+
+                            # Re-execute with fixed code
+                            cell.mark_executing()
+                            start_time = time.time()
+                            cell_result = await self._execute_cell_code(
+                                cell_code,
+                                execution_context,
+                                cell.id
+                            )
+                            execution_time = time.time() - start_time
+                            output_variables = cell_result.get("variables", {})
+                            formatted_outputs = self._format_output_variables(output_variables)
+
+                # Cell completed successfully
+                cell.mark_completed(
+                    output=cell_result.get("output", ""),
+                    variables=output_variables,
+                    execution_time=execution_time
+                )
+
+                events.append({
+                    "type": "cell_completed",
+                    "cell_id": cell.id,
+                    "cell_name": cell.name,
+                    "display_step": cell.get_display_step(),
+                    "step_number": cell.step_number,
+                    "layer": cell.layer,
+                    "output": cell_result.get("output", ""),
+                    "variables": list(output_variables.keys()),
+                    "variable_values": formatted_outputs,
+                    "execution_time": execution_time,
+                    "attempt": attempt,
+                    "evaluation_attempts": evaluation_attempt,
+                    "was_retried": attempt > 1,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
+                return CellExecutionResult(
+                    cell=cell,
+                    success=True,
+                    output=cell_result.get("output", ""),
+                    output_variables=output_variables,
+                    events=events,
+                    attempts=attempt
+                )
+
+            except asyncio.TimeoutError:
+                error_msg = "Cell timed out after {}s".format(self.max_cell_execution_time)
+                last_error = error_msg
+                logger.warning("Cell '{}' timed out (attempt {}/{})".format(
+                    cell.name, attempt, self.max_retry_attempts
+                ))
+
+            except Exception as e:
+                import traceback
+                error_msg = str(e)
+                full_traceback = traceback.format_exc()
+                last_error = "Error: {}\n\nTraceback:\n{}".format(error_msg, full_traceback)
+                logger.warning("Cell '{}' failed (attempt {}/{}): {}".format(
+                    cell.name, attempt, self.max_retry_attempts, error_msg
+                ))
+
+        # All retries exhausted
+        cell.mark_failed(last_error or "Unknown error")
+        events.append({
+            "type": "cell_failed",
+            "cell_id": cell.id,
+            "cell_name": cell.name,
+            "display_step": cell.get_display_step(),
+            "step_number": cell.step_number,
+            "error": last_error,
+            "attempts_made": attempt,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        return CellExecutionResult(
+            cell=cell,
+            success=False,
+            error=last_error,
+            events=events,
+            attempts=attempt
+        )
+
+    async def execute_layer(
+        self,
+        layer_cells: List[WorkflowCell],
+        execution_context: Dict[str, Any],
+        workflow_description: str
+    ) -> Tuple[bool, Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Execute all cells in a layer in parallel.
+
+        Each cell runs its FULL validation cycle independently:
+        - Code generation
+        - Execution with retry on errors
+        - LLM evaluation with retry on invalid output
+
+        The layer completes only when ALL cells have reached a final state
+        (either completed successfully or exhausted all retries).
+
+        Args:
+            layer_cells: List of cells in this layer
+            execution_context: Input context (variables from previous layers)
+            workflow_description: Overall workflow description
+
+        Returns:
+            Tuple of:
+            - success: True if all cells completed successfully
+            - merged_context: Combined context with outputs from all cells
+            - events: All events from all cells
+        """
+        if not layer_cells:
+            return True, execution_context.copy(), []
+
+        layer = layer_cells[0].layer
+        logger.info("Executing layer {} with {} cells in parallel".format(
+            layer, len(layer_cells)
+        ))
+
+        # Execute all cells in parallel - each with its own retry/evaluation cycle
+        tasks = [
+            self.execute_cell_with_full_validation(
+                cell=cell,
+                execution_context=execution_context.copy(),  # Each cell gets a copy
+                workflow_description=workflow_description
+            )
+            for cell in layer_cells
+        ]
+
+        # Wait for all cells to complete (success or failure)
+        results: List[CellExecutionResult] = await asyncio.gather(*tasks)
+
+        # Collect all events from all cells
+        all_events: List[Dict[str, Any]] = []
+        for result in results:
+            all_events.extend(result.events)
+
+        # Check if all cells succeeded
+        all_succeeded = all(result.success for result in results)
+        failed_cells = [r.cell.name for r in results if not r.success]
+
+        if not all_succeeded:
+            logger.warning("Layer {} failed: cells {} did not complete".format(
+                layer, failed_cells
+            ))
+
+        # Merge contexts from all successful cells
+        merged_context = execution_context.copy()
+        for result in results:
+            if result.success and result.output_variables:
+                merged_context.update(result.output_variables)
+
+        # Store updated context
+        from .executor import workflow_executor
+        if layer_cells:
+            workflow_executor.store_execution_context(
+                layer_cells[0].workflow_id,
+                merged_context
+            )
+
+        logger.info("Layer {} complete: {} successes, {} failures".format(
+            layer,
+            sum(1 for r in results if r.success),
+            sum(1 for r in results if not r.success)
+        ))
+
+        return all_succeeded, merged_context, all_events
+
+    async def execute_workflow_parallel(
+        self,
+        plan: WorkflowPlan,
+        user_input: str,
+        attached_file_ids: Optional[List[int]] = None,
+        workflow_description: str = ""
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Execute workflow with layer-based parallelization.
+
+        Executes cells layer by layer:
+        - All cells in a layer run in parallel
+        - Each cell has its own retry + evaluation cycle
+        - Layer N+1 only starts after ALL cells in layer N complete
+        - Context is merged from all parallel cells before next layer
+
+        Args:
+            plan: The workflow plan with cell definitions
+            user_input: User's input query
+            attached_file_ids: Optional list of attached file IDs
+            workflow_description: Original workflow description
+
+        Yields:
+            dict: Event objects with type and relevant data
+
+        Event Types:
+            - workflow_start: Beginning of workflow execution
+            - layer_started: Beginning of layer execution
+            - cell_generating, cell_ready, cell_executing, etc.: Cell-level events
+            - layer_completed: All cells in layer finished
+            - layer_failed: One or more cells in layer failed
+            - workflow_completed: All layers finished successfully
+            - workflow_failed: Workflow stopped due to layer failure
+        """
+        # Initialize execution context
+        execution_context: Dict[str, Any] = {
+            "user_input": user_input,
+            "attached_file_ids": attached_file_ids or []
+        }
+
+        # Group cells by layer
+        layers = plan.get_cells_by_layer()
+        total_layers = len(layers)
+        total_cells = len(plan.cells)
+
+        logger.info("Starting parallel workflow execution: {} layers, {} cells".format(
+            total_layers, total_cells
+        ))
+
+        # Emit workflow start event
+        yield {
+            "type": "workflow_start",
+            "total_cells": total_cells,
+            "total_layers": total_layers,
+            "is_parallel": plan.is_parallel_workflow(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        completed_cells = 0
+
+        # Execute layer by layer
+        for layer_num in sorted(layers.keys()):
+            layer_cells = layers[layer_num]
+            is_parallel_layer = len(layer_cells) > 1
+
+            # Emit layer started event
+            yield {
+                "type": "layer_started",
+                "layer": layer_num,
+                "cell_count": len(layer_cells),
+                "cells": [{"id": c.id, "name": c.name, "display_step": c.get_display_step()} for c in layer_cells],
+                "parallel": is_parallel_layer,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            # Execute all cells in this layer in parallel
+            success, merged_context, events = await self.execute_layer(
+                layer_cells=layer_cells,
+                execution_context=execution_context,
+                workflow_description=workflow_description
+            )
+
+            # Yield all events from this layer's execution
+            for event in events:
+                yield event
+
+            if not success:
+                # Get list of failed cells
+                failed_cells = [c for c in layer_cells if c.status == CellStatus.FAILED]
+
+                yield {
+                    "type": "layer_failed",
+                    "layer": layer_num,
+                    "failed_cells": [{"id": c.id, "name": c.name, "error": c.error} for c in failed_cells],
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+                yield {
+                    "type": "workflow_failed",
+                    "error": "Layer {} failed: cells {} did not complete".format(
+                        layer_num,
+                        [c.name for c in failed_cells]
+                    ),
+                    "completed_cells": completed_cells,
+                    "failed_layer": layer_num,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                return
+
+            # Update context for next layer
+            execution_context = merged_context
+            completed_cells += len(layer_cells)
+
+            # Emit layer completed event
+            yield {
+                "type": "layer_completed",
+                "layer": layer_num,
+                "cell_count": len(layer_cells),
+                "all_passed": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+        # All layers completed successfully
+        final_result = execution_context.get("final_result", "Workflow completed successfully")
+
+        yield {
+            "type": "workflow_completed",
+            "final_result": final_result,
+            "total_cells": total_cells,
+            "completed_cells": completed_cells,
+            "total_layers": total_layers,
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 
 # Global executor instance

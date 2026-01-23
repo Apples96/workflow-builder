@@ -216,7 +216,9 @@ class WorkflowCell:
         step_number: Sequential position in the workflow (1-indexed)
         name: Short descriptive name (e.g., "Document Search")
         description: Detailed description of what this cell does
-        depends_on: List of cell IDs this cell depends on
+        layer: Execution layer number (1, 2, 3...) - cells in same layer run in parallel
+        sublayer_index: Position within layer (1, 2, 3...) - for display as X.1, X.2, X.3
+        depends_on: List of cell IDs this cell depends on (data dependencies)
         inputs_required: Variable names needed from previous cells
         outputs_produced: Variable names this cell will produce
         paradigm_tools_used: List of Paradigm API tools used
@@ -237,7 +239,15 @@ class WorkflowCell:
     name: str = ""
     description: str = ""
 
+    # Parallelization - layer-based execution ordering
+    # Cells in the same layer execute in parallel
+    # Layer N+1 only starts after all cells in layer N complete
+    layer: int = 1  # Execution layer (1, 2, 3...)
+    sublayer_index: int = 1  # Position within layer (for display: 1.1, 1.2, 2.1, etc.)
+
     # Dependencies and data flow
+    # depends_on tracks DATA dependencies (which cell outputs this cell needs)
+    # This is different from layer ordering (execution timing)
     depends_on: List[str] = field(default_factory=list)
     inputs_required: List[str] = field(default_factory=list)
     outputs_produced: List[str] = field(default_factory=list)
@@ -292,6 +302,15 @@ class WorkflowCell:
         """Mark cell as skipped due to earlier failure"""
         self.status = CellStatus.SKIPPED
 
+    def get_display_step(self) -> str:
+        """
+        Get the display step number (e.g., '2.1', '2.2') for UI display.
+
+        Returns:
+            str: Formatted step number like '1.1', '2.3', etc.
+        """
+        return "{}.{}".format(self.layer, self.sublayer_index)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert cell to dictionary for serialization"""
         return {
@@ -300,6 +319,9 @@ class WorkflowCell:
             "step_number": self.step_number,
             "name": self.name,
             "description": self.description,
+            "layer": self.layer,
+            "sublayer_index": self.sublayer_index,
+            "display_step": self.get_display_step(),
             "depends_on": self.depends_on,
             "inputs_required": self.inputs_required,
             "outputs_produced": self.outputs_produced,
@@ -324,6 +346,8 @@ class WorkflowCell:
             step_number=data.get("step_number", 0),
             name=data.get("name", ""),
             description=data.get("description", ""),
+            layer=data.get("layer", 1),
+            sublayer_index=data.get("sublayer_index", 1),
             depends_on=data.get("depends_on", []),
             inputs_required=data.get("inputs_required", []),
             outputs_produced=data.get("outputs_produced", []),
@@ -404,3 +428,38 @@ class WorkflowPlan:
         cells_data = data.get("cells", [])
         plan.cells = [WorkflowCell.from_dict(c) for c in cells_data]
         return plan
+
+    def get_cells_by_layer(self) -> Dict[int, List[WorkflowCell]]:
+        """
+        Group cells by their execution layer.
+
+        Returns:
+            Dict[int, List[WorkflowCell]]: Mapping of layer number to list of cells
+        """
+        layers: Dict[int, List[WorkflowCell]] = {}
+        for cell in self.cells:
+            if cell.layer not in layers:
+                layers[cell.layer] = []
+            layers[cell.layer].append(cell)
+        return layers
+
+    def get_max_layer(self) -> int:
+        """
+        Get the maximum layer number in the plan.
+
+        Returns:
+            int: Maximum layer number, or 0 if no cells
+        """
+        if not self.cells:
+            return 0
+        return max(cell.layer for cell in self.cells)
+
+    def is_parallel_workflow(self) -> bool:
+        """
+        Check if this workflow has any parallel layers (more than one cell in a layer).
+
+        Returns:
+            bool: True if any layer has multiple cells
+        """
+        layers = self.get_cells_by_layer()
+        return any(len(cells) > 1 for cells in layers.values())

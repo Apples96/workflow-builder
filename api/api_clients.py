@@ -529,53 +529,107 @@ async def paradigm_analyze_documents_with_polling(
     except Exception as e:
         return f"Document analysis failed: {str(e)}"
 
+# =============================================================================
+# FILE UPLOAD API FUNCTIONS
+# Uses the simple POST /api/v2/files endpoint for document uploads
+# =============================================================================
+
 async def paradigm_upload_file(
     file_content: bytes,
     filename: str,
-    collection_type: str = "private",
-    workspace_id: Optional[int] = None
+    wait_for_embedding: bool = False,
+    max_wait_time: int = 300,
+    poll_interval: int = 3
 ) -> Dict[str, Any]:
     """
-    Upload a file to Paradigm for analysis via direct HTTP
+    Upload a file to Paradigm using the POST /api/v2/files endpoint.
+
+    This is the simple, direct upload approach. Documents are automatically
+    processed and indexed for search capabilities.
+
+    Endpoint: POST /api/v2/files
+
+    Args:
+        file_content: Raw bytes of the file (max 100MB)
+        filename: Name of the file
+        wait_for_embedding: Whether to wait for file to be fully embedded
+        max_wait_time: Maximum seconds to wait for embedding (default: 300)
+        poll_interval: Seconds between status checks (default: 3)
+
+    Returns:
+        Dict containing file metadata:
+        - id: Unique file identifier
+        - filename: Original filename
+        - bytes: File size in bytes
+        - created_at: Unix timestamp of upload
+        - purpose: "documents"
+        - status: Upload/processing status
+
+    Example:
+        result = await paradigm_upload_file(content, 'document.pdf')
+        file_id = result['id']
+
+    Note:
+        - Maximum file size is 100MB
+        - Use descriptive filenames for better retrieval
+        - Files are automatically indexed for search
     """
     endpoint = f"{settings.lighton_base_url}/api/v2/files"
-    
-    # Prepare multipart form data
+
+    # Prepare multipart form data per API docs
+    # Required fields: file (binary), purpose ("documents")
     data = aiohttp.FormData()
     data.add_field('file', file_content, filename=filename, content_type='application/octet-stream')
-    data.add_field('collection_type', collection_type)
-    if workspace_id:
-        data.add_field('workspace_id', str(workspace_id))
-    
+    data.add_field('purpose', 'documents')
+
     headers = {
         "Authorization": f"Bearer {settings.lighton_api_key}"
     }
-    
+
     try:
-        logger.info(f"📁 PARADIGM API CALL: File Upload")
-        logger.info(f"📡 ENDPOINT: {endpoint}")
+        logger.info(f"📁 PARADIGM FILE UPLOAD (POST /api/v2/files)")
         logger.info(f"📄 FILENAME: {filename}")
         logger.info(f"📦 FILE SIZE: {len(file_content)} bytes")
-        logger.info(f"🗂️ COLLECTION TYPE: {collection_type}")
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 endpoint,
                 data=data,
                 headers=headers
             ) as response:
-                if response.status == 201:
-                    result = await response.json()
-                    logger.info(f"✅ UPLOAD SUCCESS: File ID = {result.get('id')}, Status = {result.get('status')}")
+                response_text = await response.text()
+                logger.info(f"📥 Upload response: {response.status} - {response_text[:500]}")
+
+                if response.status in [200, 201]:
+                    result = await response.json() if response_text else {}
+
+                    # Handle response - may be JSON or need parsing
+                    if isinstance(result, str):
+                        import json
+                        result = json.loads(result)
+
+                    file_id = result.get('id')
+                    logger.info(f"✅ FILE UPLOADED: ID = {file_id}, filename = {result.get('filename')}")
+
+                    # Optionally wait for embedding to complete
+                    if wait_for_embedding and file_id:
+                        logger.info(f"⏳ Waiting for file {file_id} to be embedded...")
+                        await paradigm_wait_for_embedding(
+                            file_id,
+                            max_wait_time=max_wait_time,
+                            poll_interval=poll_interval
+                        )
+                        # Update status after embedding
+                        result['status'] = 'embedded'
+
                     return result
                 else:
-                    error_text = await response.text()
-                    logger.error(f"❌ PARADIGM UPLOAD API ERROR: {response.status} - {error_text}")
-                    raise Exception(f"Paradigm file upload API error {response.status}: {error_text}")
-    
+                    logger.error(f"❌ UPLOAD ERROR: {response.status} - {response_text}")
+                    raise Exception(f"File upload failed: {response.status} - {response_text}")
+
     except aiohttp.ClientError as e:
         logger.error(f"❌ NETWORK ERROR: {str(e)}")
-        raise Exception(f"Network error calling Paradigm file upload API: {str(e)}")
+        raise Exception(f"Network error uploading file: {str(e)}")
     except Exception as e:
         logger.error(f"❌ UPLOAD FAILED: {str(e)}")
         raise Exception(f"Paradigm file upload failed: {str(e)}")
@@ -960,19 +1014,25 @@ async def paradigm_get_file(
         if close_session:
             await session.close()
 
+
 async def paradigm_wait_for_embedding(
     file_id: int,
     max_wait_time: int = 300,
     poll_interval: int = 2,
+    initial_delay: int = 3,
     session: Optional[aiohttp.ClientSession] = None
 ) -> Dict[str, Any]:
     """
     Wait for a file to be fully embedded and ready for use.
 
+    Includes retry logic for initial "file not found" errors that can occur
+    when the file hasn't been fully registered in Paradigm's system yet.
+
     Args:
         file_id: The ID of the file to wait for
         max_wait_time: Maximum time to wait in seconds (default: 300)
         poll_interval: Time between status checks in seconds (default: 2)
+        initial_delay: Initial delay before first check to allow file registration (default: 3)
         session: Optional aiohttp ClientSession for connection reuse
 
     Returns:
@@ -992,21 +1052,45 @@ async def paradigm_wait_for_embedding(
     try:
         logger.info(f"⏳ Waiting for file {file_id} to be embedded (max={max_wait_time}s, interval={poll_interval}s)")
 
-        elapsed = 0
+        # Initial delay to allow file to be registered in Paradigm's system
+        logger.info(f"⏳ Initial delay of {initial_delay}s to allow file registration...")
+        await asyncio.sleep(initial_delay)
+
+        elapsed = initial_delay
+        not_found_retries = 0
+        max_not_found_retries = 10  # Allow up to 10 "not found" retries (20 seconds)
+
         while elapsed < max_wait_time:
-            file_info = await paradigm_get_file(file_id, session=session)
-            status = file_info.get('status', '').lower()
-            filename = file_info.get('filename', 'N/A')
+            try:
+                file_info = await paradigm_get_file(file_id, session=session)
+                status = file_info.get('status', '').lower()
+                filename = file_info.get('filename', 'N/A')
 
-            logger.info(f"🔄 File {file_id} ({filename}): status={status} (elapsed: {elapsed}s)")
+                logger.info(f"🔄 File {file_id} ({filename}): status={status} (elapsed: {elapsed}s)")
 
-            if status == 'embedded':
-                logger.info(f"✅ File {file_id} is embedded and ready!")
-                return file_info
+                # Reset not_found counter on successful fetch
+                not_found_retries = 0
 
-            elif status == 'failed':
-                logger.error(f"❌ File {file_id} embedding failed")
-                raise Exception(f"File {file_id} embedding failed")
+                if status == 'embedded':
+                    logger.info(f"✅ File {file_id} is embedded and ready!")
+                    return file_info
+
+                elif status == 'failed':
+                    logger.error(f"❌ File {file_id} embedding failed")
+                    raise Exception(f"File {file_id} embedding failed")
+
+            except Exception as e:
+                error_str = str(e).lower()
+                # Handle "file not found" errors during initial period
+                if 'not found' in error_str or 'no document matches' in error_str:
+                    not_found_retries += 1
+                    if not_found_retries <= max_not_found_retries:
+                        logger.warning(f"⚠️ File {file_id} not yet available (retry {not_found_retries}/{max_not_found_retries}), waiting...")
+                    else:
+                        logger.error(f"❌ File {file_id} not found after {max_not_found_retries} retries")
+                        raise
+                else:
+                    raise
 
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
@@ -1139,6 +1223,10 @@ class MockAnthropicClient:
         return await anthropic_chat_completion(prompt, system_prompt)
 
 class MockParadigmClient:
+    """
+    Paradigm API client wrapper providing a clean interface for all Paradigm operations.
+    Uses POST /api/v2/files endpoint for document uploads.
+    """
     def __init__(self):
         pass
 
@@ -1158,6 +1246,7 @@ class MockParadigmClient:
         return await paradigm_analyze_documents_with_polling(query, document_ids, **kwargs)
 
     async def upload_file(self, file_content: bytes, filename: str, **kwargs) -> Dict[str, Any]:
+        """Upload a file using POST /api/v2/files endpoint."""
         return await paradigm_upload_file(file_content, filename, **kwargs)
 
     async def get_file_info(self, file_id: int, **kwargs) -> Dict[str, Any]:

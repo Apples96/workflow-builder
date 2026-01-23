@@ -7,6 +7,7 @@ independently with a shared context.
 
 Key Components:
     - CellCodeGenerator: Generates code for individual cells
+    - Parallel code generation for cells in the same layer
     - Code validation and cleanup utilities
 
 The generator produces code that:
@@ -16,10 +17,11 @@ The generator produces code that:
     - Returns outputs as a dict for the next cell
 """
 
+import asyncio
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from anthropic import Anthropic
 from .models import WorkflowCell, CellStatus
@@ -348,6 +350,69 @@ Generate complete, self-contained Python code that:
                 "valid": False,
                 "error": "Validation error: {}".format(str(e))
             }
+
+
+    async def generate_layer_cells_parallel(
+        self,
+        cells: List[WorkflowCell],
+        available_context: Dict[str, str],
+        workflow_description: str
+    ) -> List[Tuple[WorkflowCell, str, str, Optional[Exception]]]:
+        """
+        Generate code for all cells in a layer concurrently.
+
+        This method generates code for multiple cells in parallel, which is
+        useful when all cells in a layer are independent and can be generated
+        simultaneously.
+
+        Args:
+            cells: List of cells to generate code for (all in same layer)
+            available_context: Schema of variables available from previous cells
+            workflow_description: Original workflow description for context
+
+        Returns:
+            List of tuples: (cell, description, code, error)
+            - cell: The WorkflowCell object
+            - description: Generated code description (or empty if error)
+            - code: Generated code (or empty if error)
+            - error: Exception if generation failed, None if successful
+        """
+        if not cells:
+            return []
+
+        layer = cells[0].layer if cells else 0
+        logger.info("Generating code for {} cells in layer {} in parallel".format(
+            len(cells), layer
+        ))
+
+        async def generate_single_cell(cell: WorkflowCell) -> Tuple[WorkflowCell, str, str, Optional[Exception]]:
+            """Generate code for a single cell, capturing any errors."""
+            try:
+                description, code = await self.generate_cell_code(
+                    cell=cell,
+                    available_context=available_context,
+                    workflow_description=workflow_description
+                )
+                return (cell, description, code, None)
+            except Exception as e:
+                logger.error("Failed to generate code for cell '{}': {}".format(
+                    cell.name, str(e)
+                ))
+                return (cell, "", "", e)
+
+        # Generate all cells in parallel
+        tasks = [generate_single_cell(cell) for cell in cells]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Count successes and failures
+        successes = sum(1 for _, _, _, err in results if err is None)
+        failures = sum(1 for _, _, _, err in results if err is not None)
+
+        logger.info("Layer {} code generation complete: {} successes, {} failures".format(
+            layer, successes, failures
+        ))
+
+        return results
 
 
 # Global generator instance

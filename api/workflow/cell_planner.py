@@ -21,13 +21,62 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from anthropic import Anthropic
 from .models import WorkflowPlan, WorkflowCell, CellStatus
 from ..config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def parse_layer_structure_from_description(description: str) -> Dict[str, Tuple[int, int]]:
+    """
+    Parse the layer structure from a layer-structured enhanced description.
+
+    Extracts STEP X.Y patterns and maps them to (layer, sublayer_index) tuples.
+    This allows us to validate and fix Claude's output if it doesn't preserve
+    the parallel structure.
+
+    Args:
+        description: The enhanced workflow description with LAYER/STEP format
+
+    Returns:
+        Dict mapping step identifiers to (layer, sublayer_index) tuples.
+        Example: {"1.1": (1, 1), "2.1": (2, 1), "2.2": (2, 2), "3.1": (3, 1)}
+    """
+    layer_structure = {}
+
+    # Pattern to match "STEP X.Y:" where X is layer and Y is sublayer_index
+    # This handles formats like "STEP 2.1:", "STEP 2.1 :", "STEP 2.1-"
+    step_pattern = re.compile(r'STEP\s+(\d+)\.(\d+)\s*[:\-]', re.IGNORECASE)
+
+    for match in step_pattern.finditer(description):
+        layer = int(match.group(1))
+        sublayer = int(match.group(2))
+        step_id = "{}.{}".format(layer, sublayer)
+        layer_structure[step_id] = (layer, sublayer)
+        logger.debug("Parsed step {} -> layer={}, sublayer={}".format(step_id, layer, sublayer))
+
+    if layer_structure:
+        # Log summary of parallel layers
+        layers = {}
+        for step_id, (layer, sublayer) in layer_structure.items():
+            if layer not in layers:
+                layers[layer] = []
+            layers[layer].append(step_id)
+
+        parallel_layers = [l for l, steps in layers.items() if len(steps) > 1]
+        if parallel_layers:
+            logger.info("Detected parallel structure: {} total layers, parallel layers: {}".format(
+                len(layers), parallel_layers
+            ))
+        else:
+            logger.info("Detected sequential structure: {} layers, no parallelization".format(
+                len(layers)
+            ))
+
+    return layer_structure
 
 
 def load_planner_prompt() -> str:
@@ -110,6 +159,17 @@ class WorkflowPlanner:
         user_message = self._build_user_message(description, context)
 
         try:
+            # Parse layer structure from the description BEFORE calling Claude
+            # This allows us to validate and fix Claude's output if needed
+            expected_layer_structure = parse_layer_structure_from_description(description)
+
+            if expected_layer_structure:
+                logger.info("Parsed expected layer structure with {} steps from description".format(
+                    len(expected_layer_structure)
+                ))
+            else:
+                logger.info("No STEP X.Y pattern found in description, using Claude's layer assignments")
+
             # Call Claude to generate the plan
             response = self.anthropic_client.messages.create(
                 model="claude-sonnet-4-20250514",
@@ -125,10 +185,19 @@ class WorkflowPlanner:
             # Parse JSON from response
             plan_data = self._parse_plan_output(raw_output)
 
-            # Create the WorkflowPlan
-            plan = self._create_plan_from_data(plan_data, description)
+            # Create the WorkflowPlan with expected layer structure for validation
+            plan = self._create_plan_from_data(plan_data, description, expected_layer_structure)
 
-            logger.info("Created plan with {} cells".format(len(plan.cells)))
+            # Log parallelization info
+            if plan.is_parallel_workflow():
+                layers = plan.get_cells_by_layer()
+                parallel_layers = [l for l, cells in layers.items() if len(cells) > 1]
+                logger.info("Created PARALLEL plan with {} cells across {} layers (parallel: {})".format(
+                    len(plan.cells), len(layers), parallel_layers
+                ))
+            else:
+                logger.info("Created SEQUENTIAL plan with {} cells".format(len(plan.cells)))
+
             return plan
 
         except Exception as e:
@@ -283,7 +352,8 @@ class WorkflowPlanner:
     def _create_plan_from_data(
         self,
         plan_data: Dict[str, Any],
-        description: str
+        description: str,
+        expected_layer_structure: Optional[Dict[str, Tuple[int, int]]] = None
     ) -> WorkflowPlan:
         """
         Create a WorkflowPlan object from parsed data.
@@ -309,6 +379,11 @@ class WorkflowPlanner:
                 step_number=cell_data.get("step_number", 0),
                 name=cell_data.get("name", "Unnamed Step"),
                 description=cell_data.get("description", ""),
+                # Parallelization fields
+                layer=cell_data.get("layer", 1),
+                sublayer_index=cell_data.get("sublayer_index", 1),
+                depends_on=cell_data.get("depends_on", []),
+                # Data flow fields
                 inputs_required=cell_data.get("inputs_required", []),
                 outputs_produced=cell_data.get("outputs_produced", []),
                 paradigm_tools_used=cell_data.get("paradigm_tools_used", []),
@@ -316,10 +391,83 @@ class WorkflowPlanner:
             )
             plan.cells.append(cell)
 
+        # Fix layer structure if expected structure is provided
+        # This corrects Claude's output if it didn't preserve parallel layers
+        if expected_layer_structure:
+            self._fix_layer_structure(plan, expected_layer_structure)
+
         # Validate the plan
         self._validate_plan(plan)
 
         return plan
+
+    def _fix_layer_structure(
+        self,
+        plan: WorkflowPlan,
+        expected_structure: Dict[str, Tuple[int, int]]
+    ) -> None:
+        """
+        Fix the layer structure of a plan based on expected structure from description.
+
+        If Claude output cells with incorrect layer assignments (e.g., sequential layers
+        instead of parallel), this method fixes them based on the parsed STEP X.Y format
+        from the enhanced description.
+
+        Args:
+            plan: The plan to fix
+            expected_structure: Dict mapping step IDs like "2.1" to (layer, sublayer_index)
+        """
+        if not expected_structure:
+            logger.info("No expected structure provided, skipping layer fix")
+            return
+
+        # Build a mapping from cell order to expected structure
+        # The assumption is cells are created in the order they appear in the description
+        sorted_steps = sorted(expected_structure.keys(), key=lambda s: (
+            int(s.split('.')[0]),  # Primary sort by layer
+            int(s.split('.')[1])   # Secondary sort by sublayer
+        ))
+
+        if len(plan.cells) != len(sorted_steps):
+            logger.warning(
+                "Cell count ({}) doesn't match expected step count ({}), attempting best-effort fix".format(
+                    len(plan.cells), len(sorted_steps)
+                )
+            )
+
+        # Track if any fixes were made
+        fixes_made = 0
+
+        # Try to match cells to expected structure
+        for i, cell in enumerate(plan.cells):
+            if i < len(sorted_steps):
+                step_id = sorted_steps[i]
+                expected_layer, expected_sublayer = expected_structure[step_id]
+
+                if cell.layer != expected_layer or cell.sublayer_index != expected_sublayer:
+                    logger.info(
+                        "Fixing cell '{}': layer {} -> {}, sublayer {} -> {}".format(
+                            cell.name,
+                            cell.layer, expected_layer,
+                            cell.sublayer_index, expected_sublayer
+                        )
+                    )
+                    cell.layer = expected_layer
+                    cell.sublayer_index = expected_sublayer
+                    fixes_made += 1
+
+        if fixes_made > 0:
+            logger.info("Fixed layer structure for {} cells".format(fixes_made))
+
+            # Log the corrected structure
+            layers = plan.get_cells_by_layer()
+            parallel_layers = [l for l, cells in layers.items() if len(cells) > 1]
+            if parallel_layers:
+                logger.info("Corrected plan has {} layers with parallelization in: {}".format(
+                    len(layers), parallel_layers
+                ))
+        else:
+            logger.info("Layer structure was already correct, no fixes needed")
 
     def _validate_plan(self, plan: WorkflowPlan) -> None:
         """
@@ -327,8 +475,9 @@ class WorkflowPlanner:
 
         Checks:
         - At least one cell exists
-        - Final cell produces 'final_result'
+        - Final cell (highest layer) produces 'final_result'
         - Dependencies are satisfiable
+        - Layer structure is valid
 
         Args:
             plan: The plan to validate
@@ -339,30 +488,78 @@ class WorkflowPlanner:
         if not plan.cells:
             raise Exception("Plan must have at least one cell")
 
-        # Check that the last cell produces final_result
-        last_cell = plan.cells[-1]
-        if "final_result" not in last_cell.outputs_produced:
+        # Find the cell(s) in the highest layer - one of them should produce final_result
+        max_layer = plan.get_max_layer()
+        final_layer_cells = [c for c in plan.cells if c.layer == max_layer]
+
+        # Check that at least one cell in the final layer produces final_result
+        has_final_result = any(
+            "final_result" in cell.outputs_produced
+            for cell in final_layer_cells
+        )
+
+        if not has_final_result:
+            # Add final_result to the last cell in the highest layer
+            last_cell = final_layer_cells[-1] if final_layer_cells else plan.cells[-1]
             logger.warning(
-                "Last cell '{}' does not produce 'final_result', adding it".format(
+                "No cell in final layer produces 'final_result', adding to '{}'".format(
                     last_cell.name
                 )
             )
             last_cell.outputs_produced.append("final_result")
 
-        # Check dependency chain
-        available_vars = {"user_input", "attached_file_ids"}
-        for cell in plan.cells:
-            # Check that all required inputs are available
-            missing = set(cell.inputs_required) - available_vars
-            if missing:
+        # Validate layer structure
+        layers = plan.get_cells_by_layer()
+        for layer_num in sorted(layers.keys()):
+            layer_cells = layers[layer_num]
+
+            # Check sublayer indices are sequential
+            sublayer_indices = [c.sublayer_index for c in layer_cells]
+            expected = list(range(1, len(layer_cells) + 1))
+            if sorted(sublayer_indices) != expected:
                 logger.warning(
-                    "Cell '{}' requires unavailable inputs: {}".format(
-                        cell.name, missing
+                    "Layer {} has non-sequential sublayer indices: {}".format(
+                        layer_num, sublayer_indices
                     )
                 )
+                # Fix the indices
+                for idx, cell in enumerate(layer_cells, 1):
+                    cell.sublayer_index = idx
 
-            # Add this cell's outputs to available vars
-            available_vars.update(cell.outputs_produced)
+        # Check dependency chain (layer-aware)
+        # Variables available after each layer completes
+        available_vars = {"user_input", "attached_file_ids"}
+
+        for layer_num in sorted(layers.keys()):
+            layer_cells = layers[layer_num]
+
+            # All cells in this layer can access variables from previous layers
+            for cell in layer_cells:
+                missing = set(cell.inputs_required) - available_vars
+                if missing:
+                    logger.warning(
+                        "Cell '{}' (layer {}) requires unavailable inputs: {}".format(
+                            cell.name, layer_num, missing
+                        )
+                    )
+
+            # After this layer completes, all outputs become available
+            for cell in layer_cells:
+                available_vars.update(cell.outputs_produced)
+
+        # Log parallelization info
+        if plan.is_parallel_workflow():
+            parallel_layers = [
+                layer_num for layer_num, cells in layers.items()
+                if len(cells) > 1
+            ]
+            logger.info(
+                "Plan has {} layers with parallelization in layers: {}".format(
+                    len(layers), parallel_layers
+                )
+            )
+        else:
+            logger.info("Plan has {} sequential layers".format(len(layers)))
 
         logger.info("Plan validation passed")
 

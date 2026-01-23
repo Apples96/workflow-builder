@@ -109,16 +109,17 @@ class ErrorResponse(BaseModel):
 class FileUploadResponse(BaseModel):
     """
     Response model for file upload operations.
-    
+
     Contains file metadata from the Paradigm API after successful upload.
     Files are processed and indexed automatically for use in workflows.
     """
     id: int = Field(..., description="File ID in Paradigm")
     filename: str = Field(..., description="Original filename")
     bytes: int = Field(..., description="File size in bytes")
-    status: str = Field(..., description="Processing status")
-    created_at: int = Field(..., description="Creation timestamp")
-    purpose: str = Field(..., description="File purpose")
+    status: str = Field(default="uploaded", description="Processing status")
+    created_at: Optional[int] = Field(default=None, description="Creation timestamp")
+    purpose: Optional[str] = Field(default=None, description="File purpose")
+    session_uuid: Optional[str] = Field(default=None, description="Upload session UUID")
 
 class FileInfoResponse(BaseModel):
     """
@@ -199,11 +200,17 @@ class CellResponse(BaseModel):
 
     Represents one discrete step in a cell-based workflow,
     including its definition, status, and execution results.
+    Supports parallel execution via layer-based structure.
     """
     id: str = Field(..., description="Unique cell identifier")
     step_number: int = Field(..., description="Sequential position in workflow (1-indexed)")
     name: str = Field(..., description="Short descriptive name")
     description: str = Field(..., description="What this cell does")
+    # Parallelization fields
+    layer: int = Field(default=1, description="Execution layer (1, 2, 3...) - cells in same layer run in parallel")
+    sublayer_index: int = Field(default=1, description="Position within layer (1, 2, 3...) for display as X.1, X.2")
+    display_step: Optional[str] = Field(None, description="Display step number like '2.1', '2.3'")
+    depends_on: List[str] = Field(default_factory=list, description="Step numbers this cell depends on for data")
     status: CellStatusEnum = Field(..., description="Current cell status")
     inputs_required: List[str] = Field(default_factory=list, description="Variable names needed from previous cells")
     outputs_produced: List[str] = Field(default_factory=list, description="Variable names this cell produces")
@@ -221,9 +228,12 @@ class WorkflowPlanResponse(BaseModel):
 
     Contains the sequence of cells that make up the workflow,
     along with the shared context schema defining data flow.
+    Supports parallel execution via layer-based structure.
     """
     id: str = Field(..., description="Unique plan identifier")
     total_cells: int = Field(..., description="Total number of cells in the plan")
+    total_layers: int = Field(default=1, description="Total number of execution layers")
+    is_parallel: bool = Field(default=False, description="Whether this plan has parallel layers")
     cells: List[CellResponse] = Field(default_factory=list, description="List of workflow cells")
     shared_context_schema: Dict[str, str] = Field(
         default_factory=dict,
