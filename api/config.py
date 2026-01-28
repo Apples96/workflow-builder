@@ -51,8 +51,16 @@ class Settings:
         self.is_vercel: bool = os.getenv("VERCEL", "").lower() in ["1", "true"]
         
         # LightOn Paradigm API settings
+        # v2 endpoints for file operations (upload, get, delete, chunks)
         self.lighton_base_url: str = "https://paradigm.lighton.ai"
         self.lighton_docsearch_endpoint: str = "/api/v2/chat/document-search"
+
+        # v3 Agent API endpoint for unified threads/turns interface
+        self.lighton_v3_base_url: str = "https://paradigm.lighton.ai"
+        self.lighton_v3_agent_endpoint: str = "/api/v3/threads/turns"
+
+        # v3 Agent API requires chat_setting_id (user's agent configuration)
+        self.lighton_chat_setting_id: int = int(os.getenv("LIGHTON_CHAT_SETTING_ID", "160"))
         
         # Workflow execution settings
         self.max_execution_time: int = 1800  # 20 minutes maximum execution time

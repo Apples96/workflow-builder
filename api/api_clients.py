@@ -25,6 +25,7 @@ Usage:
 """
 import aiohttp
 import asyncio
+import json
 import logging
 from typing import Optional, List, Dict, Any
 from .config import settings
@@ -217,13 +218,13 @@ async def anthropic_chat_completion(prompt: str, system_prompt: Optional[str] = 
         raise Exception(f"Chat completion failed: {str(e)}")
 
 # ============================================================================
-# LIGHTON PARADIGM API CLIENT (Direct HTTP)
+# LIGHTON PARADIGM API v3 AGENT CLIENT (Direct HTTP)
 # ============================================================================
 
 def _get_paradigm_headers() -> Dict[str, str]:
     """
     Get standard headers for Paradigm API requests.
-    
+
     Returns:
         dict: Headers including authorization and content type
     """
@@ -231,6 +232,233 @@ def _get_paradigm_headers() -> Dict[str, str]:
         "Content-Type": "application/json",
         "Authorization": f"Bearer {settings.lighton_api_key}"
     }
+
+
+def _extract_v3_answer(response: Dict[str, Any]) -> str:
+    """
+    Extract the final text answer from a v3 Agent API response.
+
+    The v3 response format is:
+    {
+        "messages": [
+            {"role": "user", "parts": [...]},
+            {"role": "assistant", "parts": [
+                {"type": "tool_call", ...},
+                {"type": "reasoning", ...},
+                {"type": "text", "text": "Final answer here"}
+            ]}
+        ]
+    }
+
+    Args:
+        response: The v3 API response dictionary
+
+    Returns:
+        str: The extracted text answer, or empty string if not found
+    """
+    messages = response.get("messages", [])
+    if not messages:
+        return ""
+
+    # Get the last message (assistant response)
+    last_message = messages[-1]
+    parts = last_message.get("parts", [])
+
+    # Search for text parts from the end (final answer is usually last)
+    for part in reversed(parts):
+        if part.get("type") == "text":
+            return part.get("text", "")
+
+    return ""
+
+
+async def agent_query(
+    query: str,
+    file_ids: Optional[List[int]] = None,
+    force_tool: Optional[str] = None,
+    workspace_ids: Optional[List[int]] = None,
+    private_scope: bool = True,
+    company_scope: bool = False,
+    model: str = "alfred-ft5",
+    chat_setting_id: Optional[int] = None,
+    timeout: int = 300
+) -> Dict[str, Any]:
+    """
+    Unified v3 Agent API - the primary interface for Paradigm queries.
+
+    This uses the /api/v3/threads/turns endpoint which combines thread creation
+    and turn creation in a single request.
+
+    Args:
+        query: The query or instruction for the agent
+        file_ids: Optional list of file IDs to work with
+        force_tool: Optional tool to force: "document_search", "document_analysis", "code_execution"
+        workspace_ids: Optional list of workspace IDs to search
+        private_scope: Include user's private workspace (default True)
+        company_scope: Include company's workspace (default False)
+        model: The model to use (default: "alfred-ft5")
+        chat_setting_id: Agent settings ID (required, defaults to config value)
+        timeout: Request timeout in seconds (default: 300)
+
+    Returns:
+        dict: Full v3 API response
+
+    Raises:
+        Exception: If API call fails or returns an error
+    """
+    endpoint = f"{settings.lighton_v3_base_url}{settings.lighton_v3_agent_endpoint}"
+
+    # Use provided chat_setting_id or fall back to config
+    setting_id = chat_setting_id or settings.lighton_chat_setting_id
+
+    payload = {
+        "chat_setting_id": setting_id,
+        "query": query,
+        "ml_model": model,
+        "private_scope": private_scope,
+        "company_scope": company_scope
+    }
+
+    # Add optional parameters
+    if file_ids:
+        payload["file_ids"] = file_ids
+    if workspace_ids:
+        payload["workspace_ids"] = workspace_ids
+    if force_tool:
+        payload["force_tool"] = force_tool
+
+    try:
+        logger.info(f"🤖 PARADIGM v3 AGENT QUERY")
+        logger.info(f"📡 ENDPOINT: {endpoint}")
+        logger.info(f"🔍 QUERY: {query[:100]}...")
+        logger.info(f"📋 FILE_IDS: {file_ids}")
+        logger.info(f"🔧 FORCE_TOOL: {force_tool or 'None (agent chooses)'}")
+        logger.info(f"⚙️ CHAT_SETTING_ID: {setting_id}")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                endpoint,
+                json=payload,
+                headers=_get_paradigm_headers(),
+                timeout=aiohttp.ClientTimeout(total=timeout)
+            ) as response:
+                response_text = await response.text()
+                logger.info(f"📥 RAW RESPONSE: Status {response.status}, Body: {response_text[:500]}...")
+
+                if response.status == 200:
+                    result = json.loads(response_text)
+                    answer = _extract_v3_answer(result)
+                    logger.info(f"✅ AGENT QUERY SUCCESS")
+                    logger.info(f"💬 ANSWER: {answer[:300]}..." if answer else "No text answer")
+                    return result
+
+                elif response.status == 202:
+                    # Background processing - return partial result
+                    logger.info(f"⏳ AGENT QUERY ACCEPTED (202) - processing in background")
+                    result = json.loads(response_text)
+                    return result
+
+                else:
+                    logger.error(f"❌ PARADIGM v3 AGENT ERROR: {response.status} - {response_text}")
+                    raise Exception(f"Paradigm v3 agent query failed: {response.status} - {response_text}")
+
+    except asyncio.TimeoutError:
+        logger.error(f"❌ AGENT QUERY TIMEOUT after {timeout}s")
+        raise Exception(f"Agent query timed out after {timeout} seconds")
+    except aiohttp.ClientError as e:
+        logger.error(f"❌ NETWORK ERROR: {str(e)}")
+        raise Exception(f"Network error calling Paradigm v3 agent API: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ AGENT QUERY FAILED: {str(e)}")
+        raise
+
+
+async def agent_query_with_retry(
+    query: str,
+    file_ids: Optional[List[int]] = None,
+    retry_tools: List[str] = None,
+    model: str = "alfred-ft5",
+    timeout: int = 300
+) -> Dict[str, Any]:
+    """
+    Liberty first, forced tools on retry strategy.
+
+    1. First attempt: Let agent choose tool freely
+    2. Retry 1: Force document_search
+    3. Retry 2: Force document_analysis
+
+    Args:
+        query: The query or instruction
+        file_ids: Optional list of file IDs
+        retry_tools: List of tools to try on retries (default: ["document_search", "document_analysis"])
+        model: The model to use
+        timeout: Request timeout per attempt
+
+    Returns:
+        dict: The successful v3 API response
+
+    Raises:
+        Exception: If all attempts fail
+    """
+    if retry_tools is None:
+        retry_tools = ["document_search", "document_analysis"] if file_ids else []
+
+    last_error = None
+
+    # Attempt 1: Liberty - let agent choose
+    try:
+        logger.info(f"🔄 ATTEMPT 1 (Liberty): Agent chooses tool")
+        result = await agent_query(
+            query=query,
+            file_ids=file_ids,
+            force_tool=None,
+            model=model,
+            timeout=timeout
+        )
+
+        answer = _extract_v3_answer(result)
+        if answer and len(answer.strip()) > 10:
+            logger.info(f"✅ LIBERTY ATTEMPT SUCCESS")
+            return result
+        else:
+            logger.warning(f"⚠️ Liberty attempt returned empty/short answer")
+            last_error = Exception("Empty or short answer")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Liberty attempt failed: {str(e)}")
+        last_error = e
+
+    # Retry attempts with forced tools
+    for i, force_tool in enumerate(retry_tools, start=2):
+        try:
+            logger.info(f"🔄 ATTEMPT {i} (Forced): force_tool={force_tool}")
+            result = await agent_query(
+                query=query,
+                file_ids=file_ids,
+                force_tool=force_tool,
+                model=model,
+                timeout=timeout
+            )
+
+            answer = _extract_v3_answer(result)
+            if answer and len(answer.strip()) > 10:
+                logger.info(f"✅ FORCED TOOL {force_tool} SUCCESS")
+                return result
+            else:
+                logger.warning(f"⚠️ Forced {force_tool} returned empty/short answer")
+                last_error = Exception(f"Empty answer from {force_tool}")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Forced {force_tool} failed: {str(e)}")
+            last_error = e
+
+    # All attempts failed
+    raise Exception(f"All retry attempts failed for query: {query[:50]}... Last error: {last_error}")
+
+
+# ============================================================================
+# LIGHTON PARADIGM API v2 (Legacy - for backward compatibility)
+# ============================================================================
 
 async def paradigm_document_search(
     query: str,
@@ -1225,10 +1453,43 @@ class MockAnthropicClient:
 class MockParadigmClient:
     """
     Paradigm API client wrapper providing a clean interface for all Paradigm operations.
-    Uses POST /api/v2/files endpoint for document uploads.
+
+    Uses v3 Agent API for queries (agent_query, agent_query_with_retry).
+    Uses v2 API for file operations (upload, get, delete).
     """
     def __init__(self):
         pass
+
+    # =========================================================================
+    # v3 Agent API Methods (Primary Interface)
+    # =========================================================================
+
+    async def agent_query(
+        self,
+        query: str,
+        file_ids: Optional[List[int]] = None,
+        force_tool: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Unified v3 Agent API query."""
+        return await agent_query(query, file_ids, force_tool, **kwargs)
+
+    async def agent_query_with_retry(
+        self,
+        query: str,
+        file_ids: Optional[List[int]] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Liberty first, forced tools on retry strategy."""
+        return await agent_query_with_retry(query, file_ids, **kwargs)
+
+    def extract_answer(self, response: Dict[str, Any]) -> str:
+        """Extract text answer from v3 response."""
+        return _extract_v3_answer(response)
+
+    # =========================================================================
+    # v2 Methods (Legacy - for backward compatibility)
+    # =========================================================================
 
     async def document_search(self, query: str, **kwargs) -> Dict[str, Any]:
         return await paradigm_document_search(query, **kwargs)
@@ -1244,6 +1505,10 @@ class MockParadigmClient:
 
     async def analyze_documents_with_polling(self, query: str, document_ids: List[str], **kwargs) -> str:
         return await paradigm_analyze_documents_with_polling(query, document_ids, **kwargs)
+
+    # =========================================================================
+    # File Operations (v2 - unchanged)
+    # =========================================================================
 
     async def upload_file(self, file_content: bytes, filename: str, **kwargs) -> Dict[str, Any]:
         """Upload a file using POST /api/v2/files endpoint."""

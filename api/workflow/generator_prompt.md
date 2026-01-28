@@ -41,37 +41,45 @@ logger = logging.getLogger(__name__)
 
 class ParadigmClient:
     '''
-    LightOn Paradigm API Client with session reuse for 5.55x performance improvement.
+    LightOn Paradigm API v3 Agent Client with session reuse for 5.55x performance improvement.
 
-    Session reuse eliminates connection overhead (TCP handshake, SSL negotiation)
-    on every API call, as recommended by Paradigm documentation.
+    This client uses the unified v3 Agent API (POST /api/v3/threads/turns) for all
+    query operations. The agent can autonomously choose tools or be forced to use specific ones.
+
+    KEY CHANGES FROM v2:
+    - document_search, document_analysis, chat_completion are now unified into agent_query()
+    - No polling needed! v3 returns results directly (unlike v2 document-analysis)
+    - Use "liberty first, forced tools on retry" strategy for best results
 
     ⚠️ MANDATORY: ALWAYS include these methods in your generated code:
     - __init__
     - _get_session
     - close
-    - document_search  <-- CRITICAL: Primary API for document queries with file_ids!
-    - analyze_documents_with_polling  <-- CRITICAL: For comprehensive structured extraction!
-    - document_analysis_start
-    - document_analysis_get_result
-    - chat_completion
-    - upload_file  <-- CRITICAL: Always include this method!
-    - get_file  <-- CRITICAL: Required for checking file status!
-    - wait_for_embedding  <-- CRITICAL: Required for waiting until files are ready!
+    - agent_query  <-- PRIMARY: Unified v3 API for all queries!
+    - agent_query_with_retry  <-- RECOMMENDED: Liberty first, forced tools on retry!
+    - _extract_answer  <-- Helper to extract text from v3 response
+    - upload_file  <-- v2 API for file uploads (unchanged)
+    - get_file  <-- v2 API for checking file status (unchanged)
+    - wait_for_embedding  <-- v2 API for waiting until files are ready (unchanged)
 
-    ⚠️ NOTE: ask_question() is NOT included due to server-side issues (HTTP 500).
-    Use document_search(file_ids=[...]) or analyze_documents_with_polling() instead.
+    ⚠️ RETRY STRATEGY (RECOMMENDED):
+    Use agent_query_with_retry() which implements:
+    1. First: Let agent choose tool freely
+    2. Retry 1: Force document_search
+    3. Retry 2: Force document_analysis
     '''
 
-    def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai"):
+    def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai", chat_setting_id: int = 160):
         self.api_key = api_key
         self.base_url = base_url
+        self.chat_setting_id = chat_setting_id  # REQUIRED for v3 Agent API
+        self.v3_endpoint = "/api/v3/threads/turns"  # Unified v3 Agent endpoint
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": "Bearer {}".format(self.api_key)
         }
         self._session: Optional[aiohttp.ClientSession] = None
-        logger.info("✅ ParadigmClient initialized: {}".format(base_url))
+        logger.info("✅ ParadigmClient v3 initialized: {} (chat_setting_id={})".format(base_url, chat_setting_id))
 
     async def _get_session(self) -> aiohttp.ClientSession:
         '''
@@ -101,416 +109,280 @@ class ParadigmClient:
             logger.debug("🔌 Closed aiohttp session")
             self._session = None
 
-    async def document_search(
+    def _extract_answer(self, response: Dict[str, Any]) -> str:
+        '''
+        Extract the final text answer from a v3 Agent API response.
+
+        The v3 response format is:
+        {
+            "messages": [
+                {"role": "user", "parts": [...]},
+                {"role": "assistant", "parts": [
+                    {"type": "tool_call", ...},
+                    {"type": "reasoning", ...},
+                    {"type": "text", "text": "Final answer here"}
+                ]}
+            ]
+        }
+
+        Args:
+            response: The v3 API response dictionary
+
+        Returns:
+            str: The extracted text answer, or empty string if not found
+        '''
+        messages = response.get("messages", [])
+        if not messages:
+            return ""
+        last_message = messages[-1]
+        parts = last_message.get("parts", [])
+        for part in reversed(parts):
+            if part.get("type") == "text":
+                return part.get("text", "")
+        return ""
+
+    async def agent_query(
         self,
         query: str,
         file_ids: Optional[List[int]] = None,
-        workspace_ids: Optional[List[int]] = None,
-        chat_session_id: Optional[str] = None,
-        model: Optional[str] = None,
-        company_scope: bool = False,
-        private_scope: bool = True,
-        tool: str = "DocumentSearch",
-        private: bool = True
+        force_tool: Optional[str] = None,
+        response_format: Optional[Dict] = None,
+        model: str = "alfred-ft5",
+        timeout: int = 300
     ) -> Dict[str, Any]:
         '''
-        Search through documents using natural language queries.
+        Unified v3 Agent API - replaces document_search, document_analysis, chat_completion.
+
+        This is the primary interface for interacting with Paradigm's v3 Agent API.
+        The agent can autonomously choose tools or be forced to use a specific tool.
+
+        CRITICAL: chat_setting_id is REQUIRED for v3 API. It is stored in self.chat_setting_id.
+
+        Unlike v2, document_analysis via v3 Agent returns directly (no polling needed).
 
         Args:
-            query: Your search question (e.g., "What is the total amount?")
-            file_ids: Which files to search in (e.g., [123, 456])
-            workspace_ids: Which workspaces to search (optional)
-            chat_session_id: Chat session for context (optional)
-            model: Specific AI model to use (optional)
-            company_scope: Search company-wide documents
-            private_scope: Search private documents
-            tool: Search method - "DocumentSearch" (default) or "VisionDocumentSearch"
-                  Use "VisionDocumentSearch" for:
-                  - Scanned documents or images
-                  - Checkboxes or form fields
-                  - Complex layouts or tables
-                  - Poor OCR quality documents
-            private: Whether this request is private
+            query: The query or instruction for the agent
+            file_ids: Optional list of file IDs to work with
+            force_tool: Optional tool to force the agent to use:
+                       - "document_search": Search through documents
+                       - "document_analysis": Deep analysis of documents
+                       - "code_execution": Execute code (if available)
+                       - None: Let the agent choose the appropriate tool
+            response_format: Optional dict specifying response format (e.g., JSON schema)
+            model: The model to use (default: "alfred-ft5")
+            timeout: Request timeout in seconds (default: 300)
 
         Returns:
-            dict: Search results with "answer", "documents", and metadata
+            dict: Full v3 API response containing:
+                - messages: List with assistant response containing parts
+                - Use _extract_answer() to get the text from parts[type="text"]
 
-        Example with Vision OCR:
-            result = await paradigm_client.document_search(
-                query="Quelle case est cochée dans la section C ?",
+        Example - Let agent choose tool:
+            result = await paradigm_client.agent_query(
+                query="What is the total amount in the invoice?",
+                file_ids=[123]
+            )
+            answer = paradigm_client._extract_answer(result)
+
+        Example - Force document search:
+            result = await paradigm_client.agent_query(
+                query="Find all mentions of pricing",
+                file_ids=[123, 456],
+                force_tool="document_search"
+            )
+
+        Example - Force document analysis (no polling needed!):
+            result = await paradigm_client.agent_query(
+                query="Provide a comprehensive summary of this document",
                 file_ids=[123],
-                tool="VisionDocumentSearch"
+                force_tool="document_analysis"
             )
         '''
-        endpoint = "{}/api/v2/chat/document-search".format(self.base_url)
+        endpoint = "{}{}".format(self.base_url, self.v3_endpoint)
 
+        # CRITICAL: chat_setting_id is REQUIRED for v3 API
         payload = {
+            "chat_setting_id": self.chat_setting_id,
             "query": query,
-            "company_scope": company_scope,
-            "private_scope": private_scope,
-            "tool": tool,
-            "private": private
+            "ml_model": model,
+            "private_scope": True,
+            "company_scope": False
         }
 
+        # Add optional parameters
         if file_ids:
             payload["file_ids"] = file_ids
-        if workspace_ids:
-            payload["workspace_ids"] = workspace_ids
-        if chat_session_id:
-            payload["chat_session_id"] = chat_session_id
-        if model:
-            payload["model"] = model
+        if force_tool:
+            payload["force_tool"] = force_tool
+        if response_format:
+            payload["response_format"] = response_format
 
         try:
-            logger.info("🔍 Document Search: {}... (tool={})".format(query[:50], tool))
+            logger.info("🤖 Agent Query: {}...".format(query[:50]))
+            logger.info("🔧 Force Tool: {}".format(force_tool or "None (agent chooses)"))
+            logger.info("⚙️ chat_setting_id: {}".format(self.chat_setting_id))
 
             session = await self._get_session()
             async with session.post(
                 endpoint,
                 json=payload,
-                headers=self.headers
+                headers=self.headers,
+                timeout=aiohttp.ClientTimeout(total=timeout)
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    logger.info("✅ Search completed: {} documents".format(len(result.get('documents', []))))
+                    answer = self._extract_answer(result)
+                    logger.info("✅ Agent query success")
+                    logger.info("💬 Answer: {}...".format(answer[:200] if answer else "No text answer"))
                     return result
+                elif response.status == 202:
+                    # Rare timeout case - v3 may return 202 for very long operations
+                    logger.info("⏳ Agent query returned 202 - checking for turn_id to poll")
+                    result_data = await response.json()
+                    turn_id = result_data.get("turn_id")
+                    if turn_id:
+                        return await self._poll_for_result(turn_id, timeout)
+                    else:
+                        raise Exception("Received 202 but no turn_id for polling")
                 else:
                     error_text = await response.text()
-                    logger.error("❌ Search failed: {} - {}".format(response.status, error_text))
-                    raise Exception("Document search failed: {} - {}".format(response.status, error_text))
+                    logger.error("❌ Agent query failed: {} - {}".format(response.status, error_text))
+                    raise Exception("Agent query failed: {} - {}".format(response.status, error_text))
 
+        except asyncio.TimeoutError:
+            logger.error("❌ Agent query timeout after {}s".format(timeout))
+            raise Exception("Agent query timed out after {} seconds".format(timeout))
         except Exception as e:
-            logger.error("❌ Search error: {}".format(str(e)))
+            logger.error("❌ Agent query error: {}".format(str(e)))
             raise
 
-    async def search_with_vision_fallback(
+    async def _poll_for_result(
+        self,
+        turn_id: str,
+        max_wait_time: int = 300,
+        poll_interval: int = 5
+    ) -> Dict[str, Any]:
+        '''
+        Internal polling for v3 API when HTTP 202 is returned.
+        This is only used in rare timeout cases - v3 normally returns results directly.
+        '''
+        endpoint = "{}/api/v3/threads/turns/{}".format(self.base_url, turn_id)
+        elapsed = 0
+
+        while elapsed < max_wait_time:
+            try:
+                session = await self._get_session()
+                async with session.get(endpoint, headers=self.headers) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        status = result.get("status", "").lower()
+
+                        if status in ["completed", "complete", "finished", "success"]:
+                            logger.info("✅ Poll completed after {}s".format(elapsed))
+                            return result
+                        elif status in ["failed", "error"]:
+                            raise Exception("Turn failed with status: {}".format(status))
+                    elif response.status == 404:
+                        pass  # Still processing
+                    else:
+                        error_text = await response.text()
+                        raise Exception("Poll error: {} - {}".format(response.status, error_text))
+
+            except Exception as e:
+                if "not found" not in str(e).lower() and "404" not in str(e):
+                    raise
+
+            logger.info("⏳ Polling turn {}... ({}s)".format(turn_id, elapsed))
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+
+        raise Exception("Polling timed out after {}s".format(max_wait_time))
+
+    async def agent_query_with_retry(
         self,
         query: str,
         file_ids: Optional[List[int]] = None,
-        **kwargs
+        retry_tools: List[str] = None,
+        model: str = "alfred-ft5",
+        timeout: int = 300
     ) -> Dict[str, Any]:
-        try:
-            logger.info("🔍 Smart search: trying normal search first...")
-
-            # Try normal search
-            result = await self.document_search(
-                query,
-                file_ids=file_ids,
-                tool="DocumentSearch",
-                **kwargs
-            )
-
-            # Check result quality
-            answer = result.get("answer", "").strip()
-            has_documents = len(result.get("documents", [])) > 0
-            failure_indicators = ["not found", "no information", "cannot find", "unable to", "n/a"]
-            seems_unsuccessful = any(indicator in answer.lower() for indicator in failure_indicators)
-
-            if answer and has_documents and not seems_unsuccessful:
-                logger.info("✅ Normal search succeeded")
-                return result
-
-            # Fallback to vision
-            logger.info("⚠️ Normal search unclear, trying vision fallback...")
-            vision_result = await self.document_search(
-                query,
-                file_ids=file_ids,
-                tool="VisionDocumentSearch",
-                **kwargs
-            )
-
-            logger.info("✅ Vision search completed")
-            return vision_result
-
-        except Exception as e:
-            logger.error("❌ Smart search failed: {}".format(str(e)))
-            raise
-
-    async def document_analysis_start(
-        self,
-        query: str,
-        document_ids: List[int],
-        model: Optional[str] = None,
-        private: bool = True
-    ) -> str:
-        endpoint = "{}/api/v2/chat/document-analysis".format(self.base_url)
-
-        payload = {
-            "query": query,
-            "document_ids": document_ids
-        }
-
-        if model:
-            payload["model"] = model
-
-        try:
-            logger.info("📊 Starting analysis: {}...".format(query[:50]))
-
-            session = await self._get_session()
-            async with session.post(
-                endpoint,
-                json=payload,
-                headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    chat_response_id = result.get("chat_response_id")
-                    logger.info("✅ Analysis started: {}".format(chat_response_id))
-                    return chat_response_id
-                else:
-                    error_text = await response.text()
-                    logger.error("❌ Analysis start failed: {}".format(response.status))
-                    raise Exception("Failed to start analysis: {} - {}".format(response.status, error_text))
-
-        except Exception as e:
-            logger.error("❌ Analysis start error: {}".format(str(e)))
-            raise
-
-    async def document_analysis_get_result(self, chat_response_id: str) -> Dict[str, Any]:
-        endpoint = "{}/api/v2/chat/document-analysis/{}".format(self.base_url, chat_response_id)
-
-        try:
-            session = await self._get_session()
-            async with session.get(endpoint, headers=self.headers) as response:
-                if response.status == 200:
-                    return await response.json()
-                elif response.status == 404:
-                    return {"status": "processing"}
-                else:
-                    error_text = await response.text()
-                    raise Exception("Failed to get analysis result: {}".format(response.status))
-
-        except Exception as e:
-            logger.error("❌ Get result error: {}".format(str(e)))
-            raise
-
-    async def analyze_documents_with_polling(
-        self,
-        query: str,
-        document_ids: List[int],
-        model: Optional[str] = None,
-        private: bool = True,
-        max_wait_time: int = 300,
-        poll_interval: int = 5
-    ) -> str:
-        try:
-            logger.info("📊 Analysis with polling: max={}s, interval={}s".format(max_wait_time, poll_interval))
-
-            # Start the analysis
-            chat_response_id = await self.document_analysis_start(
-                query, document_ids, model, private
-            )
-
-            # Poll for results
-            elapsed = 0
-            while elapsed < max_wait_time:
-                try:
-                    result = await self.document_analysis_get_result(chat_response_id)
-                    status = result.get("status", "").lower()
-
-                    logger.info("🔄 Polling: {} (elapsed: {}s)".format(status, elapsed))
-
-                    # Check if completed
-                    if status in ["completed", "complete", "finished", "success"]:
-                        analysis_result = result.get("result") or result.get("detailed_analysis")
-                        if analysis_result:
-                            logger.info("✅ Analysis done! ({} chars)".format(len(analysis_result)))
-                            return analysis_result
-                        else:
-                            return "Analysis completed but no result was returned"
-
-                    # Check if failed
-                    elif status in ["failed", "error"]:
-                        logger.error("❌ Analysis failed: {}".format(status))
-                        raise Exception("Analysis failed with status: {}".format(status))
-
-                    # Still processing
-                    await asyncio.sleep(poll_interval)
-                    elapsed += poll_interval
-
-                except Exception as e:
-                    if "not found" in str(e).lower() or "404" in str(e):
-                        # Still processing
-                        logger.info("⏳ Still running... ({}s)".format(elapsed))
-                        await asyncio.sleep(poll_interval)
-                        elapsed += poll_interval
-                        continue
-                    else:
-                        raise
-
-            # Timeout
-            logger.error("⏰ Timeout after {}s".format(max_wait_time))
-            raise Exception("Analysis timed out after {} seconds".format(max_wait_time))
-
-        except Exception as e:
-            logger.error("❌ Analysis with polling failed: {}".format(str(e)))
-            return "Document analysis failed: {}".format(str(e))
-
-    async def chat_completion(
-        self,
-        prompt: str,
-        model: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-        guided_choice: Optional[List[str]] = None,
-        guided_json: Optional[Dict[str, Any]] = None,
-        guided_regex: Optional[str] = None
-    ) -> str:
         '''
-        Get a chat completion response (like ChatGPT).
+        Liberty first, forced tools on retry strategy.
 
-        No documents involved - just a conversation with the AI.
+        This implements the recommended retry pattern:
+        1. First attempt: Let agent choose tool freely
+        2. Retry 1: Force document_search if file_ids provided
+        3. Retry 2: Force document_analysis if file_ids provided
 
         Args:
-            prompt: Your question or instruction
-            model: Which AI model to use (optional - omit for API default, or use "alfred-ft5")
-            system_prompt: Optional instructions for the AI's behavior and output format
-                          Use this to enforce specific formats like JSON-only responses
-            guided_choice: Optional list of allowed response values (forces AI to choose from list)
-            guided_json: Optional JSON schema to enforce structured JSON output format
-            guided_regex: Optional regex pattern to enforce structured output format
+            query: The query or instruction
+            file_ids: Optional list of file IDs
+            retry_tools: List of tools to try on retries (default: ["document_search", "document_analysis"])
+            model: The model to use
+            timeout: Request timeout per attempt
 
         Returns:
-            str: The AI's response
+            dict: The successful v3 API response
 
-        Example with guided_choice (classification):
-            status = await paradigm_client.chat_completion(
-                prompt="Is this document compliant? Context: {}".format(extracted_text),
-                guided_choice=["conforme", "non_conforme", "incomplet"]
+        Example:
+            result = await paradigm_client.agent_query_with_retry(
+                query="Extract the invoice total",
+                file_ids=[123]
             )
-            # Returns one of: "conforme", "non_conforme", or "incomplet"
-
-        Example with guided_json (guaranteed valid JSON):
-            invoice_data = await paradigm_client.chat_completion(
-                prompt="Extract invoice data from: {}".format(invoice_text),
-                guided_json={{
-                    "type": "object",
-                    "properties": {{
-                        "invoice_number": {{"type": "string"}},
-                        "date": {{"type": "string"}},
-                        "supplier": {{"type": "string"}},
-                        "amount_ht": {{"type": "number"}},
-                        "amount_ttc": {{"type": "number"}}
-                    }},
-                    "required": ["invoice_number", "date", "supplier"]
-                }}
-            )
-            # Returns valid JSON matching the schema - no need for json.loads() or regex fallback!
-
-        Example with guided_regex (structured extraction):
-            siret = await paradigm_client.chat_completion(
-                prompt="Extract SIRET number from: {}".format(text),
-                guided_regex=r"\\d{14}"
-            )
-            # Returns exactly 14 digits matching the pattern
-
-        ⚠️ CRITICAL - Extract numeric scores with guided_regex, then get detailed justifications:
-            When extracting numeric data (scores, ratings, evaluations) that will be used in
-            calculations, ALWAYS use this two-step approach to get both reliable numbers AND
-            detailed explanations in your final report.
-
-            # Step 1: Get structured numeric scores with guided_regex (RELIABLE)
-            scores_json = await paradigm_client.chat_completion(
-                prompt=f\'\'\'Evaluate this item on the following criteria. Return ONLY a JSON object.
-
-ITEM: {item_to_evaluate}
-REFERENCE CRITERIA: {evaluation_criteria}
-
-Return ONLY this JSON format (no other text):
-{{"criterion1": <score 0-100>, "criterion2": <score 0-100>, "criterion3": <score 0-100>}}\'\'\',
-                guided_regex=r'\\{{[^}}]+\\}}'
-            )
-            scores = json.loads(scores_json)  # {"criterion1": 85, "criterion2": 60, ...}
-
-            # Step 2: Get detailed justifications for each score
-            detailed_evaluation = await paradigm_client.chat_completion(
-                prompt=f\'\'\'Provide detailed justification for these evaluation scores:
-
-ITEM: {item_to_evaluate}
-SCORES GIVEN:
-- Criterion 1: {scores["criterion1"]}/100
-- Criterion 2: {scores["criterion2"]}/100
-- Criterion 3: {scores["criterion3"]}/100
-
-For EACH criterion, write:
-1. The score (X/100)
-2. Justification: 2-3 sentences explaining why this score was given
-
-Then add:
-- Points forts: 3-5 bullet points
-- Points faibles: 2-4 bullet points\'\'\',
-            )
-
-            # Step 3: Build final report with both scores and justifications
-            report = f\"\"\"
-### Evaluation Results
-
-**Criterion 1: {scores['criterion1']}/100**
-{detailed_evaluation}
-
-**Global Score: {sum(scores.values()) / len(scores)}/100**
-\"\"\"
-
-            # This gives you BOTH reliable numeric scores AND detailed explanations like the
-            # old working CV workflow (scores: 60, 85, 50, etc. with full justifications)
-
-        Example with JSON-only output:
-            result = await paradigm_client.chat_completion(
-                prompt="Vérifie que le nom de l'acheteur est identique dans les deux documents",
-                system_prompt=\'\'\'Tu es un assistant qui réponds UNIQUEMENT au format JSON VALIDE.
-                Le json doit contenir :
-                "is_correct" : un booléen (true ou false)
-                "details" : une phrase expliquant pourquoi la réponse est correcte ou non
-                \'\'\'
-            )
-            # Returns: {"is_correct": true, "details": "Les noms sont identiques"}
-
-        Example without system prompt:
-            result = await paradigm_client.chat_completion(
-                prompt="Explique-moi ce qu'est un SIRET"
-            )
+            answer = paradigm_client._extract_answer(result)
         '''
-        endpoint = "{}/api/v2/chat/completions".format(self.base_url)
+        if retry_tools is None:
+            retry_tools = ["document_search", "document_analysis"] if file_ids else []
 
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        payload = {
-            "model": model,
-            "messages": messages
-        }
-
-        # Add structured output parameters if provided
-        if guided_choice:
-            payload["guided_choice"] = guided_choice
-        if guided_json:
-            payload["guided_json"] = guided_json
-        if guided_regex:
-            payload["guided_regex"] = guided_regex
-
+        # Attempt 1: Liberty - let agent choose
         try:
-            logger.info("💬 Chat completion: {}...".format(prompt[:50]))
+            logger.info("🔄 ATTEMPT 1 (Liberty): Agent chooses tool")
+            result = await self.agent_query(
+                query=query,
+                file_ids=file_ids,
+                force_tool=None,
+                model=model,
+                timeout=timeout
+            )
 
-            session = await self._get_session()
-            async with session.post(
-                endpoint,
-                json=payload,
-                headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    answer = result["choices"][0]["message"]["content"]
-                    logger.info("✅ Chat completed ({} chars)".format(len(answer)))
-                    return answer
-                else:
-                    error_text = await response.text()
-                    logger.error("❌ Chat failed: {}".format(response.status))
-                    raise Exception("Chat completion failed: {}".format(response.status))
+            answer = self._extract_answer(result)
+            if answer and len(answer.strip()) > 10:
+                logger.info("✅ Liberty attempt success")
+                return result
+            else:
+                logger.warning("⚠️ Liberty attempt returned empty/short answer")
 
         except Exception as e:
-            logger.error("❌ Chat error: {}".format(str(e)))
-            raise
+            logger.warning("⚠️ Liberty attempt failed: {}".format(str(e)))
+
+        # Retry attempts with forced tools
+        for i, force_tool in enumerate(retry_tools, start=2):
+            try:
+                logger.info("🔄 ATTEMPT {} (Forced): force_tool={}".format(i, force_tool))
+                result = await self.agent_query(
+                    query=query,
+                    file_ids=file_ids,
+                    force_tool=force_tool,
+                    model=model,
+                    timeout=timeout
+                )
+
+                answer = self._extract_answer(result)
+                if answer and len(answer.strip()) > 10:
+                    logger.info("✅ Forced tool {} success".format(force_tool))
+                    return result
+                else:
+                    logger.warning("⚠️ Forced {} returned empty/short answer".format(force_tool))
+
+            except Exception as e:
+                logger.warning("⚠️ Forced {} failed: {}".format(force_tool, str(e)))
+
+        # All attempts failed
+        raise Exception("All retry attempts failed for query: {}...".format(query[:50]))
+
+    # =========================================================================
+    # v2 FILE OPERATIONS (unchanged - file operations stay on v2)
+    # =========================================================================
 
     async def upload_file(
         self,
@@ -518,6 +390,17 @@ Then add:
         filename: str,
         collection_type: str = "private"
     ) -> Dict[str, Any]:
+        '''
+        Upload a file to Paradigm (v2 API - unchanged).
+
+        Args:
+            file_content: Raw bytes of the file
+            filename: Name of the file
+            collection_type: Collection type (default: "private")
+
+        Returns:
+            dict: File metadata including id, filename, status
+        '''
         endpoint = "{}/api/v2/files".format(self.base_url)
 
         data = aiohttp.FormData()
@@ -1201,7 +1084,7 @@ REMEMBER: Check for missing FIRST on raw values, THEN normalize/compare only if 
 
    This ensures values are directly comparable without complex normalization or regex extraction.
 
-🚨🚨🚨 MANDATORY: COPY THIS EXACT CODE FOR ALL DOCUMENT WORKFLOWS 🚨🚨🚨
+🚨🚨🚨 MANDATORY: COPY THIS EXACT CODE FOR ALL DOCUMENT WORKFLOWS (v3 API) 🚨🚨🚨
 
 *** YOU MUST COPY AND PASTE THE CODE BELOW VERBATIM INTO YOUR execute_workflow() FUNCTION ***
 *** THIS IS NOT AN EXAMPLE - THIS IS THE REQUIRED IMPLEMENTATION ***
@@ -1239,43 +1122,52 @@ if attached_files:
         await asyncio.sleep(90)
         logger.info("✅ Proceeding after fallback wait...")
 
-    # 🚨 STEP 2: QUERY THE FILE WITH APPROPRIATE API
-    # CHOOSE based on your workflow type:
+    # 🚨 STEP 2: QUERY THE FILE WITH v3 AGENT API
+    # RECOMMENDED: Use agent_query_with_retry for best results
 
-    # OPTION A: STRUCTURED EXTRACTION (CV, forms, invoices) - Use analyze_documents_with_polling()
-    # This provides comprehensive structured extraction in ~20-30 seconds
+    # OPTION A: Let agent choose tool with retry strategy (RECOMMENDED)
     try:
-        logger.info("📊 Starting document analysis for comprehensive extraction...")
-        document_ids = [str(file_id)]
-        extracted_data = await paradigm_client.analyze_documents_with_polling(
+        logger.info("🤖 Starting v3 Agent query with retry strategy...")
+        result = await paradigm_client.agent_query_with_retry(
             query="Your extraction query here - be specific about what fields to extract",  # ADAPT THIS QUERY
-            document_ids=document_ids,
-            max_wait_time=120,  # Wait up to 2 minutes for extraction
-            poll_interval=3      # Check status every 3 seconds
-        )
-        logger.info("✅ Extraction completed!")
-    except Exception as analysis_err:
-        # Fallback: Use document_search for faster (but less complete) extraction
-        logger.warning("⚠️ analyze_documents_with_polling failed, falling back to document_search")
-        result = await paradigm_client.document_search(
-            query="Your extraction query here",  # ADAPT THIS QUERY TO YOUR WORKFLOW
             file_ids=[file_id]
         )
-        extracted_data = result['answer']  # document_search returns 'answer'
+        extracted_data = paradigm_client._extract_answer(result)
+        logger.info("✅ Extraction completed!")
+    except Exception as query_err:
+        # Fallback: Force document_search tool
+        logger.warning("⚠️ agent_query_with_retry failed, falling back to forced document_search")
+        result = await paradigm_client.agent_query(
+            query="Your extraction query here",  # ADAPT THIS QUERY
+            file_ids=[file_id],
+            force_tool="document_search"
+        )
+        extracted_data = paradigm_client._extract_answer(result)
 
-    # OPTION B: SIMPLE QUICK QUERY - Use document_search() directly (faster: ~2-5s)
-    # Uncomment this if you need just one specific field quickly:
-    # result = await paradigm_client.document_search(
-    #     query="Your specific question here",
-    #     file_ids=[file_id]
+    # OPTION B: Force document_analysis for comprehensive extraction
+    # Use this for CVs, complex forms, multi-page documents
+    # result = await paradigm_client.agent_query(
+    #     query="Provide comprehensive extraction of all fields",
+    #     file_ids=[file_id],
+    #     force_tool="document_analysis"  # NOTE: v3 returns directly, no polling!
     # )
-    # extracted_data = result['answer']
+    # extracted_data = paradigm_client._extract_answer(result)
+
+    # OPTION C: Force document_search for quick simple queries
+    # result = await paradigm_client.agent_query(
+    #     query="What is the total amount?",
+    #     file_ids=[file_id],
+    #     force_tool="document_search"
+    # )
+    # extracted_data = paradigm_client._extract_answer(result)
 
 else:
-    # No uploaded files - search workspace with document_search()
-    search_results = await paradigm_client.document_search(query)
-    document_ids = [str(doc["id"]) for doc in search_results.get("documents", [])]
-    analysis = await paradigm_client.analyze_documents_with_polling(query, document_ids)
+    # No uploaded files - search workspace with v3 Agent API
+    result = await paradigm_client.agent_query_with_retry(
+        query=query
+        # No file_ids means search across workspace
+    )
+    extracted_data = paradigm_client._extract_answer(result)
 ```
 
 *** END OF MANDATORY CODE - COPY EVERYTHING BETWEEN THE ``` MARKERS ***
@@ -1284,13 +1176,13 @@ CRITICAL RULES:
 1. ALWAYS wait for file embedding BEFORE querying (wait_for_embedding or asyncio.sleep)
 2. NEVER skip the if/else check for attached_files
 3. ALWAYS include fallback strategy for robustness
-4. Choose API based on workflow requirements (see selection rules below)
+4. Use agent_query_with_retry() for best reliability
 
-⚠️ CRITICAL API SELECTION RULES FOR UPLOADED FILES:
+⚠️ CRITICAL API SELECTION RULES FOR UPLOADED FILES (v3):
 
-When user uploads files (attached_files exists), YOU MUST CHOOSE the right API:
+When user uploads files (attached_files exists), YOU MUST CHOOSE the right approach:
 
-1️⃣ Use analyze_documents_with_polling() when:
+1️⃣ Use agent_query_with_retry() (RECOMMENDED) when:
    ✅ Extracting COMPLETE structured data (CV, comprehensive forms)
    ✅ Need ALL fields extracted automatically (skills, experience, education, etc.)
    ✅ Complex analysis across documents
@@ -1429,67 +1321,119 @@ WHY THIS MATTERS:
 - Specific queries with formats and sections preserve all information
 - Using document keywords improves extraction accuracy by 40%
 
-AVAILABLE API METHODS:
-1. await paradigm_client.document_search(query: str, workspace_ids=None, file_ids=None, company_scope=True, private_scope=True, tool="DocumentSearch", private=False)
-   ⚠️ NEVER call this if attached_file_ids exists! Use the IDs directly instead.
-   ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter
-2. await paradigm_client.analyze_documents_with_polling(query: str, document_ids: List[str], model=None)
-   *** CRITICAL: document_ids can contain MAXIMUM 5 documents. If more than 5, use batching! ***
+AVAILABLE API METHODS (v3 Agent API):
 
-   ⚠️ ⚠️ ⚠️ CRITICAL CONCURRENCY RULE - READ THIS CAREFULLY ⚠️ ⚠️ ⚠️
-   *** NEVER EVER use asyncio.gather() with multiple analyze_documents_with_polling() calls! ***
-   *** This endpoint is HEAVY (does summarization/deep analysis) and WILL TIMEOUT if run in parallel! ***
-   *** SOLUTION: Always process documents SEQUENTIALLY using a for loop ***
-   *** CORRECT: for doc_id in document_ids: result = await analyze_documents_with_polling(...) ***
-   *** WRONG: await asyncio.gather(*[analyze_documents_with_polling(...) for doc in docs]) ***
+🚀 PRIMARY METHOD - Use this for all document queries:
+1. await paradigm_client.agent_query(query: str, file_ids=None, force_tool=None, model="alfred-ft5")
+   The unified v3 Agent API that replaces document_search, document_analysis, chat_completion.
 
-   💡 BETTER ALTERNATIVE FOR SIMPLE EXTRACTION (invoices, forms, single-page docs):
-   *** For SHORT documents with STRUCTURED data, use document_search + chat_completion instead! ***
-   *** This is 3-5x FASTER and MORE RELIABLE than analyze_documents_with_polling for simple extraction ***
+   Args:
+   - query: Your question or instruction
+   - file_ids: List of file IDs to work with (e.g., [123, 456])
+   - force_tool: Force a specific tool:
+     - None: Agent chooses (recommended first attempt)
+     - "document_search": Search through documents
+     - "document_analysis": Deep analysis of documents
+   - model: Model to use (default: "alfred-ft5")
 
-   ⚠️ ⚠️ ⚠️ CRITICAL SCOPE PARAMETERS - YOU MUST SET THESE CORRECTLY ⚠️ ⚠️ ⚠️
-   *** When targeting a SPECIFIC file with file_ids=[...], you MUST ALWAYS set: ***
-   ***   company_scope=False, private_scope=False ***
-   *** Otherwise the API returns ALL documents from your private collection, not just the specified file! ***
+   Returns: Dict with thread_id, turn_id, messages (use _extract_answer() to get text)
 
-   *** CORRECT PATTERN: ***
-   *** content = await document_search(query, file_ids=[doc_id], company_scope=False, private_scope=False) ***
-   *** then: data = await chat_completion("Extract fields from: " + content) ***
+   Example - Let agent choose:
+   ```python
+   result = await paradigm_client.agent_query(
+       query="What is the total amount in the invoice?",
+       file_ids=[123]
+   )
+   answer = paradigm_client._extract_answer(result)
+   ```
 
-   *** WRONG PATTERN (DO NOT USE): ***
-   *** content = await document_search(query, file_ids=[doc_id]) ***
-   *** ^ This returns ALL private collection docs + specified file, causing data mixing! ***
+   Example - Force document search:
+   ```python
+   result = await paradigm_client.agent_query(
+       query="Find all mentions of pricing",
+       file_ids=[123, 456],
+       force_tool="document_search"
+   )
+   ```
 
-   *** Use guided_json with chat_completion to guarantee valid JSON output ***
+   Example - Force document analysis (NO POLLING NEEDED in v3!):
+   ```python
+   result = await paradigm_client.agent_query(
+       query="Provide comprehensive summary",
+       file_ids=[123],
+       force_tool="document_analysis"
+   )
+   answer = paradigm_client._extract_answer(result)
+   ```
 
-   *** IMPORTANT: For document type identification, analyze documents ONE BY ONE to get clear ID-to-type mapping ***
-   *** NOTE: The API uses your authentication token to access both uploaded files and workspace documents automatically ***
-   ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter
+🎯 RECOMMENDED - Use this for best results with automatic retry:
+2. await paradigm_client.agent_query_with_retry(query: str, file_ids=None, retry_tools=None, model="alfred-ft5")
+   "Liberty first, forced tools on retry" strategy.
 
-   🔥 CRITICAL FOR STRUCTURED DATA EXTRACTION (invoices, CVs, forms, contracts):
-   When extracting multiple fields from documents, use JSON parsing with regex fallback.
+   Retry pattern:
+   1. First: Let agent choose tool freely
+   2. Retry 1: Force document_search
+   3. Retry 2: Force document_analysis
 
-   ⚠️ CRITICAL: NEVER use f-strings for queries that contain JSON examples or curly braces!
-   Always use regular strings (with single or triple quotes) to avoid syntax errors.
+   Example:
+   ```python
+   result = await paradigm_client.agent_query_with_retry(
+       query="Extract the invoice total and date",
+       file_ids=[123]
+   )
+   answer = paradigm_client._extract_answer(result)
+   ```
 
-   IMPORTANT: Always try json.loads() FIRST, then fallback to regex if parsing fails.
-   This gives 90% reliability (JSON) with graceful degradation (regex fallback).
+📄 HELPER METHOD:
+3. paradigm_client._extract_answer(response: Dict) -> str
+   Extract the text answer from a v3 API response.
 
-   Pattern to follow:
-   1. Query should mention "JSON" and list the fields to extract (use regular string, NOT f-string)
-   2. Try parsing result with json.loads() after cleaning markdown blocks
-   3. If JSONDecodeError occurs, use regex to extract fields from text
-   4. Always provide default values like "Non trouvé" for missing data
+   Example:
+   ```python
+   result = await paradigm_client.agent_query(query, file_ids=[123])
+   answer = paradigm_client._extract_answer(result)
+   print(answer)  # "The total amount is €1,500.00"
+   ```
 
-   Example approach (adapt to your specific fields):
-   - Query: "Extract invoice data as JSON: invoice_number, date, supplier, amounts"
-   - Parse: Try json.loads(result) after removing markdown code blocks
-   - Fallback: If JSON fails, use re.search() patterns to extract each field
-   - Default: Use .get("field", "Non trouvé") to handle missing values
+⚠️ KEY DIFFERENCES FROM v2:
+- NO POLLING NEEDED! v3 returns results directly (even for document_analysis)
+- Use _extract_answer() to get text from response
+- Use agent_query_with_retry() for best reliability
+- file_ids (not document_ids) - use integer file IDs directly
 
-3. await paradigm_client.chat_completion(prompt: str, model: Optional[str] = None, system_prompt: Optional[str] = None, guided_choice: Optional[List[str]] = None, guided_regex: Optional[str] = None)
+⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter.
 
-   ⚠️ MODEL ROBUSTNESS: Omit the model parameter to use API default (recommended), or use "alfred-ft5" if needed. NEVER hardcode version numbers like "alfred-40b-1123".
+🔥 CRITICAL FOR STRUCTURED DATA EXTRACTION (invoices, CVs, forms, contracts):
+When extracting multiple fields from documents, use JSON parsing with regex fallback.
+
+⚠️ CRITICAL: NEVER use f-strings for queries that contain JSON examples or curly braces!
+Always use regular strings (with single or triple quotes) to avoid syntax errors.
+
+IMPORTANT: Always try json.loads() FIRST, then fallback to regex if parsing fails.
+This gives 90% reliability (JSON) with graceful degradation (regex fallback).
+
+Pattern to follow:
+1. Query should mention "JSON" and list the fields to extract (use regular string, NOT f-string)
+2. Try parsing result with json.loads() after cleaning markdown blocks
+3. If JSONDecodeError occurs, use regex to extract fields from text
+4. Always provide default values like "Non trouvé" for missing data
+
+Example approach (adapt to your specific fields):
+- Query: "Extract invoice data as JSON: invoice_number, date, supplier, amounts"
+- Parse: Try json.loads(result) after removing markdown code blocks
+- Fallback: If JSON fails, use re.search() patterns to extract each field
+- Default: Use .get("field", "Non trouvé") to handle missing values
+
+📁 FILE OPERATIONS (v2 - unchanged):
+4. await paradigm_client.upload_file(file_content: bytes, filename: str, collection_type="private")
+5. await paradigm_client.get_file(file_id: int, include_content=False)
+6. await paradigm_client.wait_for_embedding(file_id: int, max_wait_time=300, poll_interval=2)
+7. await paradigm_client.delete_file(file_id: int)
+8. await paradigm_client.get_file_chunks(file_id: int)
+9. await paradigm_client.filter_chunks(query: str, chunk_ids: List[str], n=None)
+10. await paradigm_client.analyze_image(query: str, document_ids: List[str])
+
+⚠️ MODEL ROBUSTNESS: Use "alfred-ft5" or omit model for API default. NEVER hardcode version numbers like "alfred-40b-1123".
 
    🌍 CRITICAL: ALWAYS USE LANGUAGE-SPECIFIC SYSTEM PROMPTS FOR USER-FACING OUTPUTS
 
@@ -1571,27 +1515,34 @@ AVAILABLE API METHODS:
 🚀 PARALLELIZATION: WHEN AND HOW TO USE asyncio.gather()
 
 WHEN TO PARALLELIZE:
-- ✅ Multiple document_search() calls (lightweight, fast)
-- ✅ Multiple chat_completion() calls (lightweight, fast)
+- ✅ Multiple agent_query() calls (v3 Agent API is fast and parallel-safe)
 - ✅ Multiple validation checks that can run simultaneously
-- ❌ NEVER parallelize analyze_documents_with_polling() - it WILL timeout!
 - ❌ DON'T parallelize tasks where one depends on the output of another
+
+NOTE: With v3, document_analysis is now fast (no polling!) so you CAN parallelize it.
 
 ✅ CORRECT PARALLEL EXECUTION (using asyncio.gather()):
 
 # Example 1: Extract multiple fields from SAME document in parallel (FAST!)
-# Use document_search to get document content, then multiple chat_completions
-content = await paradigm_client.document_search("", file_ids=[doc_id], company_scope=False, private_scope=False, k=1)
-doc_text = content.get("answer", "")
-
-# Now extract different fields in parallel with chat_completion
-basic_info, amounts, classification = await asyncio.gather(
-    paradigm_client.chat_completion("Extract from invoice: invoice_number, date, supplier\n\n{}".format(doc_text)),
-    paradigm_client.chat_completion("Extract from invoice: amount_ht, vat, amount_ttc\n\n{}".format(doc_text)),
-    paradigm_client.chat_completion("Classify invoice category", guided_choice=["Fournitures", "Services", "Matériel"])
+# Use agent_query to get document content, then multiple parallel queries
+content_result = await paradigm_client.agent_query(
+    query="Get document content",
+    file_ids=[doc_id],
+    force_tool="document_search"
 )
+doc_text = paradigm_client._extract_answer(content_result)
 
-# Example 2: Process multiple documents in parallel using document_search (FAST!)
+# Now extract different fields in parallel with agent_query
+basic_info_result, amounts_result, classification_result = await asyncio.gather(
+    paradigm_client.agent_query(query="Extract from invoice: invoice_number, date, supplier\n\n{}".format(doc_text)),
+    paradigm_client.agent_query(query="Extract from invoice: amount_ht, vat, amount_ttc\n\n{}".format(doc_text)),
+    paradigm_client.agent_query(query="Classify invoice category: Fournitures, Services, or Matériel\n\n{}".format(doc_text))
+)
+basic_info = paradigm_client._extract_answer(basic_info_result)
+amounts = paradigm_client._extract_answer(amounts_result)
+classification = paradigm_client._extract_answer(classification_result)
+
+# Example 2: Process multiple documents in parallel using agent_query (FAST!)
 doc_contents = await asyncio.gather(
     paradigm_client.document_search("", file_ids=[doc_id1], company_scope=False, private_scope=False, k=1),
     paradigm_client.document_search("", file_ids=[doc_id2], company_scope=False, private_scope=False, k=1),

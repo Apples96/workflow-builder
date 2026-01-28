@@ -9,25 +9,40 @@ You MUST output in this exact format:
 
 ```
 DESCRIPTION:
-[A 2-3 sentence description that explains what this cell does in simple, non-technical terms. Include:
-- What the cell does (the main action)
-- What inputs it uses (be specific about variable names)
-- What outputs it produces (be specific about variable names)]
+**Purpose:** [One sentence explaining the main goal of this cell]
+
+**Steps:**
+• [Step 1: Plain English description of first action]
+• [Step 2: Plain English description of second action]
+• [Step 3: Continue for each logical step...]
+
+**Inputs:** [List the input variables this cell receives, e.g., "document_mapping, attached_file_ids"]
+**Outputs:** [List the output variables this cell produces, e.g., "extracted_data, validation_status"]
 
 CODE:
 [The complete Python code]
 ```
 
+### DESCRIPTION FORMAT RULES:
+1. **Purpose** must be ONE clear sentence explaining what this cell achieves
+2. **Steps** must be bullet points (•) describing each logical step the code performs
+   - Write in plain English that anyone can understand
+   - Each bullet should map to a distinct action in the code
+   - Use active voice: "Extracts...", "Validates...", "Compares...", "Sends..."
+   - Be specific but avoid technical jargon
+3. **Inputs/Outputs** list the exact variable names used
+
 ## CRITICAL RULES
 
-1. ALWAYS start with DESCRIPTION: followed by a plain English explanation
-2. Then provide CODE: followed by executable Python code
-3. The code must define: `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]`
-4. Include the ParadigmClient class definition in EVERY cell
-5. Use `.format()` for string interpolation - NEVER use f-strings
-6. Access inputs via `context["variable_name"]`
-7. Return outputs as a dictionary with the required output variable names
-8. Print progress updates using: `print("CELL_OUTPUT: message")`
+1. ALWAYS start with DESCRIPTION: followed by the structured format (Purpose, Steps, Inputs, Outputs)
+2. The Steps section MUST have bullet points (•) that mirror each logical step in the code
+3. Then provide CODE: followed by executable Python code
+4. The code must define: `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]`
+5. Include the ParadigmClient class definition in EVERY cell
+6. Use `.format()` for string interpolation - NEVER use f-strings
+7. Access inputs via `context["variable_name"]`
+8. Return outputs as a dictionary with the required output variable names
+9. Print progress updates using: `print("CELL_OUTPUT: message")`
 
 ## REQUIRED CODE STRUCTURE
 
@@ -85,61 +100,79 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     pass
 ```
 
-## PARADIGM CLIENT METHODS
+## PARADIGM CLIENT METHODS (v3 Agent API)
 
-Include ONLY the methods your cell needs. Here are the method templates:
+Include ONLY the methods your cell needs. The v3 Agent API provides a unified interface.
 
-### ⚠️ CRITICAL: MODEL PARAMETER IS REQUIRED
+### ⚠️ CRITICAL: Use v3 Agent API Methods
 
-**The Paradigm API REQUIRES a model parameter for chat_completion.**
+The v3 Agent API replaces separate document_search/document_analysis/chat_completion with unified methods:
 
-- ✅ **ALWAYS USE**: `model="alfred-ft5"` (current stable model)
-- ❌ **NEVER**: Omit the model parameter (API will return error)
-- ❌ **NEVER**: Use old version numbers like "alfred-40b-1123" (deprecated)
+- ✅ **PRIMARY**: `agent_query()` - Unified method for all queries
+- ✅ **RECOMMENDED**: `agent_query_with_retry()` - "Liberty first, forced tools on retry"
+- ✅ **HELPER**: `_extract_answer()` - Extract text from v3 response
 
-**Example - CORRECT code:**
+**v3 KEY BENEFITS:**
+- No polling needed! document_analysis returns directly
+- Single method for all query types
+- Better reliability with retry strategy
+
+**Example - CORRECT v3 code:**
 ```python
-# Always specify the model - it's required
-result = await paradigm_client.chat_completion(messages, model="alfred-ft5")
+# Let agent choose the right tool
+result = await paradigm_client.agent_query(
+    query="What is the total amount?",
+    file_ids=[123]
+)
+answer = paradigm_client._extract_answer(result)
+
+# Force specific tool when needed
+result = await paradigm_client.agent_query(
+    query="Comprehensive analysis of document",
+    file_ids=[123],
+    force_tool="document_analysis"  # or "document_search"
+)
+answer = paradigm_client._extract_answer(result)
+
+# Best reliability with retry strategy
+result = await paradigm_client.agent_query_with_retry(
+    query="Extract invoice details",
+    file_ids=[123]
+)
+answer = paradigm_client._extract_answer(result)
 ```
 
-**Example - WRONG code (will fail):**
-```python
-# WRONG - missing model parameter causes API error!
-result = await paradigm_client.chat_completion(messages)
+### 🚨 CRITICAL: Choosing the Right Approach
 
-# WRONG - hardcoded old version will break!
-result = await paradigm_client.chat_completion(messages, model="alfred-40b-1123")
-```
+**When to use `agent_query()` without force_tool:**
+- Let the agent choose the best tool automatically
+- Good for general questions about documents
 
-Check current models at: https://paradigm.lighton.ai/api/v2/docs/
+**When to use `agent_query()` with force_tool="document_search":**
+- Quick simple queries
+- When you need fast answers (2-5 seconds)
 
-### 🚨 CRITICAL: Choosing the Right Method
+**When to use `agent_query()` with force_tool="document_analysis":**
+- Comprehensive analysis needed
+- Complex extraction across document
+- Note: v3 returns directly, NO POLLING NEEDED!
 
-**When to use `document_search()` - AI-Generated Answers:**
-- When you need the AI to ANSWER A QUESTION about document content
-- When you want SEMANTIC UNDERSTANDING of information
-- When you need SYNTHESIS across multiple parts of documents
-- Examples: "What is the main conclusion?", "Summarize the key findings", "Compare these documents"
+**When to use `agent_query_with_retry()` (RECOMMENDED):**
+- Best reliability for important queries
+- Automatically tries: agent choice → document_search → document_analysis
 
 **When to use `get_file_chunks()` - Raw Text Extraction:**
 - When you need LITERAL/RAW TEXT from documents
 - When extracting SPECIFIC DATA without interpretation
-- When you need the FIRST/LAST words, exact quotes, or verbatim content
-- Examples: "Get the first 10 words", "Extract all email addresses", "Get the document title", "Print the raw text"
+- Examples: "Get the first 10 words", "Extract all email addresses"
 
 **When to use `wait_for_embedding()` - File Indexing:**
-- ALWAYS call this after uploading files before using them in search/analysis
-- Wait for files to be indexed before document_search or get_file_chunks
-- Takes file_id as parameter and polls until status is 'embedded'
-
-**KEY DISTINCTION:**
-- `document_search()` = Ask AI a question → Get AI-generated answer
-- `get_file_chunks()` = Get raw text → Extract data yourself with Python code
+- ALWAYS call this after uploading files before using them
+- Wait for files to be indexed before queries
 
 ### 🚨 CRITICAL: Using document_mapping to Access Specific Documents
 
-**NEVER call `document_search()` without `file_ids` when you need to search a SPECIFIC document.**
+**NEVER call `agent_query()` without `file_ids` when you need to search a SPECIFIC document.**
 Without `file_ids`, the API searches ALL user documents globally and may return "document not found" or irrelevant results.
 
 **The `document_mapping` Pattern:**
@@ -157,11 +190,12 @@ document_mapping = context.get("document_mapping", {})
 dc4_file_id = document_mapping.get("DC4")
 
 if dc4_file_id:
-    # Search ONLY within this specific document
-    result = await paradigm_client.document_search(
+    # Search ONLY within this specific document using v3 Agent API
+    result = await paradigm_client.agent_query(
         query="Extract Zone A buyer identification information",
         file_ids=[dc4_file_id]  # <-- REQUIRED for targeted search
     )
+    answer = paradigm_client._extract_answer(result)
 else:
     raise Exception("DC4 document ID not found in document_mapping")
 ```
@@ -169,7 +203,7 @@ else:
 **WRONG - This searches ALL documents and will fail:**
 ```python
 # DON'T DO THIS - no file_ids means global search
-result = await paradigm_client.document_search(
+result = await paradigm_client.agent_query(
     query="Extract Zone A information"
     # Missing file_ids! Will search wrong documents
 )
@@ -182,115 +216,116 @@ result = await paradigm_client.document_search(
 - `"Relevé d'identité bancaire"` or `"RIB"` - Bank identity document
 - `"DC2"` - DC2 form document
 
-### document_search
+### agent_query (PRIMARY v3 METHOD)
 ```python
-async def document_search(
+def _extract_answer(self, response: Dict[str, Any]) -> str:
+    """Extract text answer from v3 response."""
+    # v3 response format: {"messages": [{"parts": [{"type": "text", "text": "..."}]}]}
+    messages = response.get("messages", [])
+    if not messages:
+        return ""
+    last_message = messages[-1]
+    parts = last_message.get("parts", [])
+    for part in reversed(parts):
+        if part.get("type") == "text":
+            return part.get("text", "")
+    return ""
+
+async def agent_query(
     self,
     query: str,
     file_ids: Optional[List[int]] = None,
-    private_scope: bool = True
+    force_tool: Optional[str] = None,
+    model: str = "alfred-ft5",
+    chat_setting_id: int = 160,
+    timeout: int = 300
 ) -> Dict[str, Any]:
-    endpoint = "{}/api/v2/chat/document-search".format(self.base_url)
+    """
+    Unified v3 Agent API - replaces document_search, document_analysis, chat_completion.
+
+    Args:
+        query: Your question or instruction
+        file_ids: List of file IDs to work with
+        force_tool: Force a specific tool: "document_search" or "document_analysis" or None (agent chooses)
+        model: Model to use (default: "alfred-ft5")
+        chat_setting_id: Agent settings ID (REQUIRED for v3 API, default: 160)
+        timeout: Request timeout in seconds
+
+    Returns:
+        Dict with answer object - use _extract_answer() to get text
+    """
+    endpoint = "{}/api/v3/threads/turns".format(self.base_url)
     payload = {
+        "chat_setting_id": chat_setting_id,
         "query": query,
-        "private_scope": private_scope,
-        "tool": "DocumentSearch",
-        "private": True
+        "ml_model": model,
+        "private_scope": True,
+        "company_scope": False
     }
     if file_ids:
         payload["file_ids"] = file_ids
+    if force_tool:
+        payload["force_tool"] = force_tool
 
     session = await self._get_session()
-    async with session.post(endpoint, json=payload, headers=self.headers) as response:
+    async with session.post(
+        endpoint,
+        json=payload,
+        headers=self.headers,
+        timeout=aiohttp.ClientTimeout(total=timeout)
+    ) as response:
         if response.status == 200:
+            return await response.json()
+        elif response.status == 202:
+            # Accepted - background processing
             return await response.json()
         else:
             error_text = await response.text()
-            raise Exception("Document search failed: {} - {}".format(response.status, error_text))
+            raise Exception("Agent query failed: {} - {}".format(response.status, error_text))
 ```
 
-### analyze_documents_with_polling
+### agent_query_with_retry (RECOMMENDED)
 ```python
-async def analyze_documents_with_polling(
+async def agent_query_with_retry(
     self,
     query: str,
-    document_ids: List[int],
-    max_wait_time: int = 300,
-    poll_interval: int = 5
+    file_ids: Optional[List[int]] = None,
+    retry_tools: List[str] = None,
+    model: str = "alfred-ft5",
+    timeout: int = 300
 ) -> Dict[str, Any]:
-    # Start analysis
-    start_endpoint = "{}/api/v2/chat/document-analysis".format(self.base_url)
-    payload = {
-        "query": query,
-        "document_ids": document_ids,
-        "private": True
-    }
-
-    session = await self._get_session()
-    async with session.post(start_endpoint, json=payload, headers=self.headers) as response:
-        if response.status != 200:
-            error_text = await response.text()
-            raise Exception("Analysis start failed: {} - {}".format(response.status, error_text))
-        start_result = await response.json()
-
-    chat_response_id = start_result.get("chat_response_id")
-    if not chat_response_id:
-        raise Exception("No chat_response_id in analysis response")
-
-    # Poll for results
-    result_endpoint = "{}/api/v2/chat/document-analysis/{}".format(self.base_url, chat_response_id)
-    elapsed_time = 0
-
-    while elapsed_time < max_wait_time:
-        async with session.get(result_endpoint, headers=self.headers) as response:
-            if response.status == 200:
-                result = await response.json()
-                status = result.get("status", "").lower()
-                if status in ["completed", "finished", "success"]:
-                    return result
-                elif status in ["failed", "error"]:
-                    raise Exception("Analysis failed: {}".format(result.get("error", "Unknown")))
-
-        await asyncio.sleep(poll_interval)
-        elapsed_time += poll_interval
-        print("CELL_OUTPUT: Waiting for analysis... ({}s)".format(elapsed_time))
-
-    raise Exception("Analysis timed out after {}s".format(max_wait_time))
-```
-
-### chat_completion
-```python
-async def chat_completion(
-    self,
-    messages: List[Dict[str, str]],
-    model: str = "alfred-ft5"
-) -> str:
     """
-    Chat completion with LLM.
+    Liberty first, forced tools on retry strategy.
 
-    IMPORTANT: The model parameter is REQUIRED by the Paradigm API.
-    Always use "alfred-ft5" as the default model.
-
-    Current available models (check API docs for updates):
-    - alfred-ft5 (recommended general purpose)
-
-    Docs: https://paradigm.lighton.ai/api/v2/docs/
+    1. First: Let agent choose tool freely
+    2. Retry 1: Force document_search
+    3. Retry 2: Force document_analysis
     """
-    endpoint = "{}/api/v2/chat/completions".format(self.base_url)
-    payload = {
-        "messages": messages,
-        "model": model,  # REQUIRED - API returns error without this
-        "private": True
-    }
+    if retry_tools is None:
+        retry_tools = ["document_search", "document_analysis"] if file_ids else []
 
-    session = await self._get_session()
-    async with session.post(endpoint, json=payload, headers=self.headers) as response:
-        if response.status == 200:
-            result = await response.json()
-            return result.get("choices", [{}])[0].get("message", {}).get("content", "")
-        else:
-            error_text = await response.text()
-            raise Exception("Chat completion failed: {} - {}".format(response.status, error_text))
+    # Attempt 1: Liberty
+    try:
+        print("CELL_OUTPUT: Attempt 1 - agent choosing tool...")
+        result = await self.agent_query(query, file_ids, force_tool=None, model=model, timeout=timeout)
+        answer = self._extract_answer(result)
+        if answer and len(answer.strip()) > 10:
+            return result
+    except Exception as e:
+        print("CELL_OUTPUT: Liberty attempt failed: {}".format(str(e)))
+
+    # Retry with forced tools
+    for i, force_tool in enumerate(retry_tools, start=2):
+        try:
+            print("CELL_OUTPUT: Attempt {} - forcing {}...".format(i, force_tool))
+            result = await self.agent_query(query, file_ids, force_tool=force_tool, model=model, timeout=timeout)
+            answer = self._extract_answer(result)
+            if answer and len(answer.strip()) > 10:
+                return result
+        except Exception as e:
+            print("CELL_OUTPUT: Forced {} failed: {}".format(force_tool, str(e)))
+
+    raise Exception("All retry attempts failed for query")
 ```
 
 ### get_file_chunks (for raw text extraction)
@@ -351,9 +386,29 @@ async def wait_for_embedding(
     raise Exception("Timeout waiting for file {} to be indexed".format(file_id))
 ```
 
-## EXAMPLE CELL IMPLEMENTATIONS
+## EXAMPLE CELL IMPLEMENTATIONS (v3 Agent API)
 
-### Example 1: Search a Specific Document Using document_mapping
+### Example 1: Search a Specific Document Using document_mapping (v3)
+
+**Example DESCRIPTION format:**
+```
+DESCRIPTION:
+**Purpose:** Extract buyer identification information from the DC4 document.
+
+**Steps:**
+• Retrieves the document mapping from the previous cell's output
+• Looks up the DC4 document ID from the mapping
+• Sends a query to the Paradigm API to extract buyer details (name, address, contact person, phone, email)
+• Formats the extracted information into a structured output
+
+**Inputs:** document_mapping
+**Outputs:** dc4_zone_a_info
+
+CODE:
+[code below]
+```
+
+**Example CODE:**
 ```python
 import asyncio
 import aiohttp
@@ -367,6 +422,8 @@ LIGHTON_BASE_URL = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
 logger = logging.getLogger(__name__)
 
 class ParadigmClient:
+    """LightOn Paradigm v3 Agent API Client"""
+
     def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai"):
         self.api_key = api_key
         self.base_url = base_url
@@ -386,34 +443,59 @@ class ParadigmClient:
             await self._session.close()
             self._session = None
 
-    async def document_search(
+    def _extract_answer(self, response: Dict[str, Any]) -> str:
+        """Extract text answer from v3 response."""
+        # v3 response format: {"messages": [{"parts": [{"type": "text", "text": "..."}]}]}
+        messages = response.get("messages", [])
+        if not messages:
+            return ""
+        last_message = messages[-1]
+        parts = last_message.get("parts", [])
+        for part in reversed(parts):
+            if part.get("type") == "text":
+                return part.get("text", "")
+        return ""
+
+    async def agent_query(
         self,
         query: str,
         file_ids: Optional[List[int]] = None,
-        private_scope: bool = True
+        force_tool: Optional[str] = None,
+        model: str = "alfred-ft5",
+        chat_setting_id: int = 160,
+        timeout: int = 300
     ) -> Dict[str, Any]:
-        endpoint = "{}/api/v2/chat/document-search".format(self.base_url)
+        """Unified v3 Agent API query - REQUIRES chat_setting_id."""
+        endpoint = "{}/api/v3/threads/turns".format(self.base_url)
         payload = {
+            "chat_setting_id": chat_setting_id,
             "query": query,
-            "private_scope": private_scope,
-            "tool": "DocumentSearch",
-            "private": True
+            "ml_model": model,
+            "private_scope": True,
+            "company_scope": False
         }
         if file_ids:
             payload["file_ids"] = file_ids
+        if force_tool:
+            payload["force_tool"] = force_tool
 
         session = await self._get_session()
-        async with session.post(endpoint, json=payload, headers=self.headers) as response:
+        async with session.post(
+            endpoint,
+            json=payload,
+            headers=self.headers,
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as response:
             if response.status == 200:
                 return await response.json()
             else:
                 error_text = await response.text()
-                raise Exception("Document search failed: {} - {}".format(response.status, error_text))
+                raise Exception("Agent query failed: {} - {}".format(response.status, error_text))
 
 
 async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Cell: Extract Zone A from DC4
+    Cell: Extract Zone A from DC4 using v3 Agent API
     Extract buyer identification from DC4 document using document_mapping.
     """
     # Get document_mapping from previous cell
@@ -432,12 +514,13 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
         # CRITICAL: Pass file_ids to search ONLY within the DC4 document
-        search_results = await paradigm_client.document_search(
+        result = await paradigm_client.agent_query(
             query="Extract Zone A buyer identification: name, address, contact person, phone, email from section 'Identification de l'acheteur'",
-            file_ids=[dc4_file_id]  # <-- REQUIRED: targets the specific document
+            file_ids=[dc4_file_id],  # <-- REQUIRED: targets the specific document
+            force_tool="document_search"  # Force search for quick extraction
         )
 
-        answer = search_results.get("answer", "No information found")
+        answer = paradigm_client._extract_answer(result)
         print("CELL_OUTPUT: Successfully extracted Zone A information")
 
         return {
@@ -452,7 +535,7 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
         await paradigm_client.close()
 ```
 
-### Example 2: Analysis Cell
+### Example 2: Analysis Cell (v3 Agent API)
 ```python
 import asyncio
 import aiohttp
@@ -466,6 +549,8 @@ LIGHTON_BASE_URL = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
 logger = logging.getLogger(__name__)
 
 class ParadigmClient:
+    """LightOn Paradigm v3 Agent API Client"""
+
     def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai"):
         self.api_key = api_key
         self.base_url = base_url
@@ -485,55 +570,59 @@ class ParadigmClient:
             await self._session.close()
             self._session = None
 
-    async def analyze_documents_with_polling(
+    def _extract_answer(self, response: Dict[str, Any]) -> str:
+        """Extract text answer from v3 response."""
+        messages = response.get("messages", [])
+        if not messages:
+            return ""
+        last_message = messages[-1]
+        parts = last_message.get("parts", [])
+        for part in reversed(parts):
+            if part.get("type") == "text":
+                return part.get("text", "")
+        return ""
+
+    async def agent_query(
         self,
         query: str,
-        document_ids: List[int],
-        max_wait_time: int = 300,
-        poll_interval: int = 5
+        file_ids: Optional[List[int]] = None,
+        force_tool: Optional[str] = None,
+        model: str = "alfred-ft5",
+        chat_setting_id: int = 160,
+        timeout: int = 300
     ) -> Dict[str, Any]:
-        start_endpoint = "{}/api/v2/chat/document-analysis".format(self.base_url)
+        """Unified v3 Agent API - NO POLLING NEEDED for document_analysis."""
+        endpoint = "{}/api/v3/threads/turns".format(self.base_url)
         payload = {
+            "chat_setting_id": chat_setting_id,
             "query": query,
-            "document_ids": document_ids,
-            "private": True
+            "ml_model": model,
+            "private_scope": True,
+            "company_scope": False
         }
+        if file_ids:
+            payload["file_ids"] = file_ids
+        if force_tool:
+            payload["force_tool"] = force_tool
 
         session = await self._get_session()
-        async with session.post(start_endpoint, json=payload, headers=self.headers) as response:
-            if response.status != 200:
+        async with session.post(
+            endpoint,
+            json=payload,
+            headers=self.headers,
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
                 error_text = await response.text()
-                raise Exception("Analysis start failed: {} - {}".format(response.status, error_text))
-            start_result = await response.json()
-
-        chat_response_id = start_result.get("chat_response_id")
-        if not chat_response_id:
-            raise Exception("No chat_response_id in analysis response")
-
-        result_endpoint = "{}/api/v2/chat/document-analysis/{}".format(self.base_url, chat_response_id)
-        elapsed_time = 0
-
-        while elapsed_time < max_wait_time:
-            async with session.get(result_endpoint, headers=self.headers) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    status = result.get("status", "").lower()
-                    if status in ["completed", "finished", "success"]:
-                        return result
-                    elif status in ["failed", "error"]:
-                        raise Exception("Analysis failed: {}".format(result.get("error", "Unknown")))
-
-            await asyncio.sleep(poll_interval)
-            elapsed_time += poll_interval
-            print("CELL_OUTPUT: Analyzing documents... ({}s)".format(elapsed_time))
-
-        raise Exception("Analysis timed out after {}s".format(max_wait_time))
+                raise Exception("Agent query failed: {} - {}".format(response.status, error_text))
 
 
 async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Cell: Document Analysis
-    Perform detailed analysis on documents.
+    Cell: Document Analysis using v3 Agent API
+    Perform detailed analysis on documents - v3 returns directly, no polling needed!
     """
     document_ids = context.get("document_ids", [])
     user_input = context.get("user_input", "Analyze these documents")
@@ -548,23 +637,25 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
-        analysis_results = await paradigm_client.analyze_documents_with_polling(
+        # v3 Agent API with force_tool="document_analysis" - returns directly!
+        result = await paradigm_client.agent_query(
             query=user_input,
-            document_ids=document_ids[:3]  # Limit to 3 documents
+            file_ids=document_ids[:3],  # Limit to 3 documents
+            force_tool="document_analysis"  # Force comprehensive analysis
         )
 
-        answer = analysis_results.get("answer", "Analysis complete")
+        answer = paradigm_client._extract_answer(result)
         print("CELL_OUTPUT: Analysis complete")
 
         return {
-            "analysis_results": analysis_results,
+            "analysis_results": result,
             "final_result": answer
         }
     finally:
         await paradigm_client.close()
 ```
 
-### Example 3: Summary Generation Cell
+### Example 3: Summary Generation Cell (v3 Agent API)
 ```python
 import asyncio
 import aiohttp
@@ -578,6 +669,8 @@ LIGHTON_BASE_URL = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
 logger = logging.getLogger(__name__)
 
 class ParadigmClient:
+    """LightOn Paradigm v3 Agent API Client"""
+
     def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai"):
         self.api_key = api_key
         self.base_url = base_url
@@ -597,31 +690,58 @@ class ParadigmClient:
             await self._session.close()
             self._session = None
 
-    async def chat_completion(
+    def _extract_answer(self, response: Dict[str, Any]) -> str:
+        """Extract text answer from v3 response."""
+        messages = response.get("messages", [])
+        if not messages:
+            return ""
+        last_message = messages[-1]
+        parts = last_message.get("parts", [])
+        for part in reversed(parts):
+            if part.get("type") == "text":
+                return part.get("text", "")
+        return ""
+
+    async def agent_query(
         self,
-        messages: List[Dict[str, str]],
-        model: str = "alfred-ft5"
-    ) -> str:
-        endpoint = "{}/api/v2/chat/completions".format(self.base_url)
+        query: str,
+        file_ids: Optional[List[int]] = None,
+        force_tool: Optional[str] = None,
+        model: str = "alfred-ft5",
+        chat_setting_id: int = 160,
+        timeout: int = 300
+    ) -> Dict[str, Any]:
+        """Unified v3 Agent API - replaces chat_completion for text generation."""
+        endpoint = "{}/api/v3/threads/turns".format(self.base_url)
         payload = {
-            "messages": messages,
-            "model": model,  # REQUIRED - API returns error without this
-            "private": True
+            "chat_setting_id": chat_setting_id,
+            "query": query,
+            "ml_model": model,
+            "private_scope": True,
+            "company_scope": False
         }
+        if file_ids:
+            payload["file_ids"] = file_ids
+        if force_tool:
+            payload["force_tool"] = force_tool
 
         session = await self._get_session()
-        async with session.post(endpoint, json=payload, headers=self.headers) as response:
+        async with session.post(
+            endpoint,
+            json=payload,
+            headers=self.headers,
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as response:
             if response.status == 200:
-                result = await response.json()
-                return result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                return await response.json()
             else:
                 error_text = await response.text()
-                raise Exception("Chat completion failed: {} - {}".format(response.status, error_text))
+                raise Exception("Agent query failed: {} - {}".format(response.status, error_text))
 
 
 async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Cell: Summary Generation
+    Cell: Summary Generation using v3 Agent API
     Generate a formatted summary from previous results.
     """
     analysis_results = context.get("analysis_results", {})
@@ -632,34 +752,45 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     # Combine available data
     data_to_summarize = []
     if analysis_results:
-        data_to_summarize.append("Analysis: {}".format(
-            analysis_results.get("answer", str(analysis_results))
-        ))
+        # Extract answer from v3 format
+        if isinstance(analysis_results, dict):
+            answer = analysis_results.get("answer", {})
+            if isinstance(answer, dict):
+                text = answer.get("final_answer", str(analysis_results))
+            else:
+                text = str(answer)
+        else:
+            text = str(analysis_results)
+        data_to_summarize.append("Analysis: {}".format(text))
+
     if search_results:
-        data_to_summarize.append("Search findings: {}".format(
-            search_results.get("answer", str(search_results))
-        ))
+        if isinstance(search_results, dict):
+            answer = search_results.get("answer", {})
+            if isinstance(answer, dict):
+                text = answer.get("final_answer", str(search_results))
+            else:
+                text = str(answer)
+        else:
+            text = str(search_results)
+        data_to_summarize.append("Search findings: {}".format(text))
 
     if not data_to_summarize:
         return {"final_result": "No data available to summarize"}
 
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant that creates clear, concise summaries."
-            },
-            {
-                "role": "user",
-                "content": "Please create a well-formatted summary of the following information:\n\n{}".format(
-                    "\n\n".join(data_to_summarize)
-                )
-            }
-        ]
+        # Use v3 agent_query without force_tool for text generation (no files needed)
+        prompt = "You are a helpful assistant. Create a well-formatted summary of the following:\n\n{}".format(
+            "\n\n".join(data_to_summarize)
+        )
 
-        # REQUIRED: Always pass model parameter
-        summary = await paradigm_client.chat_completion(messages, model="alfred-ft5")
+        result = await paradigm_client.agent_query(
+            query=prompt
+            # No file_ids needed for pure text generation
+            # No force_tool - let agent respond naturally
+        )
+
+        summary = paradigm_client._extract_answer(result)
         print("CELL_OUTPUT: Summary generated")
 
         return {"final_result": summary}
@@ -768,16 +899,19 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 
 ## REMEMBER
 
-1. Output ONLY valid Python code - no markdown, no explanations
-2. Always include the full ParadigmClient class with needed methods
-3. Function must be named `execute_cell`
-4. Function must accept `context: Dict[str, Any]`
-5. Function must return `Dict[str, Any]` with required outputs
-6. Use `.format()` NOT f-strings
-7. Print progress with `print("CELL_OUTPUT: message")`
-8. Always close the ParadigmClient in a finally block
-9. **CRITICAL**: Use `get_file_chunks()` for raw text extraction, NOT `document_search()`
-10. **CRITICAL**: Use `document_search()` only when asking AI questions about documents
-11. **CRITICAL**: ALWAYS include `model="alfred-ft5"` in chat_completion calls - the API requires it
-12. **CRITICAL**: When using `document_search()` for a SPECIFIC document, you MUST pass `file_ids=[doc_id]`
-13. **CRITICAL**: Extract document IDs from `document_mapping` dict: `doc_id = context["document_mapping"]["DC4"]`
+1. ALWAYS output in the DESCRIPTION/CODE format specified at the top of this prompt
+2. The CODE section must contain valid Python code starting with imports
+3. Always include the full ParadigmClient class with needed methods
+4. Function must be named `execute_cell`
+5. Function must accept `context: Dict[str, Any]`
+6. Function must return `Dict[str, Any]` with required outputs
+7. Use `.format()` NOT f-strings
+8. Print progress with `print("CELL_OUTPUT: message")`
+9. Always close the ParadigmClient in a finally block
+10. **CRITICAL**: Use `get_file_chunks()` for raw text extraction (v2 file API)
+11. **CRITICAL**: Use `agent_query()` for ALL AI interactions (v3 Agent API)
+12. **CRITICAL**: ALWAYS include `chat_setting_id=160` in agent_query calls - v3 API requires it
+13. **CRITICAL**: When using `agent_query()` for a SPECIFIC document, you MUST pass `file_ids=[doc_id]`
+14. **CRITICAL**: Extract document IDs from `document_mapping` dict: `doc_id = context["document_mapping"]["DC4"]`
+15. **CRITICAL**: Use `_extract_answer()` to parse v3 response: `{"messages": [{"parts": [{"type": "text", "text": "..."}]}]}`
+16. **CRITICAL**: v3 document_analysis returns directly - NO POLLING NEEDED

@@ -1024,6 +1024,11 @@ Architecture:
             border-color: var(--lo-success);
         }
 
+        .layer-group.failed {
+            border-color: var(--lo-error);
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+        }
+
         .layer-header {
             display: flex;
             align-items: center;
@@ -1046,6 +1051,11 @@ Architecture:
             border-bottom-color: #a7f3d0;
         }
 
+        .layer-group.failed .layer-header {
+            background: #fef2f2;
+            border-bottom-color: #fecaca;
+        }
+
         .layer-number {
             background: #9ca3af;
             color: white;
@@ -1060,6 +1070,10 @@ Architecture:
 
         .layer-group.completed .layer-number {
             background: var(--lo-success);
+        }
+
+        .layer-group.failed .layer-number {
+            background: var(--lo-error);
         }
 
         .layer-parallel-badge {
@@ -1086,6 +1100,10 @@ Architecture:
 
         .layer-group.completed .layer-status {
             color: var(--lo-success);
+        }
+
+        .layer-group.failed .layer-status {
+            color: var(--lo-error);
         }
 
         .layer-cells {
@@ -1221,7 +1239,39 @@ Architecture:
             font-size: 14px;
             line-height: 1.6;
             color: #1a1a1a;
-            white-space: pre-wrap;
+        }
+
+        .cell-description-content .cell-desc-header {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .cell-description-content .cell-desc-section {
+            margin-top: 12px;
+            margin-bottom: 4px;
+            color: #495057;
+        }
+
+        .cell-description-content .cell-desc-list {
+            margin: 8px 0 12px 0;
+            padding-left: 20px;
+            list-style-type: none;
+        }
+
+        .cell-description-content .cell-desc-list li {
+            position: relative;
+            padding-left: 16px;
+            margin-bottom: 6px;
+            color: #333;
+        }
+
+        .cell-description-content .cell-desc-list li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: #00d4aa;
+            font-weight: bold;
         }
 
         .cell-code-section {
@@ -1430,6 +1480,314 @@ Architecture:
         .logs-container.collapsed {
             display: none;
         }
+
+        /* =============================================================
+           RUN ALL / AUTO-EXECUTION STYLES
+           ============================================================= */
+
+        /* Run All button - gradient style for prominence */
+        .run-all-btn {
+            background: linear-gradient(135deg, #00d4aa, #00b894);
+            color: white;
+            font-weight: 600;
+            padding: 10px 20px;
+            font-size: 0.875rem;
+            margin-left: 10px;
+        }
+
+        .run-all-btn:hover {
+            background: linear-gradient(135deg, #00b894, #009b7d);
+        }
+
+        .run-all-btn.running {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .run-all-btn:disabled {
+            background: linear-gradient(135deg, #9ca3af, #6b7280);
+            cursor: not-allowed;
+        }
+
+        /* Stop button - red style */
+        .stop-btn {
+            background: #dc3545;
+            color: white;
+            font-weight: 600;
+            padding: 10px 20px;
+            font-size: 0.875rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .stop-btn:hover {
+            background: #c82333;
+        }
+
+        .stop-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        /* Auto-execution progress container */
+        .auto-progress-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 15px 0;
+            border: 1px solid #e9ecef;
+        }
+
+        .auto-progress-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #6c757d;
+            background: #fff;
+            border: 1px solid #dee2e6;
+        }
+
+        .auto-progress-step .progress-checkbox {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: #e9ecef;
+            font-size: 11px;
+        }
+
+        .auto-progress-step.running {
+            background: #fff3e0;
+            border-color: #ffcc80;
+            color: #e65100;
+        }
+
+        .auto-progress-step.running .progress-checkbox {
+            background: #ff9800;
+            color: white;
+            animation: pulse 1s infinite;
+        }
+
+        .auto-progress-step.completed {
+            background: #e8f5e9;
+            border-color: #a5d6a7;
+            color: #2e7d32;
+        }
+
+        .auto-progress-step.completed .progress-checkbox {
+            background: #4caf50;
+            color: white;
+        }
+
+        .auto-progress-step.paused {
+            background: #fff8e1;
+            border-color: #ffcc02;
+            color: #f57c00;
+        }
+
+        .auto-progress-step.paused .progress-checkbox {
+            background: #ffc107;
+            color: white;
+        }
+
+        .auto-progress-step.skipped {
+            opacity: 0.5;
+        }
+
+        .auto-progress-connector {
+            width: 30px;
+            height: 2px;
+            background: #dee2e6;
+        }
+
+        .auto-progress-connector.completed {
+            background: #4caf50;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* Action required banner */
+        .action-required-banner {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .action-required-banner h4 {
+            color: #856404;
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+
+        .action-required-banner p {
+            color: #856404;
+            margin: 0 0 15px 0;
+            font-size: 13px;
+        }
+
+        .action-required-banner .banner-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-required-banner .continue-btn {
+            background: #ffc107;
+            color: #212529;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .action-required-banner .continue-btn:hover {
+            background: #e0a800;
+        }
+
+        .action-required-banner .cancel-btn {
+            background: transparent;
+            color: #856404;
+            border: 1px solid #856404;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .action-required-banner .cancel-btn:hover {
+            background: rgba(133, 100, 4, 0.1);
+        }
+
+        /* Rerun buttons */
+        .rerun-btn {
+            background: #6c757d;
+            color: white;
+            font-size: 0.75rem;
+            padding: 5px 10px;
+            margin-left: 10px;
+        }
+
+        .rerun-btn:hover {
+            background: #5a6268;
+        }
+
+        /* Upfront examples section */
+        .upfront-examples-section {
+            margin-top: 15px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .upfront-examples-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            cursor: pointer;
+        }
+
+        .upfront-examples-header:hover {
+            background: #f1f3f4;
+        }
+
+        .upfront-examples-header .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .upfront-examples-header .header-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .upfront-examples-header .header-badge {
+            background: #e9ecef;
+            color: #6c757d;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .upfront-examples-header .header-chevron {
+            color: #6c757d;
+            transition: transform 0.2s;
+        }
+
+        .upfront-examples-header.expanded .header-chevron {
+            transform: rotate(180deg);
+        }
+
+        .upfront-examples-content {
+            padding: 15px;
+            display: none;
+        }
+
+        .upfront-examples-content.expanded {
+            display: block;
+        }
+
+        .upfront-examples-description {
+            font-size: 13px;
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+
+        .upfront-example-item {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .upfront-example-item .example-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .upfront-example-item .example-title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .upfront-example-item .example-remove {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 2px 6px;
+        }
+
+        .upfront-example-item .example-remove:hover {
+            background: #fee;
+            border-radius: 4px;
+        }
+
+        .upfront-example-item input[type="text"] {
+            margin-bottom: 10px;
+        }
     </style>
     <!-- jsPDF Library for client-side PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1440,10 +1798,10 @@ Architecture:
         <span>workflow builder</span>
     </h1>
     
-    <!-- Step 1: Describe Workflow -->
+    <!-- Step 1: Workflow Description & Examples -->
     <div class="container">
-        <h2>1. Describe Workflow</h2>
-        <p>Describe your desired workflow in natural language. Click to expand.</p>
+        <h2>1. Workflow Description & Examples</h2>
+        <p>Describe your desired workflow in natural language and add test examples. Click to expand.</p>
 
         <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
             <div class="deploy-option-header">
@@ -1454,23 +1812,91 @@ Architecture:
             <div class="deploy-option-content" onclick="event.stopPropagation()">
                 <p>Describe your desired workflow in natural language:</p>
                 <textarea id="rawWorkflowDescription" placeholder="Example: I want to search for documents about my question and then analyze them to provide a summary..." style="color: #999;"></textarea>
-                <button onclick="enhanceWorkflowDescription()">Enhance Description</button>
 
-                <div id="enhancedDescriptionResult" style="margin-top: 15px;"></div>
+                <!-- Main action buttons: Run All and Stop -->
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                    <button onclick="runAllWorkflow()" id="runAllButton" class="run-all-btn" style="flex: 1; font-size: 16px; padding: 12px 20px;">
+                        ▶ Run All
+                    </button>
+                    <button onclick="stopAllExecution()" id="stopAllButton" class="stop-btn" style="background: #dc3545; padding: 12px 20px; font-size: 16px;">
+                        ■ Stop
+                    </button>
+                </div>
+
+                <!-- Rerun from initial description (shown after first run) -->
+                <div id="rerunInitialContainer" style="display: none; margin-top: 10px;">
+                    <button class="rerun-btn" onclick="rerunFromStage('enhance')">🔄 Rerun from initial description</button>
+                </div>
+
+                <!-- Upfront Test Examples Section (collapsible) -->
+                <div class="upfront-examples-section" style="margin-top: 15px;">
+                    <div class="upfront-examples-header" onclick="toggleUpfrontExamples(this)">
+                        <div class="header-left">
+                            <span>📝</span>
+                            <span class="header-title">Test Examples (for automatic testing)</span>
+                            <span class="header-badge" id="upfrontExamplesCount">0 examples</span>
+                        </div>
+                        <span class="header-chevron">▼</span>
+                    </div>
+                    <div class="upfront-examples-content" id="upfrontExamplesContent">
+                        <p class="upfront-examples-description">
+                            Add test examples here before running. These will be automatically used after workflow creation to test your workflow.
+                        </p>
+                        <div id="upfrontExamplesContainer">
+                            <!-- Upfront examples will be added here dynamically -->
+                        </div>
+                        <button onclick="addUpfrontExample()" style="background: #6c757d; margin-top: 10px;">+ Add Test Example</button>
+                    </div>
+                </div>
+
+                <!-- Auto-execution Progress Indicator (hidden by default) -->
+                <div id="autoProgressContainer" class="auto-progress-container" style="display: none;">
+                    <div class="auto-progress-step" id="autoProgressEnhance">
+                        <span class="progress-checkbox">1</span>
+                        <span>Enhance</span>
+                    </div>
+                    <div class="auto-progress-connector" id="autoConnector1"></div>
+                    <div class="auto-progress-step" id="autoProgressReview">
+                        <span class="progress-checkbox">2</span>
+                        <span>Review</span>
+                    </div>
+                    <div class="auto-progress-connector" id="autoConnector2"></div>
+                    <div class="auto-progress-step" id="autoProgressCreate">
+                        <span class="progress-checkbox">3</span>
+                        <span>Plan</span>
+                    </div>
+                    <div class="auto-progress-connector" id="autoConnector3"></div>
+                    <div class="auto-progress-step" id="autoProgressTest">
+                        <span class="progress-checkbox">4</span>
+                        <span>Execute</span>
+                    </div>
+                </div>
+
+                <!-- Action Required Banner (hidden by default) -->
+                <div id="actionRequiredBanner" class="action-required-banner" style="display: none;">
+                    <h4>⚠️ User Action Required</h4>
+                    <p id="actionRequiredMessage">Questions or limitations were detected in the enhanced description. Please review before continuing.</p>
+                    <div class="banner-actions">
+                        <button class="continue-btn" onclick="continueAutoExecution()">Continue Anyway</button>
+                        <button class="cancel-btn" onclick="cancelAutoExecution()">Cancel</button>
+                    </div>
+                </div>
+
+                <!-- Hidden storage for enhanced description data -->
                 <div id="enhancedDescription" style="display: none;"></div>
             </div>
         </div>
     </div>
 
-    <!-- Step 2: Create Workflow -->
+    <!-- Step 2: Enhanced Workflow -->
     <div class="container">
-        <h2>2. Create Workflow</h2>
-        <p>Review and create your workflow from the description. Click to expand.</p>
+        <h2>2. Enhanced Workflow</h2>
+        <p>Review the enhanced workflow description and generate the execution plan. Click to expand.</p>
 
         <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
             <div class="deploy-option-header">
                 <span class="deploy-option-icon">⚙️</span>
-                <span class="deploy-option-title">Create Workflow from Description</span>
+                <span class="deploy-option-title">Review & Generate Execution Plan</span>
                 <span class="deploy-option-chevron">▼</span>
             </div>
             <div class="deploy-option-content" onclick="event.stopPropagation()">
@@ -1481,7 +1907,11 @@ Architecture:
                     <strong>💡 Tip:</strong> Use Step 1 above to get an enhanced workflow description, or manually enter your workflow here.
                 </div>
                 <textarea id="workflowDescription" placeholder="Example: Search for documents about LightOn, then analyze those documents to summarize key information..." style="color: #999;"></textarea>
-                <button onclick="createWorkflow()">Create Workflow</button>
+
+                <!-- Rerun from enhanced description button -->
+                <div id="rerunEnhancedContainer" style="display: none; margin-top: 10px;">
+                    <button class="rerun-btn" onclick="rerunFromStage('create')">🔄 Rerun from enhanced description</button>
+                </div>
 
                 <!-- Tip about document storage -->
                 <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #2196f3;">
@@ -1493,31 +1923,10 @@ Architecture:
         </div>
     </div>
 
-    <!-- Step 3: Test Workflow -->
+    <!-- Step 3: Run & Test Workflow -->
     <div class="container">
-        <h2>3. Test Workflow</h2>
-        <p>Add test examples to validate your workflow. Click to expand and configure test inputs.</p>
-
-        <div class="deploy-option expanded" id="testExamplesOption" onclick="toggleDeployOption(this)">
-            <div class="deploy-option-header">
-                <span class="deploy-option-icon">📝</span>
-                <span class="deploy-option-title">Test Examples</span>
-                <span class="deploy-option-badge" id="examplesCount">0 examples</span>
-                <span class="deploy-option-chevron">▼</span>
-            </div>
-            <div class="deploy-option-content" onclick="event.stopPropagation()">
-                <!-- Test Examples Container -->
-                <div id="testExamplesContainer" style="margin-bottom: 15px;">
-                    <!-- Test examples will be added here dynamically -->
-                </div>
-
-                <!-- Add Example Button -->
-                <button onclick="addTestExample()" id="addExampleButton" style="background: #6c757d; margin-bottom: 15px;" disabled>+ Add Test Example</button>
-
-                <!-- Execute All Tests Button -->
-                <button onclick="executeAllTests()" id="testButton" disabled>▶ Run Tests</button>
-            </div>
-        </div>
+        <h2>3. Run & Test Workflow</h2>
+        <p>Execute your workflow and test it with the examples defined in Step 1.</p>
 
         <!-- Cell-based execution progress section -->
         <div id="cellProgressSection" style="margin-top: 15px; display: none;">
@@ -1543,10 +1952,10 @@ Architecture:
         <div id="testResult" style="margin-top: 15px;"></div>
     </div>
 
-    <!-- Step 4: Update Workflow -->
+    <!-- Step 4: Execution Logs -->
     <div class="container">
-        <h2>4. Edit workflow</h2>
-        <p>Edit the workflow description above and regenerate the workflow to refine its behavior. You can modify the natural language description to add new steps, change the logic, or improve the workflow based on your test results. After testing, go back to step 1 or 2, update your workflow description, and regenerate to create an improved version.</p>
+        <h2>4. Execution Logs</h2>
+        <p>View detailed execution logs. To refine your workflow, edit the description in Step 1 or 2 and regenerate.</p>
         
         <!-- Monitoring Helper Section - Collapsible -->
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
@@ -1902,6 +2311,14 @@ if __name__ == "__main__":
         // Execution state tracking
         let isExecuting = false;         // Whether workflow is currently executing
         let isResultsStale = false;      // Whether results are stale (code/examples changed after execution)
+
+        // Auto-execution ("Run All") state variables
+        let autoExecutionMode = false;           // Whether auto-execution is active
+        let autoExecutionStage = null;           // Current stage: 'enhance' | 'review' | 'create' | 'test'
+        let autoExecutionAbortController = null; // AbortController for canceling in-flight requests
+        let upfrontExamples = [];                // Array of upfront test examples {id, query, fileIds, fileMetadata}
+        let upfrontExampleCounter = 0;           // Counter for generating upfront example IDs
+        let pendingEnhancedData = null;          // Stored enhanced data during pause
 
         // =============================================================
         // COLLAPSIBLE SECTION TOGGLE FUNCTIONS
@@ -2613,8 +3030,7 @@ if __name__ == "__main__":
          */
         function renderEnhancementResult(enhancedData) {
             let html = '<div class="result success">';
-            html += '<h3 style="margin-top: 0; color: #28a745;">✅ Workflow description enhanced successfully!</h3>';
-            
+
             // Render sections if available
             if (enhancedData.sections && enhancedData.sections.length > 0) {
                 html += '<div style="margin: 15px 0;">';
@@ -2709,19 +3125,18 @@ if __name__ == "__main__":
         /**
          * Enhance the user's workflow description using Claude AI.
          * Takes raw user input and transforms it into an optimal workflow description.
+         * Fills the editable text field in Step 2 directly (no green visual display).
          */
         async function enhanceWorkflowDescription() {
             const rawDescription = document.getElementById('rawWorkflowDescription').value.trim();
-            const resultDiv = document.getElementById('enhancedDescriptionResult');
             const enhancedDiv = document.getElementById('enhancedDescription');
-            
+            const workflowDescField = document.getElementById('workflowDescription');
+
             if (!rawDescription) {
-                showResult(resultDiv, 'Please enter a workflow description', 'error');
                 addLog('❌ No raw workflow description provided', 'error');
-                return;
+                return null;
             }
 
-            showResult(resultDiv, 'Enhancing workflow description...', 'loading');
             addLog('🚀 Starting workflow description enhancement...', 'info');
 
             try {
@@ -2738,32 +3153,29 @@ if __name__ == "__main__":
                 if (response.ok) {
                     // Flexible parsing - handle various response formats
                     const enhancedData = parseEnhancementResponse(data);
-                    
-                    // Update the Create Workflow step with enhanced description
-                    document.getElementById('workflowDescription').value = enhancedData.description;
-                    document.getElementById('workflowDescription').style.color = '#333';
-                    
-                    // Store enhanced description
+
+                    // Fill the editable text field in Step 2 directly
+                    workflowDescField.value = enhancedData.description;
+                    workflowDescField.style.color = '#333';
+
+                    // Store enhanced description for later use
                     enhancedDiv.innerHTML = enhancedData.description;
-                    
-                    // Create formatted display using flexible renderer
-                    const formattedHtml = renderEnhancementResult(enhancedData);
-                    resultDiv.innerHTML = formattedHtml;
-                    
-                    // Add instruction message
-                    const instructionDiv = document.createElement('div');
-                    instructionDiv.style.cssText = 'background: #e3f2fd; padding: 15px; border-radius: 4px; margin-top: 15px; border-left: 4px solid #2196f3; font-size: 14px;';
-                    instructionDiv.innerHTML = '<strong>💡 Next Steps:</strong><br>' +
-                        '• If this workflow description looks good → Proceed to <strong>Step 2</strong> to create the workflow<br>' +
-                        '• If you need to address questions or warnings → Refine your input above and enhance again<br>' +
-                        '• You can also manually edit the description in Step 2 before generating code';
-                    resultDiv.appendChild(instructionDiv);
+
+                    // Show rerun buttons
+                    document.getElementById('rerunInitialContainer').style.display = 'block';
+                    document.getElementById('rerunEnhancedContainer').style.display = 'block';
+
+                    addLog('✅ Workflow description enhanced - editable in Step 2', 'success');
+
+                    return enhancedData;
 
                 } else {
-                    showResult(resultDiv, `❌ Error: ${data.detail || 'Failed to enhance workflow description'}`, 'error');
+                    addLog(`❌ Error: ${data.detail || 'Failed to enhance workflow description'}`, 'error');
+                    return null;
                 }
             } catch (error) {
-                showResult(resultDiv, `❌ Network Error: ${error.message}`, 'error');
+                addLog(`❌ Network Error: ${error.message}`, 'error');
+                return null;
             }
         }
 
@@ -2813,15 +3225,8 @@ if __name__ == "__main__":
                     currentWorkflowPlan = data.plan;
                     currentCells = data.cells || [];
 
-                    document.getElementById('testButton').disabled = false;
-                    document.getElementById('addExampleButton').disabled = false;
                     document.getElementById('packageButton').disabled = false;
                     document.getElementById('mcpPackageButton').disabled = false;
-
-                    // Initialize with one test example
-                    if (testExamples.length === 0) {
-                        addTestExample();
-                    }
 
                     addLog(`✅ Cell-based workflow created with ${currentCells.length} steps`, 'response');
 
@@ -2849,6 +3254,10 @@ if __name__ == "__main__":
                     currentCells.forEach(cell => {
                         addLog(`📦 Cell ${cell.display_step || cell.step_number}: ${cell.name} [${cell.paradigm_tools_used.join(', ')}]`, 'workflow-step');
                     });
+
+                    // Show cell progress display in Step 3 (cells ready to run)
+                    initializeCellProgressDisplay();
+                    addLog('📋 Execution plan ready - workflow will execute automatically', 'info');
                 } else {
                     showResult(resultDiv, `❌ Error: ${data.detail || 'Failed to create cell-based workflow'}`, 'error');
                 }
@@ -2894,6 +3303,12 @@ if __name__ == "__main__":
          */
         function renderTestExamples() {
             const container = document.getElementById('testExamplesContainer');
+
+            // Container may not exist if test examples section was removed
+            if (!container) {
+                updateExamplesCount();
+                return;
+            }
 
             if (testExamples.length === 0) {
                 container.innerHTML = '<p style="color: #6c757d; font-style: italic;">No test examples yet. Click "Add Test Example" to get started.</p>';
@@ -3137,8 +3552,11 @@ if __name__ == "__main__":
          * Execute workflow on all test examples (or stop if already executing)
          */
         async function executeAllTests() {
+            addLog(`🔍 executeAllTests called - testExamples: ${testExamples.length}, autoMode: ${autoExecutionMode}`, 'info');
+
             // If already executing, stop instead
             if (isExecuting) {
+                addLog('⚠️ Already executing - stopping instead', 'warning');
                 await stopExecution();
                 return;
             }
@@ -3149,9 +3567,16 @@ if __name__ == "__main__":
                 return;
             }
 
+            // Handle case with no test examples
             if (testExamples.length === 0) {
-                alert('Please add at least one test example');
-                addLog('❌ No test examples to execute', 'error');
+                // If in auto-execution mode, just complete successfully
+                if (autoExecutionMode) {
+                    addLog('ℹ️ No test examples - workflow execution completed without tests', 'info');
+                    return;
+                }
+                // If manual execution, show clear error message
+                alert('No test examples found. Please add test examples in Step 1 before running tests.\n\nYour workflow processes documents, so you need to upload documents as test inputs.');
+                addLog('❌ Cannot run tests - no test examples. Add examples in Step 1.', 'error');
                 return;
             }
 
@@ -3374,6 +3799,13 @@ if __name__ == "__main__":
                 case 'layer_completed':
                     updateLayerDisplay(event.layer, 'completed');
                     addLog(`✅ LAYER ${event.layer} completed`, 'response');
+                    break;
+
+                case 'layer_failed':
+                    // Handle layer failure event - mark layer as failed and log failed cells
+                    updateLayerDisplay(event.layer, 'failed');
+                    const failedCellsList = event.failed_cells ? event.failed_cells.join(', ') : 'unknown';
+                    addLog(`❌ LAYER ${event.layer} failed. Failed cells: ${failedCellsList}`, 'error');
                     break;
 
                 case 'cell_generating':
@@ -4025,6 +4457,13 @@ if __name__ == "__main__":
                     addLog(`✅ LAYER ${event.layer} completed`, 'response');
                     break;
 
+                case 'layer_failed':
+                    // Handle layer failure event - mark layer as failed and log failed cells
+                    updateLayerDisplay(event.layer, 'failed');
+                    const failedCells = event.failed_cells ? event.failed_cells.join(', ') : 'unknown';
+                    addLog(`❌ LAYER ${event.layer} failed. Failed cells: ${failedCells}`, 'error');
+                    break;
+
                 case 'cell_generating':
                     updateCellDisplay(event.cell_id, 'generating', '🔄 Generating code...');
                     addLog(`🔄 Generating code for: ${event.cell_name}`, 'info');
@@ -4103,14 +4542,14 @@ if __name__ == "__main__":
         /**
          * Update a layer group's display status.
          * @param {number} layerNum - The layer number
-         * @param {string} status - 'executing' or 'completed'
+         * @param {string} status - 'executing', 'completed', or 'failed'
          */
         function updateLayerDisplay(layerNum, status) {
             const layerGroup = document.getElementById(`layer-group-${layerNum}`);
             if (!layerGroup) return;
 
             // Remove previous status classes and add new one
-            layerGroup.classList.remove('executing', 'completed');
+            layerGroup.classList.remove('executing', 'completed', 'failed');
             layerGroup.classList.add(status);
 
             // Update layer status text
@@ -4120,8 +4559,63 @@ if __name__ == "__main__":
                     layerStatus.textContent = '⚡ Running...';
                 } else if (status === 'completed') {
                     layerStatus.textContent = '✅ Done';
+                } else if (status === 'failed') {
+                    layerStatus.textContent = '❌ Failed';
                 }
             }
+        }
+
+        /**
+         * Format cell description with proper HTML for structured display.
+         * Converts markdown-like format to HTML with bullet points and sections.
+         */
+        function formatCellDescription(description) {
+            if (!description) return '';
+
+            let html = description;
+
+            // Convert **text** to <strong>text</strong>
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+            // Convert bullet points (• or - at start of line) to list items
+            const lines = html.split('\n');
+            let inList = false;
+            let result = [];
+
+            for (let line of lines) {
+                const trimmed = line.trim();
+
+                // Check if line is a bullet point
+                if (trimmed.startsWith('•') || trimmed.startsWith('- ')) {
+                    if (!inList) {
+                        result.push('<ul class="cell-desc-list">');
+                        inList = true;
+                    }
+                    const content = trimmed.replace(/^[•\-]\s*/, '');
+                    result.push(`<li>${content}</li>`);
+                } else {
+                    if (inList) {
+                        result.push('</ul>');
+                        inList = false;
+                    }
+                    if (trimmed) {
+                        // Check if it's a section header (ends with :)
+                        if (trimmed.match(/^<strong>[^<]+:<\/strong>$/)) {
+                            result.push(`<div class="cell-desc-section">${trimmed}</div>`);
+                        } else if (trimmed.match(/^<strong>/)) {
+                            result.push(`<div class="cell-desc-header">${trimmed}</div>`);
+                        } else {
+                            result.push(`<div>${trimmed}</div>`);
+                        }
+                    }
+                }
+            }
+
+            if (inList) {
+                result.push('</ul>');
+            }
+
+            return result.join('');
         }
 
         /**
@@ -4163,13 +4657,15 @@ if __name__ == "__main__":
                         cellDiv.querySelector('.cell-content').appendChild(descSection);
                     }
                 }
+                // Format the description with proper HTML
+                const formattedDescription = formatCellDescription(codeDescription);
                 descSection.innerHTML = `
                     <div class="collapsible-toggle" onclick="toggleCellDescription('${cellId}')">
                         <span>📋 What This Cell Does</span>
                         <span class="toggle-icon">▼</span>
                     </div>
                     <div class="collapsible-content">
-                        <div class="cell-description-content">${codeDescription}</div>
+                        <div class="cell-description-content">${formattedDescription}</div>
                     </div>
                 `;
             }
@@ -4266,6 +4762,18 @@ if __name__ == "__main__":
                     cellDiv.querySelector('.cell-content').appendChild(errorDiv);
                 }
                 errorDiv.textContent = error;
+
+                // Add AI reasoning section for failed cells (shows evaluation attempts)
+                const aiReasoningHTML = renderAIReasoningSection(cellId);
+                if (aiReasoningHTML) {
+                    let aiReasoningDiv = cellDiv.querySelector('.ai-reasoning-section');
+                    if (!aiReasoningDiv) {
+                        aiReasoningDiv = document.createElement('div');
+                        aiReasoningDiv.className = 'ai-reasoning-section';
+                        cellDiv.querySelector('.cell-content').appendChild(aiReasoningDiv);
+                    }
+                    aiReasoningDiv.innerHTML = aiReasoningHTML;
+                }
             }
         }
 
@@ -4300,6 +4808,855 @@ if __name__ == "__main__":
             // If it wasn't expanded, expand it now
             if (!wasExpanded) {
                 element.classList.add('expanded');
+            }
+        }
+
+        // =============================================================
+        // AUTO-EXECUTION ("RUN ALL") FUNCTIONS
+        // =============================================================
+
+        /**
+         * Toggle upfront examples section visibility.
+         * Handles the collapsible header for test examples in Step 1.
+         */
+        function toggleUpfrontExamples(header) {
+            const content = document.getElementById('upfrontExamplesContent');
+            header.classList.toggle('expanded');
+            content.classList.toggle('expanded');
+        }
+
+        /**
+         * Add a new upfront test example to the list.
+         * Creates an example object with query and file upload capability.
+         */
+        function addUpfrontExample() {
+            upfrontExampleCounter++;
+            const exampleId = `upfront-example-${upfrontExampleCounter}`;
+
+            const example = {
+                id: exampleId,
+                query: '',
+                fileIds: [],
+                fileMetadata: []
+            };
+
+            upfrontExamples.push(example);
+            renderUpfrontExamples();
+            updateUpfrontExamplesCount();
+
+            addLog(`➕ Added upfront test example ${upfrontExamples.length}`, 'info');
+        }
+
+        /**
+         * Remove an upfront test example from the list.
+         * @param {string} exampleId - ID of the example to remove
+         */
+        function removeUpfrontExample(exampleId) {
+            upfrontExamples = upfrontExamples.filter(ex => ex.id !== exampleId);
+            renderUpfrontExamples();
+            updateUpfrontExamplesCount();
+            addLog(`➖ Removed upfront test example`, 'info');
+        }
+
+        /**
+         * Update an upfront test example's query value.
+         * @param {string} exampleId - ID of the example to update
+         * @param {string} query - New query value
+         */
+        function updateUpfrontExample(exampleId, query) {
+            const example = upfrontExamples.find(ex => ex.id === exampleId);
+            if (example) {
+                example.query = query;
+            }
+        }
+
+        /**
+         * Update the upfront examples count badge.
+         */
+        function updateUpfrontExamplesCount() {
+            const countEl = document.getElementById('upfrontExamplesCount');
+            if (countEl) {
+                const count = upfrontExamples.length;
+                countEl.textContent = `${count} example${count !== 1 ? 's' : ''}`;
+            }
+        }
+
+        /**
+         * Render the upfront test examples list in Step 1.
+         * Displays each example with query input and file upload.
+         */
+        function renderUpfrontExamples() {
+            const container = document.getElementById('upfrontExamplesContainer');
+
+            if (upfrontExamples.length === 0) {
+                container.innerHTML = '<p style="color: #6c757d; font-style: italic; font-size: 13px;">No examples yet. Click "Add Test Example" to add test cases.</p>';
+                return;
+            }
+
+            container.innerHTML = upfrontExamples.map((example, index) => `
+                <div class="upfront-example-item" id="upfront-item-${example.id}">
+                    <div class="example-header">
+                        <span class="example-title">Example ${index + 1}</span>
+                        <button class="example-remove" onclick="removeUpfrontExample('${example.id}')">✕ Remove</button>
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Enter test query (e.g., What is the revenue for Q3?)"
+                        value="${example.query || ''}"
+                        onchange="updateUpfrontExample('${example.id}', this.value)"
+                    />
+
+                    <!-- File Upload Section -->
+                    <div style="margin-top: 8px;">
+                        <label style="display: block; margin-bottom: 4px; font-size: 11px; color: #6c757d;">📎 Attach Documents (Optional):</label>
+                        <div class="file-upload-area" style="padding: 8px; font-size: 11px;"
+                             id="upfront-upload-area-${example.id}"
+                             ondrop="handleUpfrontFileDrop(event, '${example.id}')"
+                             ondragover="handleDragOver(event)"
+                             ondragleave="handleDragLeave(event)">
+                            <p style="margin: 0;">📎 Drag and drop or
+                                <button type="button" onclick="document.getElementById('upfront-file-input-${example.id}').click()"
+                                        style="background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer; padding: 0; font-size: 11px;">
+                                    browse
+                                </button>
+                            </p>
+                            <input type="file"
+                                   id="upfront-file-input-${example.id}"
+                                   multiple
+                                   style="display: none;"
+                                   onchange="handleUpfrontFileSelect(event, '${example.id}')">
+                        </div>
+                        <div id="upfront-upload-status-${example.id}" style="margin-top: 4px; font-size: 11px;"></div>
+                        <ul id="upfront-file-list-${example.id}" style="margin: 6px 0 0 0; padding-left: 15px; font-size: 11px;"></ul>
+                    </div>
+                </div>
+            `).join('');
+
+            // Reconstruct file lists from stored metadata
+            upfrontExamples.forEach(example => {
+                const filesList = document.getElementById(`upfront-file-list-${example.id}`);
+                if (filesList && example.fileMetadata && example.fileMetadata.length > 0) {
+                    filesList.innerHTML = '';
+                    example.fileMetadata.forEach(fileData => {
+                        const listItem = document.createElement('li');
+                        listItem.innerHTML = `
+                            <span>${fileData.filename} (ID: ${fileData.id})</span>
+                            <button onclick="removeUpfrontFile(${fileData.id}, '${example.id}')"
+                                    style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 10px; margin-left: 5px;">✕</button>
+                        `;
+                        filesList.appendChild(listItem);
+                    });
+                }
+            });
+        }
+
+        /**
+         * Handle file drop for upfront test examples.
+         * @param {DragEvent} event - The drop event
+         * @param {string} exampleId - ID of the example to add files to
+         */
+        function handleUpfrontFileDrop(event, exampleId) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const uploadArea = document.getElementById(`upfront-upload-area-${exampleId}`);
+            uploadArea.classList.remove('dragover');
+
+            const files = Array.from(event.dataTransfer.files);
+            uploadUpfrontFiles(files, exampleId);
+        }
+
+        /**
+         * Handle file selection for upfront test examples.
+         * @param {Event} event - The input change event
+         * @param {string} exampleId - ID of the example to add files to
+         */
+        function handleUpfrontFileSelect(event, exampleId) {
+            const files = Array.from(event.target.files);
+            uploadUpfrontFiles(files, exampleId);
+        }
+
+        /**
+         * Upload files for an upfront test example.
+         * Uses the same upload mechanism as regular test examples.
+         * @param {File[]} files - Array of files to upload
+         * @param {string} exampleId - ID of the example to add files to
+         */
+        async function uploadUpfrontFiles(files, exampleId) {
+            const example = upfrontExamples.find(ex => ex.id === exampleId);
+            if (!example) return;
+
+            const statusEl = document.getElementById(`upfront-upload-status-${exampleId}`);
+            const filesList = document.getElementById(`upfront-file-list-${exampleId}`);
+
+            for (const file of files) {
+                statusEl.innerHTML = `<span style="color: #007bff;">Uploading ${file.name}...</span>`;
+                addLog(`📤 Uploading file for upfront example: ${file.name}`, 'info');
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch(`${API_BASE}/files/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        example.fileIds.push(data.id);
+                        example.fileMetadata.push({
+                            id: data.id,
+                            filename: data.filename || file.name,
+                            bytes: data.bytes || file.size,
+                            status: data.status || 'uploaded'
+                        });
+
+                        statusEl.innerHTML = `<span style="color: #28a745;">✅ ${file.name} uploaded</span>`;
+                        addLog(`✅ Uploaded ${file.name} (ID: ${data.id})`, 'response');
+
+                        // Render file list
+                        renderUpfrontExamples();
+                    } else {
+                        const errorData = await response.json();
+                        statusEl.innerHTML = `<span style="color: #dc3545;">❌ Failed: ${errorData.detail || 'Upload failed'}</span>`;
+                        addLog(`❌ Failed to upload ${file.name}: ${errorData.detail}`, 'error');
+                    }
+                } catch (error) {
+                    statusEl.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                    addLog(`❌ Upload error: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        /**
+         * Remove a file from an upfront test example.
+         * @param {number} fileId - ID of the file to remove
+         * @param {string} exampleId - ID of the example containing the file
+         */
+        function removeUpfrontFile(fileId, exampleId) {
+            const example = upfrontExamples.find(ex => ex.id === exampleId);
+            if (example) {
+                example.fileIds = example.fileIds.filter(id => id !== fileId);
+                example.fileMetadata = example.fileMetadata.filter(meta => meta.id !== fileId);
+                renderUpfrontExamples();
+                addLog(`🗑️ Removed file ${fileId} from upfront example`, 'info');
+            }
+        }
+
+        /**
+         * Transfer upfront examples to the test examples array.
+         * Called during auto-execution to populate Step 3 with the test data.
+         */
+        function transferUpfrontExamples() {
+            // Clear existing test examples
+            testExamples = [];
+            testExampleCounter = 0;
+
+            // Copy each upfront example to test examples
+            upfrontExamples.forEach(upfrontEx => {
+                testExampleCounter++;
+                const newId = `example-${testExampleCounter}`;
+                testExamples.push({
+                    id: newId,
+                    query: upfrontEx.query,
+                    fileIds: [...upfrontEx.fileIds],
+                    fileMetadata: [...upfrontEx.fileMetadata]
+                });
+            });
+
+            // Re-render the test examples in Step 3
+            renderTestExamples();
+            addLog(`📋 Transferred ${upfrontExamples.length} upfront example(s) to test examples`, 'info');
+        }
+
+        /**
+         * Show the auto-execution progress indicator.
+         * Makes the progress bar visible in the UI.
+         */
+        function showAutoExecutionProgress() {
+            const container = document.getElementById('autoProgressContainer');
+            if (container) {
+                container.style.display = 'flex';
+            }
+        }
+
+        /**
+         * Hide the auto-execution progress indicator.
+         * Also resets all step statuses.
+         */
+        function hideAutoExecutionProgress() {
+            const container = document.getElementById('autoProgressContainer');
+            if (container) {
+                container.style.display = 'none';
+            }
+
+            // Reset all steps
+            ['Enhance', 'Review', 'Create', 'Test'].forEach((step, index) => {
+                updateAutoProgressStep(step.toLowerCase(), 'pending');
+                const connector = document.getElementById(`autoConnector${index + 1}`);
+                if (connector) connector.classList.remove('completed');
+            });
+        }
+
+        /**
+         * Update the status of a progress step in the auto-execution indicator.
+         * @param {string} stepId - ID of the step ('enhance', 'review', 'create', 'test')
+         * @param {string} status - Status to set ('pending', 'running', 'completed', 'paused', 'skipped')
+         */
+        function updateAutoProgressStep(stepId, status) {
+            const stepEl = document.getElementById(`autoProgress${stepId.charAt(0).toUpperCase() + stepId.slice(1)}`);
+            if (!stepEl) return;
+
+            // Remove all status classes
+            stepEl.classList.remove('running', 'completed', 'paused', 'skipped');
+
+            // Add the appropriate class
+            if (status !== 'pending') {
+                stepEl.classList.add(status);
+            }
+
+            // Update checkbox icon
+            const checkbox = stepEl.querySelector('.progress-checkbox');
+            if (checkbox) {
+                switch (status) {
+                    case 'running':
+                        checkbox.innerHTML = '⏳';
+                        break;
+                    case 'completed':
+                        checkbox.innerHTML = '✓';
+                        break;
+                    case 'paused':
+                        checkbox.innerHTML = '⚠';
+                        break;
+                    case 'skipped':
+                        checkbox.innerHTML = '-';
+                        break;
+                    default:
+                        // Reset to step number
+                        const stepNum = { enhance: 1, review: 2, create: 3, test: 4 }[stepId];
+                        checkbox.innerHTML = stepNum || '';
+                }
+            }
+        }
+
+        /**
+         * Update the connector between two progress steps.
+         * @param {number} connectorIndex - Index of the connector (1, 2, or 3)
+         * @param {boolean} completed - Whether to mark as completed
+         */
+        function updateAutoProgressConnector(connectorIndex, completed) {
+            const connector = document.getElementById(`autoConnector${connectorIndex}`);
+            if (connector) {
+                if (completed) {
+                    connector.classList.add('completed');
+                } else {
+                    connector.classList.remove('completed');
+                }
+            }
+        }
+
+        /**
+         * Show the action required banner when questions/limitations are detected.
+         * @param {Object} enhancedData - The enhanced workflow data containing questions/warnings
+         */
+        function showUserActionRequired(enhancedData) {
+            const banner = document.getElementById('actionRequiredBanner');
+            const message = document.getElementById('actionRequiredMessage');
+
+            if (banner && message) {
+                // Build a summary message
+                let summary = 'The enhanced description contains items that may need your attention:\n';
+
+                if (enhancedData.questions && enhancedData.questions.length > 0) {
+                    summary += `\n• ${enhancedData.questions.length} question(s) about the workflow`;
+                }
+                if (enhancedData.warnings && enhancedData.warnings.length > 0) {
+                    summary += `\n• ${enhancedData.warnings.length} warning(s) or limitation(s)`;
+                }
+
+                // Check sections for questions
+                if (enhancedData.sections) {
+                    const sectionsWithQuestions = enhancedData.sections.filter(s =>
+                        s.questions && s.questions.length > 0 &&
+                        !s.questions.every(q => q.toLowerCase() === 'none' || q.toLowerCase() === 'none.')
+                    );
+                    if (sectionsWithQuestions.length > 0) {
+                        summary += `\n• ${sectionsWithQuestions.length} step(s) have questions or limitations`;
+                    }
+                }
+
+                message.textContent = summary;
+                banner.style.display = 'block';
+            }
+        }
+
+        /**
+         * Hide the action required banner.
+         */
+        function hideUserActionRequired() {
+            const banner = document.getElementById('actionRequiredBanner');
+            if (banner) {
+                banner.style.display = 'none';
+            }
+        }
+
+        /**
+         * Update the Run All button state.
+         * @param {string} state - Button state ('idle', 'running')
+         */
+        function updateRunAllButton(state) {
+            const btn = document.getElementById('runAllButton');
+            const stopBtn = document.getElementById('stopAllButton');
+            if (!btn) return;
+
+            switch (state) {
+                case 'running':
+                    btn.innerHTML = '⏳ Running...';
+                    btn.classList.add('running');
+                    btn.disabled = true;
+                    if (stopBtn) {
+                        stopBtn.style.display = 'inline-block';
+                        stopBtn.disabled = false;
+                    }
+                    break;
+                case 'stopping':
+                    btn.innerHTML = '⏳ Stopping...';
+                    btn.classList.add('running');
+                    btn.disabled = true;
+                    if (stopBtn) {
+                        stopBtn.innerHTML = '⏳ Stopping...';
+                        stopBtn.style.background = '#ffc107';
+                        stopBtn.disabled = true;
+                    }
+                    break;
+                case 'idle':
+                default:
+                    btn.innerHTML = '▶ Run All';
+                    btn.classList.remove('running');
+                    btn.disabled = false;
+                    if (stopBtn) {
+                        stopBtn.innerHTML = '■ Stop';
+                        stopBtn.style.background = '#dc3545';
+                        stopBtn.style.display = 'inline-block';
+                        stopBtn.disabled = false;
+                    }
+                    break;
+            }
+        }
+
+        /**
+         * Stop all execution (Run All, individual tests, etc.)
+         * Gracefully stops any running workflow execution.
+         */
+        async function stopAllExecution() {
+            addLog('🛑 Stop requested...', 'warning');
+            updateRunAllButton('stopping');
+
+            // Cancel auto execution mode if active
+            if (autoExecutionMode) {
+                cancelAutoExecution();
+            }
+
+            // Stop workflow execution if running
+            if (isExecuting && currentWorkflowId) {
+                await stopExecution();
+            }
+
+            // Reset state after a short delay to ensure cleanup
+            setTimeout(() => {
+                updateRunAllButton('idle');
+                updateTestButton('idle');
+                addLog('⏹️ Execution stopped', 'info');
+            }, 500);
+        }
+
+        /**
+         * Detect if the enhanced workflow data contains questions or limitations.
+         * Returns true if the user should review before proceeding.
+         * @param {Object} enhancedData - The parsed enhancement response
+         * @returns {boolean} Whether questions or limitations were detected
+         */
+        function detectQuestionsOrLimitations(enhancedData) {
+            // Check global questions (filter out "None")
+            if (enhancedData.questions && enhancedData.questions.length > 0) {
+                const realQuestions = enhancedData.questions.filter(q =>
+                    q && q.toLowerCase() !== 'none' && q.toLowerCase() !== 'none.'
+                );
+                if (realQuestions.length > 0) return true;
+            }
+
+            // Check global warnings (filter out "None")
+            if (enhancedData.warnings && enhancedData.warnings.length > 0) {
+                const realWarnings = enhancedData.warnings.filter(w =>
+                    w && w.toLowerCase() !== 'none' && w.toLowerCase() !== 'none.'
+                );
+                if (realWarnings.length > 0) return true;
+            }
+
+            // Check sections for questions/limitations
+            if (enhancedData.sections && enhancedData.sections.length > 0) {
+                for (const section of enhancedData.sections) {
+                    if (section.questions && section.questions.length > 0) {
+                        const realQuestions = section.questions.filter(q =>
+                            q && q.toLowerCase() !== 'none' && q.toLowerCase() !== 'none.'
+                        );
+                        if (realQuestions.length > 0) return true;
+                    }
+                    if (section.limitations && section.limitations.length > 0) {
+                        const realLimitations = section.limitations.filter(l =>
+                            l && l.toLowerCase() !== 'none' && l.toLowerCase() !== 'none.'
+                        );
+                        if (realLimitations.length > 0) return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /**
+         * Main orchestrator for the "Run All" automatic workflow execution.
+         * Executes: Enhance → Review → Create → Test
+         */
+        async function runAllWorkflow() {
+            const rawDescription = document.getElementById('rawWorkflowDescription').value.trim();
+
+            // Validate input
+            if (!rawDescription) {
+                addLog('❌ No workflow description provided for Run All', 'error');
+                alert('Please enter a workflow description');
+                return;
+            }
+
+            // Prompt if no upfront examples
+            if (upfrontExamples.length === 0) {
+                const proceed = confirm('No test examples have been added. The workflow will be created but testing will be skipped. Continue anyway?');
+                if (!proceed) {
+                    addLog('ℹ️ Run All cancelled - no test examples', 'info');
+                    return;
+                }
+            }
+
+            // Initialize auto-execution state
+            autoExecutionMode = true;
+            autoExecutionStage = 'enhance';
+            autoExecutionAbortController = new AbortController();
+            pendingEnhancedData = null;
+
+            // Update UI
+            updateRunAllButton('running');
+            showAutoExecutionProgress();
+            updateAutoProgressStep('enhance', 'running');
+
+            addLog('🚀 Starting automatic workflow execution (Run All)...', 'workflow-start');
+
+            try {
+                // Stage 1: Enhance
+                addLog('📝 Enhancing workflow description...', 'info');
+
+                const { response, data } = await loggedFetch(`${API_BASE}/workflows/enhance-description`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        description: rawDescription
+                    }),
+                    signal: autoExecutionAbortController.signal
+                }, 'ENHANCE WORKFLOW DESCRIPTION (AUTO)');
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to enhance workflow description');
+                }
+
+                // Parse the enhanced data
+                const enhancedData = parseEnhancementResponse(data);
+
+                // Fill the editable text field in Step 2 directly (no green visual)
+                document.getElementById('workflowDescription').value = enhancedData.description;
+                document.getElementById('workflowDescription').style.color = '#333';
+
+                // Store enhanced description
+                document.getElementById('enhancedDescription').innerHTML = enhancedData.description;
+
+                // Show rerun buttons
+                document.getElementById('rerunInitialContainer').style.display = 'block';
+                document.getElementById('rerunEnhancedContainer').style.display = 'block';
+
+                updateAutoProgressStep('enhance', 'completed');
+                updateAutoProgressConnector(1, true);
+                addLog('✅ Enhancement completed', 'response');
+
+                // Stage 2: Review - Check for questions/limitations
+                autoExecutionStage = 'review';
+                updateAutoProgressStep('review', 'running');
+
+                if (detectQuestionsOrLimitations(enhancedData)) {
+                    // Pause for user review
+                    pendingEnhancedData = enhancedData;
+                    updateAutoProgressStep('review', 'paused');
+                    showUserActionRequired(enhancedData);
+                    addLog('⚠️ Questions or limitations detected - pausing for user review', 'warning');
+                    return; // Pause here - user will click Continue or Cancel
+                }
+
+                // No issues - proceed automatically
+                updateAutoProgressStep('review', 'completed');
+                updateAutoProgressConnector(2, true);
+                addLog('✅ No issues detected - proceeding to Create', 'info');
+
+                // Continue to Create stage
+                await continueFromCreate(enhancedData.description);
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    addLog('🛑 Auto-execution cancelled by user', 'warning');
+                } else {
+                    showResult(resultDiv, `❌ Error: ${error.message}`, 'error');
+                    addLog(`❌ Auto-execution error: ${error.message}`, 'error');
+                }
+                resetAutoExecution();
+            }
+        }
+
+        /**
+         * Continue auto-execution after user reviews questions/limitations.
+         * Called when user clicks "Continue Anyway" button.
+         */
+        async function continueAutoExecution() {
+            hideUserActionRequired();
+            updateAutoProgressStep('review', 'completed');
+            updateAutoProgressConnector(2, true);
+
+            addLog('▶️ User chose to continue despite warnings', 'info');
+
+            if (pendingEnhancedData) {
+                await continueFromCreate(pendingEnhancedData.description);
+            }
+        }
+
+        /**
+         * Continue auto-execution from the Create stage.
+         * Creates the workflow and optionally runs tests.
+         * @param {string} description - The enhanced workflow description
+         */
+        async function continueFromCreate(description) {
+            const resultDiv = document.getElementById('workflowResult');
+
+            try {
+                // Stage 3: Create
+                autoExecutionStage = 'create';
+                updateAutoProgressStep('create', 'running');
+
+                showResult(resultDiv, 'Creating cell-based workflow... Planning execution steps...', 'loading');
+                addLog('🚀 Creating workflow (auto-execution)...', 'info');
+
+                const { response, data } = await loggedFetch(`${API_BASE}/workflows-cell-based`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        description: description
+                    }),
+                    signal: autoExecutionAbortController ? autoExecutionAbortController.signal : undefined
+                }, 'CREATE WORKFLOW (AUTO)');
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to create workflow');
+                }
+
+                // Store workflow data
+                currentWorkflowId = data.id;
+                currentWorkflowPlan = data.plan;
+                currentCells = data.cells || [];
+
+                // Enable buttons
+                document.getElementById('packageButton').disabled = false;
+                document.getElementById('mcpPackageButton').disabled = false;
+
+                // Display workflow result
+                let resultMessage = `✅ Cell-Based Workflow Created!\n\n`;
+                resultMessage += `ID: ${data.id}\n`;
+                resultMessage += `Status: ${data.status}\n`;
+                resultMessage += `Mode: Cell-Based (Step-by-Step)\n`;
+                resultMessage += `Total Cells: ${currentCells.length}\n\n`;
+                resultMessage += `═══════════════════════════════════════\n`;
+                resultMessage += `EXECUTION PLAN\n`;
+                resultMessage += `═══════════════════════════════════════\n\n`;
+
+                currentCells.forEach((cell, index) => {
+                    resultMessage += `Step ${cell.display_step || cell.step_number}: ${cell.name}\n`;
+                    resultMessage += `  └─ ${cell.description}\n`;
+                    resultMessage += `  └─ Inputs: ${cell.inputs_required.join(', ') || 'none'}\n`;
+                    resultMessage += `  └─ Outputs: ${cell.outputs_produced.join(', ') || 'none'}\n`;
+                    resultMessage += `  └─ Tools: ${cell.paradigm_tools_used.join(', ') || 'none'}\n\n`;
+                });
+
+                showResult(resultDiv, resultMessage, 'success');
+
+                currentCells.forEach(cell => {
+                    addLog(`📦 Cell ${cell.display_step || cell.step_number}: ${cell.name} [${cell.paradigm_tools_used.join(', ')}]`, 'workflow-step');
+                });
+
+                // Show cell progress display in Step 3 (cells ready to run)
+                initializeCellProgressDisplay();
+
+                updateAutoProgressStep('create', 'completed');
+                updateAutoProgressConnector(3, true);
+                addLog('✅ Workflow creation completed', 'response');
+
+                // Stage 4: Test (if examples exist)
+                autoExecutionStage = 'test';
+                addLog(`📋 Checking for test examples: ${upfrontExamples.length} upfront example(s) found`, 'info');
+
+                if (upfrontExamples.length > 0) {
+                    updateAutoProgressStep('test', 'running');
+
+                    // Transfer upfront examples to test examples
+                    transferUpfrontExamples();
+                    addLog(`📋 Transferred to testExamples: ${testExamples.length} example(s)`, 'info');
+
+                    addLog('🧪 Starting automatic tests...', 'info');
+
+                    // Execute tests
+                    await executeAllTests();
+
+                    updateAutoProgressStep('test', 'completed');
+                    addLog('✅ Test execution completed', 'response');
+                } else {
+                    updateAutoProgressStep('test', 'skipped');
+                    addLog('ℹ️ No test examples - skipping test stage', 'info');
+                }
+
+                // Complete!
+                addLog('🎉 Run All completed successfully!', 'workflow-complete');
+                resetAutoExecution();
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    addLog('🛑 Auto-execution cancelled by user', 'warning');
+                } else {
+                    showResult(resultDiv, `❌ Error: ${error.message}`, 'error');
+                    addLog(`❌ Auto-execution error: ${error.message}`, 'error');
+                }
+                resetAutoExecution();
+            }
+        }
+
+        /**
+         * Cancel the auto-execution process.
+         * Called when user clicks "Cancel" button.
+         */
+        function cancelAutoExecution() {
+            addLog('🛑 User cancelled auto-execution', 'warning');
+
+            // Abort any in-flight requests
+            if (autoExecutionAbortController) {
+                autoExecutionAbortController.abort();
+            }
+
+            hideUserActionRequired();
+            resetAutoExecution();
+        }
+
+        /**
+         * Reset auto-execution state to idle.
+         * Cleans up all auto-execution state variables and UI.
+         */
+        function resetAutoExecution() {
+            autoExecutionMode = false;
+            autoExecutionStage = null;
+            autoExecutionAbortController = null;
+            pendingEnhancedData = null;
+
+            updateRunAllButton('idle');
+            hideAutoExecutionProgress();
+            hideUserActionRequired();
+        }
+
+        /**
+         * Rerun the workflow from a specific stage.
+         * Allows user to restart after modifications.
+         * @param {string} stage - Stage to restart from ('enhance', 'create', 'test')
+         */
+        async function rerunFromStage(stage) {
+            // Cancel any ongoing execution
+            if (autoExecutionMode) {
+                cancelAutoExecution();
+            }
+
+            addLog(`🔄 Rerunning from ${stage} stage...`, 'info');
+
+            switch (stage) {
+                case 'enhance':
+                    // Restart from the beginning with Run All
+                    await runAllWorkflow();
+                    break;
+
+                case 'create':
+                    // Start from Create using current description
+                    autoExecutionMode = true;
+                    autoExecutionStage = 'create';
+                    autoExecutionAbortController = new AbortController();
+
+                    updateRunAllButton('running');
+                    showAutoExecutionProgress();
+                    updateAutoProgressStep('enhance', 'completed');
+                    updateAutoProgressConnector(1, true);
+                    updateAutoProgressStep('review', 'completed');
+                    updateAutoProgressConnector(2, true);
+
+                    const description = document.getElementById('workflowDescription').value.trim();
+                    if (!description) {
+                        alert('Please ensure there is a workflow description in Step 2');
+                        resetAutoExecution();
+                        return;
+                    }
+
+                    await continueFromCreate(description);
+                    break;
+
+                case 'test':
+                    // Just rerun tests with current workflow
+                    if (!currentWorkflowId) {
+                        alert('Please create a workflow first');
+                        return;
+                    }
+
+                    autoExecutionMode = true;
+                    autoExecutionStage = 'test';
+
+                    updateRunAllButton('running');
+                    showAutoExecutionProgress();
+                    updateAutoProgressStep('enhance', 'completed');
+                    updateAutoProgressConnector(1, true);
+                    updateAutoProgressStep('review', 'completed');
+                    updateAutoProgressConnector(2, true);
+                    updateAutoProgressStep('create', 'completed');
+                    updateAutoProgressConnector(3, true);
+
+                    // Transfer any new upfront examples
+                    if (upfrontExamples.length > 0) {
+                        transferUpfrontExamples();
+                    }
+
+                    // Check if there are test examples to run
+                    if (testExamples.length > 0) {
+                        updateAutoProgressStep('test', 'running');
+                        await executeAllTests();
+                        updateAutoProgressStep('test', 'completed');
+                    } else {
+                        updateAutoProgressStep('test', 'skipped');
+                        addLog('ℹ️ No test examples - skipping test stage', 'info');
+                    }
+
+                    resetAutoExecution();
+                    break;
+
+                default:
+                    addLog(`❌ Unknown stage: ${stage}`, 'error');
             }
         }
 
@@ -4753,8 +6110,6 @@ if __name__ == "__main__":
                     this.style.color = '#333';
                 }
             });
-            
-            document.getElementById('testButton').textContent = 'Test Workflow';
         };
 
         /**

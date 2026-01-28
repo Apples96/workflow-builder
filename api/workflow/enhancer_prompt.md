@@ -108,65 +108,74 @@ STEP 1: Call the DataAPI search endpoint with the user's query
 ```
 ❌ This loses ALL technical details needed for implementation!
 
-## AVAILABLE PARADIGM API TOOLS AND WHEN TO USE THEM
+## AVAILABLE PARADIGM API TOOLS (v3 Agent API)
 
-⚠️ CRITICAL: Choose the RIGHT API based on workflow type and file source!
+⚠️ CRITICAL: Use the v3 Agent API for all document queries!
 
 📁 FOR WORKFLOWS WITH UPLOADED FILES (user provides documents):
 
-### 1. Document Search + Chat Completion (RECOMMENDED FOR SIMPLE EXTRACTION) ⭐⭐⭐
-- USE FOR: Short documents (invoices, forms, 1-2 pages)
-- USE FOR: Structured data extraction (multiple fields from simple documents)
-- USE FOR: When you need JSON output with multiple fields
-- Pattern: content = document_search("", file_ids=[doc_id], k=1)
-         then: data = chat_completion("Extract fields from: " + content, guided_json=schema)
-- Performance: FAST (5-10 seconds total) and RELIABLE
+### 1. agent_query_with_retry (RECOMMENDED - BEST RELIABILITY) ⭐⭐⭐
+- USE FOR: All document queries - lets agent choose best tool, retries if needed
+- Pattern: result = agent_query_with_retry(query, file_ids=[doc_id])
+           answer = _extract_answer(result)
+- Performance: FAST (5-15 seconds) with automatic retries
 - Can process MULTIPLE documents in PARALLEL with asyncio.gather()
-- Returns: Clean JSON data ready to use
-- Example: Extract invoice fields (number, date, amounts), parse forms, classify documents
-- ✅ USE THIS when workflow mentions: "facture", "invoice", "formulaire", "form", "extract fields"
-- ⚠️ CRITICAL: Use guided_json parameter to guarantee valid JSON output!
+- Returns: Full v3 response (use _extract_answer() to get text)
+- Retry strategy: 1) Let agent choose → 2) Force document_search → 3) Force document_analysis
+- ✅ USE THIS when you need reliable extraction from any document type
 
-### 2. Document Analysis (paradigm_client.analyze_documents_with_polling) - USE SPARINGLY
-- USE FOR: Long documents (>5 pages) requiring deep summarization
-- USE FOR: Complex multi-document synthesis
-- Performance: SLOW (~20-30 seconds per document, 2-5 minutes for long docs)
-- ⚠️ WARNING: Can TIMEOUT if multiple calls run in parallel!
-- ⚠️ CRITICAL: ALWAYS process documents SEQUENTIALLY (for loop, NOT asyncio.gather)
-- Returns: Comprehensive structured AI analysis in Markdown format
-- Example: Summarize research reports, synthesize multiple long documents
-- ✅ USE THIS when workflow mentions: "summarize", "résumer", "long document", "rapport"
-
-### 3. Document Search (paradigm_client.document_search with file_ids) - FOR SINGLE FIELD
-- USE FOR: Extracting ONE specific field quickly ("What is the name?")
-- USE FOR: Simple questions about ONE specific value
+### 2. agent_query with force_tool="document_search" - FOR QUICK QUERIES
+- USE FOR: Extracting specific fields quickly
+- USE FOR: Simple questions about specific values
 - Performance: FAST (2-5 seconds)
-- Returns: Direct AI answer
-- Example: Get name from document, find total quickly, extract one specific date
-- ✅ USE THIS when workflow description mentions: "find", "get", "what is", single field extraction
+- Returns: Direct answer via _extract_answer()
+- Example: Get name, find total, extract specific date
+- ✅ USE THIS when workflow mentions: "find", "get", "what is", single field
 
-⚠️ NOTE: ask_question() API is currently unavailable due to server-side issues.
-Use analyze_documents_with_polling() or document_search(file_ids=[...]) instead.
+### 3. agent_query with force_tool="document_analysis" - FOR COMPREHENSIVE ANALYSIS
+- USE FOR: Long documents (>5 pages) requiring deep analysis
+- USE FOR: Complex multi-document synthesis
+- Performance: ~10-30 seconds (NO POLLING NEEDED in v3!)
+- Returns: Comprehensive structured analysis
+- Example: Summarize reports, synthesize multiple documents
+- ✅ USE THIS when workflow mentions: "summarize", "résumer", "comprehensive"
+- 🚀 v3 BENEFIT: Returns directly, no polling required unlike v2!
+
+### 4. agent_query without force_tool - LET AGENT CHOOSE
+- USE FOR: When unsure which tool is best
+- The agent will automatically select the most appropriate tool
+- Performance: Varies based on tool chosen
+
+📁 FILE OPERATIONS (unchanged - v2 API):
+- wait_for_embedding(file_id) - ALWAYS call after upload before queries
+- upload_file(content, filename) - Upload new files
+- get_file_chunks(file_id) - Get raw text chunks
 
 🔍 FOR WORKFLOWS WITHOUT UPLOADED FILES (search workspace):
 
-### 4. Document Search (paradigm_client.document_search)
+### 5. agent_query without file_ids - Search User's Workspace
 - USE FOR: Finding documents in workspace using natural language
-- ADVANCED: Add tool="VisionDocumentSearch" for scanned documents, checkboxes, complex layouts
+- Performance: FAST (2-5 seconds)
 - Returns: AI answer + relevant documents
-- Example: await paradigm_client.document_search(query="...", tool="VisionDocumentSearch")
+- Example: await paradigm_client.agent_query(query="Find all invoices from 2024")
 
-## 💬 OTHER USEFUL TOOLS
+## 💬 v3 API CRITICAL REQUIREMENT
 
-5. Chat Completion (paradigm_client.chat_completion) - General AI text processing
-6. Image Analysis (paradigm_client.analyze_image) - Analyze images in documents (max 5)
-7. Filter Chunks (paradigm_client.filter_chunks) - Filter chunks by relevance with scores
-8. Get File Chunks (paradigm_client.get_file_chunks) - Retrieve all chunks for inspection
-9. Query (paradigm_client.query) - Extract chunks WITHOUT AI response (~30% faster)
-   - ADVANCED: Add system_prompt for specific output format (e.g., JSON only)
-   - Example: await paradigm_client.query(prompt="...", system_prompt="Tu es un assistant qui réponds UNIQUEMENT au format JSON VALIDE. Le json doit contenir: 'is_correct' (boolean), 'details' (string)")
-10. Get File (paradigm_client.get_file) - Check file processing status
-11. Wait For Embedding (paradigm_client.wait_for_embedding) - Wait for file indexing
+⚠️ IMPORTANT: The v3 Agent API requires `chat_setting_id` (default: 160).
+This is automatically included in the ParadigmClient class.
+
+v3 Response Format:
+```python
+{"messages": [{"role": "assistant", "parts": [{"type": "text", "text": "Answer here"}]}]}
+```
+Use _extract_answer(result) to get the text from the last "text" part.
+
+## 📁 FILE OPERATIONS (v2 API - unchanged)
+
+- get_file_chunks(file_id) - Retrieve all raw text chunks for inspection
+- get_file(file_id) - Check file processing status
+- wait_for_embedding(file_id) - Wait for file indexing (ALWAYS call before queries)
+- upload_file(content, filename) - Upload new files
 
 ## 🎯 CRITICAL ENHANCEMENT RULE
 
@@ -175,13 +184,13 @@ Instead, describe the OPERATION type (extract, summarize, search, etc.)
 Let the code generator choose the appropriate API based on the main prompt instructions.
 
 ✅ CORRECT Enhancement Examples:
-- "Extract all information from CV" (code generator will choose analyze_documents_with_polling for comprehensive extraction)
-- "Get candidate name quickly" (code generator will choose document_search with file_ids for single field)
-- "Summarize research report" (code generator will choose analyze_documents_with_polling)
-- "Search for invoices in workspace" (code generator will choose document_search without file_ids)
+- "Extract all information from CV" (code generator will choose agent_query with force_tool="document_analysis")
+- "Get candidate name quickly" (code generator will choose agent_query with force_tool="document_search")
+- "Summarize research report" (code generator will choose agent_query with force_tool="document_analysis")
+- "Search for invoices in workspace" (code generator will choose agent_query without file_ids)
 
 ❌ WRONG Enhancement Examples:
-- "Extract skills using paradigm_client.analyze_documents_with_polling" ← TOO SPECIFIC! Just say "Extract skills"
+- "Extract skills using paradigm_client.agent_query" ← TOO SPECIFIC! Just say "Extract skills"
 - "Use document_search to extract from file" ← AMBIGUOUS! Be clear if it's single field or comprehensive
 
 ## ENHANCEMENT GUIDELINES

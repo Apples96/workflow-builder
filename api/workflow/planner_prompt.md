@@ -76,7 +76,7 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
             "depends_on": [],
             "inputs_required": ["list", "of", "variable_names"],
             "outputs_produced": ["list", "of", "variable_names"],
-            "paradigm_tools_used": ["document_search", "analyze_documents", "etc"]
+            "paradigm_tools_used": ["agent_query", "agent_query_with_retry", "etc"]
         }
     ],
     "shared_context_schema": {
@@ -98,61 +98,64 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
 - All cells in a layer implicitly depend on ALL cells from the previous layer completing (execution order).
 - `depends_on` tracks which SPECIFIC cells provide the data this cell needs (data flow).
 
-## AVAILABLE PARADIGM TOOLS
+## AVAILABLE PARADIGM TOOLS (v3 Agent API)
 
 When planning steps, use these tool names in `paradigm_tools_used`:
 
-### 🚨 CRITICAL: Tool Selection Guide
+### 🚨 CRITICAL: Tool Selection Guide (v3 API)
+
+**Use `agent_query_with_retry` for MOST document queries (RECOMMENDED):**
+- Best reliability with automatic retry strategy
+- "Liberty first, forced tools on retry" approach
+- Examples: "Extract invoice data", "Summarize document", "Find specific fields"
+
+**Use `agent_query` with force_tool for SPECIFIC needs:**
+- force_tool="document_search": Quick simple queries (2-5 seconds)
+- force_tool="document_analysis": Comprehensive analysis (NO POLLING NEEDED in v3!)
+- force_tool=None: Let agent choose (for general queries)
 
 **Use `get_file_chunks` for RAW TEXT extraction:**
 - Getting literal text content without AI interpretation
 - Extracting first/last words, specific paragraphs, exact quotes
-- Examples: "Get the first 10 words of each document", "Extract all email addresses", "Get document titles"
-
-**Use `document_search` for AI-POWERED questions:**
-- Asking questions that need AI understanding
-- Semantic search across documents
-- Examples: "What is the conclusion?", "Find documents about X", "Summarize the main points"
+- Examples: "Get the first 10 words", "Extract all email addresses"
 
 **Use `wait_for_embedding` after file uploads:**
 - ALWAYS include this step after uploading files
-- Files must be indexed before using in search/analysis
-- Required before get_file_chunks or document_search on new files
+- Files must be indexed before using in agent queries
+- Required before any operations on new files
 
-### Tool Descriptions
+### Tool Descriptions (v3 Agent API)
 
-1. **get_file_chunks** - Get raw text chunks from documents
-   - Use when: Extracting literal text, first/last words, exact content, verbatim quotes
+1. **agent_query_with_retry** - Unified v3 query with retry strategy (RECOMMENDED)
+   - Use when: Any document query requiring reliable results
+   - Inputs: query, file_ids
+   - Outputs: v3 response (use _extract_answer() for text)
+   - **KEY**: Automatic retries for best reliability
+
+2. **agent_query** - Unified v3 Agent API query
+   - Use when: Direct queries with optional force_tool
+   - Inputs: query, file_ids, optional force_tool
+   - Outputs: v3 response with thread_id, turn_id, messages
+   - force_tool options: "document_search", "document_analysis", None
+
+3. **wait_for_embedding** - Wait for file to be indexed (v2 API)
+   - Use when: After uploading files, before using them
+   - Inputs: file_id
+   - Outputs: file metadata when ready
+   - **CRITICAL**: Always wait for embedding before agent queries
+
+4. **get_file_chunks** - Get raw text chunks from documents (v2 API)
+   - Use when: Extracting literal text, exact content, verbatim quotes
    - Inputs: file_id
    - Outputs: chunks array with raw text and positions
    - **KEY**: Returns ACTUAL document text, not AI-generated answers
 
-2. **wait_for_embedding** - Wait for file to be indexed
-   - Use when: After uploading files, before using them in other operations
-   - Inputs: file_id
-   - Outputs: file metadata when ready
-   - **CRITICAL**: Always wait for embedding before accessing file content
-
-3. **document_search** - Search through documents using AI
-   - Use when: Asking questions about documents, semantic search, finding relevant info
-   - Inputs: query, optional file_ids
-   - Outputs: AI-generated answer with document references
-   - **KEY**: Returns AI interpretation, not raw text
-
-4. **analyze_documents_with_polling** - Deep AI analysis of specific documents
-   - Use when: Extracting structured data, comprehensive analysis, multi-document comparison
-   - Inputs: query, document_ids (from previous search or attached files)
-   - Outputs: detailed AI analysis results
-
-5. **upload_file** - Upload a file to Paradigm
+5. **upload_file** - Upload a file to Paradigm (v2 API)
    - Use when: User wants to add new documents
    - Inputs: file content
    - Outputs: file_id, file metadata
 
-6. **chat_completion** - General LLM chat for synthesis/formatting
-   - Use when: Summarizing results, formatting output, generating final reports
-   - Inputs: messages/prompt
-   - Outputs: generated text
+**NOTE**: v3 Agent API replaces separate document_search/document_analysis/chat_completion with unified agent_query methods. No polling needed for document_analysis in v3!
 
 ## PLANNING RULES
 
@@ -197,7 +200,7 @@ When planning steps, use these tool names in `paradigm_tools_used`:
             "description": "Search Paradigm for documents matching the user query",
             "inputs_required": ["user_input"],
             "outputs_produced": ["search_results", "document_ids"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 2,
@@ -229,7 +232,7 @@ When planning steps, use these tool names in `paradigm_tools_used`:
             "description": "Generate a formatted summary of the analysis",
             "inputs_required": ["analysis_results"],
             "outputs_produced": ["final_result"],
-            "paradigm_tools_used": ["chat_completion"]
+            "paradigm_tools_used": ["agent_query"]
         }
     ]
 }
@@ -251,7 +254,7 @@ This pattern shows how to structure PARALLEL execution:
             "depends_on": [],
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_a_results"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 2,
@@ -262,7 +265,7 @@ This pattern shows how to structure PARALLEL execution:
             "depends_on": [],
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_b_results"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 3,
@@ -273,7 +276,7 @@ This pattern shows how to structure PARALLEL execution:
             "depends_on": ["1.1", "1.2"],
             "inputs_required": ["topic_a_results", "topic_b_results"],
             "outputs_produced": ["final_result"],
-            "paradigm_tools_used": ["chat_completion"]
+            "paradigm_tools_used": ["agent_query"]
         }
     ]
 }
@@ -300,7 +303,7 @@ This pattern shows how to structure PARALLEL execution:
             "description": "Map uploaded documents to their types based on upload order or content. Create document_mapping dict.",
             "inputs_required": ["attached_file_ids"],
             "outputs_produced": ["document_mapping", "validation_status"],
-            "paradigm_tools_used": ["chat_completion"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 2,
@@ -308,7 +311,7 @@ This pattern shows how to structure PARALLEL execution:
             "description": "Extract information from DC4 document using document_mapping to get its file ID",
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["dc4_info"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 3,
@@ -316,7 +319,7 @@ This pattern shows how to structure PARALLEL execution:
             "description": "Extract information from Avis document using document_mapping to get its file ID",
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["avis_info"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 4,
@@ -324,7 +327,7 @@ This pattern shows how to structure PARALLEL execution:
             "description": "Compare extracted information from DC4 and Avis",
             "inputs_required": ["dc4_info", "avis_info"],
             "outputs_produced": ["comparison_results", "final_result"],
-            "paradigm_tools_used": ["chat_completion"]
+            "paradigm_tools_used": ["agent_query"]
         }
     ],
     "shared_context_schema": {
@@ -375,7 +378,8 @@ When a workflow uses `document_mapping`, you MUST describe it with:
 This helps the code generator produce correct code like:
 ```python
 dc4_id = context["document_mapping"]["DC4"]
-result = await client.document_search(query, file_ids=[dc4_id])
+result = await client.agent_query(query, file_ids=[dc4_id])
+answer = client._extract_answer(result)
 ```
 
 ## EXAMPLES
@@ -394,7 +398,7 @@ result = await client.document_search(query, file_ids=[dc4_id])
             "description": "Search Paradigm documents for information about climate change based on user query",
             "inputs_required": ["user_input"],
             "outputs_produced": ["search_results", "final_result"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         }
     ],
     "shared_context_schema": {
@@ -419,7 +423,7 @@ result = await client.document_search(query, file_ids=[dc4_id])
             "description": "Search for documents containing quarterly sales data",
             "inputs_required": ["user_input"],
             "outputs_produced": ["search_results", "document_ids"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 2,
@@ -435,7 +439,7 @@ result = await client.document_search(query, file_ids=[dc4_id])
             "description": "Generate a comprehensive sales trend report",
             "inputs_required": ["analysis_results", "search_results"],
             "outputs_produced": ["final_result"],
-            "paradigm_tools_used": ["chat_completion"]
+            "paradigm_tools_used": ["agent_query"]
         }
     ],
     "shared_context_schema": {
@@ -470,7 +474,7 @@ result = await client.document_search(query, file_ids=[dc4_id])
             "description": "Compile extracted terms into a structured summary",
             "inputs_required": ["extraction_results"],
             "outputs_produced": ["final_result"],
-            "paradigm_tools_used": ["chat_completion"]
+            "paradigm_tools_used": ["agent_query"]
         }
     ],
     "shared_context_schema": {
@@ -531,7 +535,7 @@ result = await client.document_search(query, file_ids=[dc4_id])
             "description": "Search for the first words in documents",
             "inputs_required": ["attached_file_ids"],
             "outputs_produced": ["final_result"],
-            "paradigm_tools_used": ["document_search"]  ← WRONG! This asks AI, doesn't get raw text
+            "paradigm_tools_used": ["agent_query"]  ← WRONG! This asks AI, doesn't get raw text
         }
     ]
 }
@@ -578,7 +582,7 @@ LAYER 3:
             "depends_on": ["1.1"],
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["doc_a_info"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 3,
@@ -589,7 +593,7 @@ LAYER 3:
             "depends_on": ["1.1"],
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["doc_b_info"],
-            "paradigm_tools_used": ["document_search"]
+            "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 4,
@@ -600,7 +604,7 @@ LAYER 3:
             "depends_on": ["2.1", "2.2"],
             "inputs_required": ["doc_a_info", "doc_b_info"],
             "outputs_produced": ["final_result"],
-            "paradigm_tools_used": ["chat_completion"]
+            "paradigm_tools_used": ["agent_query"]
         }
     ]
 }
@@ -631,7 +635,7 @@ This is WRONG because it loses the parallel structure - cells that should run to
 3. The last cell must produce `final_result`
 4. Be granular - more cells = better progress visibility
 5. Use descriptive names that tell the user what's happening
-6. **CRITICAL**: Use `get_file_chunks` for raw text extraction, NOT `document_search`
+6. **CRITICAL**: Use `get_file_chunks` for raw text extraction, NOT `agent_query`
 7. **CRITICAL**: Always use `wait_for_embedding` after file uploads before accessing content
 8. **CRITICAL**: When using `document_mapping`, describe it fully in shared_context_schema with structure and access pattern
 9. **CRITICAL**: Cell descriptions should mention "using document_mapping to get file ID" when applicable

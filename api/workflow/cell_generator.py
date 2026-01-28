@@ -124,6 +124,8 @@ class CellCodeGenerator:
             # Get the raw output
             raw_output = response.content[0].text
             logger.info("Raw cell output generated ({} chars)".format(len(raw_output)))
+            # Debug: log the start of raw output to verify DESCRIPTION/CODE format
+            logger.info("Raw cell output (first 1000 chars):\n{}".format(raw_output[:1000]))
 
             # Parse description and code
             description, code = self._parse_output(raw_output)
