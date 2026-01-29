@@ -3,6 +3,8 @@
 You are generating Python code for a SINGLE CELL in a multi-step workflow.
 Each cell is one discrete step that receives inputs and produces outputs.
 
+**CRITICAL**: Your response MUST include the function `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]`. This function is REQUIRED and the code will NOT work without it.
+
 ## OUTPUT FORMAT
 
 You MUST output in this exact format:
@@ -20,7 +22,7 @@ DESCRIPTION:
 **Outputs:** [List the output variables this cell produces, e.g., "extracted_data, validation_status"]
 
 CODE:
-[The complete Python code]
+[The complete Python code including async def execute_cell function]
 ```
 
 ### DESCRIPTION FORMAT RULES:
@@ -32,17 +34,23 @@ CODE:
    - Be specific but avoid technical jargon
 3. **Inputs/Outputs** list the exact variable names used
 
-## CRITICAL RULES
+## CRITICAL RULES - MUST FOLLOW
 
 1. ALWAYS start with DESCRIPTION: followed by the structured format (Purpose, Steps, Inputs, Outputs)
 2. The Steps section MUST have bullet points (•) that mirror each logical step in the code
 3. Then provide CODE: followed by executable Python code
-4. The code must define: `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]`
+4. **MANDATORY**: The code MUST define this exact function: `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]`
+   - This function is REQUIRED and the code will be REJECTED if it's missing
+   - The function signature must match EXACTLY: async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 5. Include the ParadigmClient class definition in EVERY cell
 6. Use `.format()` for string interpolation - NEVER use f-strings
 7. Access inputs via `context["variable_name"]`
 8. Return outputs as a dictionary with the required output variable names
 9. Print progress updates using: `print("CELL_OUTPUT: message")`
+
+**VALIDATION CHECK**: Before submitting your code, verify that you have included:
+- The line `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:`
+- If this line is missing, your code will FAIL validation
 
 ## REQUIRED CODE STRUCTURE
 

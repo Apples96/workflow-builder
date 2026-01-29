@@ -1948,38 +1948,30 @@ Architecture:
                 <button onclick="downloadMCPPackage()" id="mcpPackageButton" disabled style="background: #0891b2; color: white; border: none; padding: 8px 14px; border-radius: 6px; margin-left: 8px; cursor: pointer; font-size: 0.8125rem;">🔧 Download MCP Package</button>
             </div>
         </div>
-        
+
+        <!-- Execution Logs Toggle - Always visible below the cell execution area -->
+        <div style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
+            <button class="logs-toggle-btn" id="logsToggleBtn" onclick="toggleLogs()" style="flex: 1;">
+                <span>📊 Execution Logs</span>
+                <span style="display: flex; align-items: center; gap: 8px;">
+                    <span class="log-count" id="logCount">0 entries</span>
+                    <span class="toggle-icon">▼</span>
+                </span>
+            </button>
+            <button onclick="clearLogs()" class="clear-logs">Clear</button>
+        </div>
+        <div class="logs-container collapsed" id="logsContainer">
+            <div class="log-entry">
+                <span class="log-timestamp">[Ready]</span> <span class="log-response">Waiting for API activity...</span>
+            </div>
+        </div>
+
         <div id="testResult" style="margin-top: 15px;"></div>
     </div>
 
-    <!-- Step 4: Execution Logs -->
+    <!-- Step 4: Deploy Workflow -->
     <div class="container">
-        <h2>4. Execution Logs</h2>
-        <p>View detailed execution logs. To refine your workflow, edit the description in Step 1 or 2 and regenerate.</p>
-        
-        <!-- Monitoring Helper Section - Collapsible -->
-        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                <button class="logs-toggle-btn" id="logsToggleBtn" onclick="toggleLogs()">
-                    <span>📊 Execution Logs</span>
-                    <span style="display: flex; align-items: center; gap: 8px;">
-                        <span class="log-count" id="logCount">0 entries</span>
-                        <span class="toggle-icon">▼</span>
-                    </span>
-                </button>
-                <button onclick="clearLogs()" class="clear-logs" style="margin-left: auto;">Clear</button>
-            </div>
-            <div class="logs-container collapsed" id="logsContainer">
-                <div class="log-entry">
-                    <span class="log-timestamp">[Ready]</span> <span class="log-response">Waiting for API activity...</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Step 5: Deploy Workflow -->
-    <div class="container">
-        <h2>5. Deploy your workflow</h2>
+        <h2>4. Deploy your workflow</h2>
         <p>Choose your deployment method based on your infrastructure and requirements. Click an option to expand.</p>
 
         <!-- Option A: Docker -->
@@ -2157,9 +2149,9 @@ if __name__ == "__main__":
         </div>
     </div>
 
-    <!-- Step 6: Integrate with Paradigm using MCP -->
+    <!-- Step 5: Integrate with Paradigm using MCP -->
     <div class="container">
-        <h2>6. Integrate your workflow with Paradigm using MCP</h2>
+        <h2>5. Integrate your workflow with Paradigm using MCP</h2>
         <p>Connect your generated workflow to Paradigm as an MCP server. Click to expand.</p>
 
         <div class="deploy-option" onclick="toggleDeployOption(this)">
@@ -2243,9 +2235,9 @@ if __name__ == "__main__":
         </div>
     </div>
 
-    <!-- Step 7: Test and Share -->
+    <!-- Step 6: Test and Share -->
     <div class="container">
-        <h2>7. 🚀 Test and share</h2>
+        <h2>6. 🚀 Test and share</h2>
         <p>You are now set up to use your workflow as a third party tool within Paradigm. The other users in your company can also access this tool, so spread the news and show them how it works!</p>
     </div>
 

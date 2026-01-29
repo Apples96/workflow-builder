@@ -508,6 +508,66 @@ class WorkflowPlanner:
             )
             last_cell.outputs_produced.append("final_result")
 
+        # FIX SAME-LAYER DEPENDENCIES
+        # Detect and repair cells that depend on outputs from other cells in the same layer.
+        # These cells should be moved to a later layer since parallel cells can't depend on each other.
+        max_iterations = 50  # Prevent infinite loops
+        for iteration in range(max_iterations):
+            layers = plan.get_cells_by_layer()
+            made_changes = False
+
+            for layer_num in sorted(layers.keys()):
+                layer_cells = layers[layer_num]
+                if len(layer_cells) <= 1:
+                    continue
+
+                # Build output map for this layer
+                outputs_in_layer = {}  # output_name -> cell that produces it
+                for cell in layer_cells:
+                    for output in cell.outputs_produced:
+                        outputs_in_layer[output] = cell
+
+                # Check each cell for same-layer dependencies
+                for cell in layer_cells:
+                    for required_input in cell.inputs_required:
+                        if required_input in outputs_in_layer:
+                            producing_cell = outputs_in_layer[required_input]
+                            if producing_cell != cell:
+                                # This cell depends on another cell in the same layer
+                                # Move this cell to the next layer
+                                new_layer = layer_num + 1
+                                logger.info(
+                                    "Fixing same-layer dependency: Moving '{}' from layer {} to {} "
+                                    "(needs '{}' from '{}')".format(
+                                        cell.name, layer_num, new_layer,
+                                        required_input, producing_cell.name
+                                    )
+                                )
+                                cell.layer = new_layer
+                                # Shift all subsequent layers
+                                for other_cell in plan.cells:
+                                    if other_cell.layer >= new_layer and other_cell != cell:
+                                        other_cell.layer += 1
+                                made_changes = True
+                                break
+                    if made_changes:
+                        break
+                if made_changes:
+                    break
+
+            if not made_changes:
+                break  # No more fixes needed
+
+            # Renumber sublayer indices after moving cells
+            layers = plan.get_cells_by_layer()
+            for layer_num in sorted(layers.keys()):
+                layer_cells = layers[layer_num]
+                for idx, cell in enumerate(sorted(layer_cells, key=lambda c: c.sublayer_index), 1):
+                    cell.sublayer_index = idx
+
+        if iteration == max_iterations - 1:
+            logger.warning("Hit max iterations while fixing same-layer dependencies")
+
         # Validate layer structure
         layers = plan.get_cells_by_layer()
         for layer_num in sorted(layers.keys()):

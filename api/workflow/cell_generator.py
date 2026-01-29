@@ -114,11 +114,13 @@ class CellCodeGenerator:
 
         try:
             # Call Claude to generate the code
+            # Add timeout to avoid the 10-minute limit that requires streaming
             response = self.anthropic_client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=8000,
+                max_tokens=32000,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_message}]
+                messages=[{"role": "user", "content": user_message}],
+                timeout=600.0  # 10 minute timeout
             )
 
             # Get the raw output
@@ -129,13 +131,18 @@ class CellCodeGenerator:
 
             # Parse description and code
             description, code = self._parse_output(raw_output)
+            logger.info("Parsed code ({} chars)".format(len(code)))
+            logger.info("Parsed code (first 500 chars):\n{}".format(code[:500]))
 
             # Clean up the code
             cleaned_code = self._clean_code(code)
+            logger.info("Cleaned code ({} chars)".format(len(cleaned_code)))
+            logger.info("Cleaned code (first 500 chars):\n{}".format(cleaned_code[:500]))
 
             # Validate the code
             validation_result = self._validate_code(cleaned_code)
             if not validation_result["valid"]:
+                logger.error("Code validation failed. Full cleaned code:\n{}".format(cleaned_code))
                 raise Exception(
                     "Generated cell code is invalid: {}".format(
                         validation_result["error"]
@@ -239,38 +246,81 @@ Generate complete, self-contained Python code that:
             Exception: If parsing fails
         """
         try:
-            # Look for DESCRIPTION: and CODE: markers
+            # Strategy 1: Look for DESCRIPTION: and CODE: markers
+            # Use rfind to find the LAST occurrence of CODE: (in case examples use it)
             if "DESCRIPTION:" in raw_output and "CODE:" in raw_output:
-                # Split by markers
-                parts = raw_output.split("CODE:")
-                desc_section = parts[0]
-                code_section = parts[1] if len(parts) > 1 else ""
+                # Find the last CODE: marker (not in an example)
+                code_marker_pos = raw_output.rfind("\nCODE:")
+                if code_marker_pos == -1:
+                    code_marker_pos = raw_output.rfind("CODE:")
 
-                # Extract description
-                description = desc_section.split("DESCRIPTION:")[1].strip()
+                if code_marker_pos != -1:
+                    desc_section = raw_output[:code_marker_pos]
+                    code_section = raw_output[code_marker_pos + 5:].strip()  # +5 for "CODE:"
 
-                # Extract code
-                code = code_section.strip()
+                    # Extract description (find first DESCRIPTION:)
+                    desc_start = desc_section.find("DESCRIPTION:")
+                    if desc_start != -1:
+                        description = desc_section[desc_start + 12:].strip()  # +12 for "DESCRIPTION:"
+                    else:
+                        description = desc_section.strip()
 
-                logger.info("Parsed description ({} chars) and code ({} chars)".format(
-                    len(description), len(code)
-                ))
+                    logger.info("Parsed description ({} chars) and code ({} chars)".format(
+                        len(description), len(code_section)
+                    ))
 
-                return (description, code)
-            else:
-                # Fallback: if no markers found, try to split by code blocks
-                logger.warning("DESCRIPTION/CODE markers not found, attempting fallback parsing")
+                    return (description, code_section)
 
-                # Try to find code block
-                if "```python" in raw_output:
-                    parts = raw_output.split("```python")
-                    description = parts[0].strip()
-                    code = parts[1].split("```")[0].strip() if len(parts) > 1 else raw_output
+            # Strategy 2: Look for async def execute_cell directly
+            # This handles cases where markers are malformed
+            if "async def execute_cell" in raw_output:
+                logger.warning("Markers not found, searching for execute_cell function directly")
+
+                # Find the imports section (usually starts with "import")
+                import_match = re.search(r'^(import |from )', raw_output, re.MULTILINE)
+                if import_match:
+                    code_start = import_match.start()
+                    description = raw_output[:code_start].strip()
+                    code = raw_output[code_start:].strip()
+
+                    # Clean any trailing non-code content after the function
+                    # Look for closing ``` that would end the code block
+                    if "```" in code:
+                        # Find the code block that contains execute_cell
+                        code_blocks = re.findall(r'```python\s*(.*?)```', code, re.DOTALL)
+                        for block in code_blocks:
+                            if "async def execute_cell" in block:
+                                code = block.strip()
+                                break
+
+                    logger.info("Found execute_cell via direct search ({} chars)".format(len(code)))
                     return (description or "No description provided", code)
-                else:
-                    # Last resort: assume entire output is code
-                    logger.warning("Could not parse description, using default")
-                    return ("No description provided", raw_output)
+
+            # Strategy 3: Fallback to code blocks
+            logger.warning("DESCRIPTION/CODE markers not found, attempting fallback parsing")
+
+            if "```python" in raw_output:
+                # Find all python code blocks and pick the one with execute_cell
+                code_blocks = re.findall(r'```python\s*(.*?)```', raw_output, re.DOTALL)
+                for block in code_blocks:
+                    if "async def execute_cell" in block or "def execute_cell" in block:
+                        logger.info("Found execute_cell in code block ({} chars)".format(len(block)))
+                        # Get description from before the first code block
+                        first_block_pos = raw_output.find("```python")
+                        description = raw_output[:first_block_pos].strip()
+                        return (description or "No description provided", block.strip())
+
+                # No execute_cell found, use the largest code block
+                if code_blocks:
+                    largest_block = max(code_blocks, key=len)
+                    first_block_pos = raw_output.find("```python")
+                    description = raw_output[:first_block_pos].strip()
+                    logger.warning("Using largest code block ({} chars), execute_cell not found".format(len(largest_block)))
+                    return (description or "No description provided", largest_block.strip())
+
+            # Last resort: assume entire output is code
+            logger.warning("Could not parse description, using default")
+            return ("No description provided", raw_output)
 
         except Exception as e:
             logger.error("Failed to parse output: {}".format(e))
@@ -290,12 +340,46 @@ Generate complete, self-contained Python code that:
         cleaned = code.strip()
 
         # Remove markdown code blocks if present
+        # First check if the code is wrapped in a single code block
         if "```python" in cleaned:
-            cleaned = cleaned.split("```python")[1].split("```")[0]
+            # Find all code blocks
+            blocks = re.findall(r'```python\s*(.*?)```', cleaned, re.DOTALL)
+            if blocks:
+                # Find the block with execute_cell, or use the largest one
+                best_block = None
+                for block in blocks:
+                    if "async def execute_cell" in block or "def execute_cell" in block:
+                        best_block = block
+                        break
+                if best_block is None and blocks:
+                    best_block = max(blocks, key=len)
+                if best_block:
+                    cleaned = best_block.strip()
+            else:
+                # Fallback: simple split (handles unclosed code block at end)
+                parts = cleaned.split("```python", 1)
+                if len(parts) > 1:
+                    code_part = parts[1]
+                    # Check if there's a closing ```
+                    if "```" in code_part:
+                        cleaned = code_part.split("```")[0].strip()
+                    else:
+                        # No closing ```, use everything after ```python
+                        cleaned = code_part.strip()
         elif "```" in cleaned:
+            # Generic code block without language specifier
             parts = cleaned.split("```")
             if len(parts) >= 2:
-                cleaned = parts[1].split("```")[0]
+                # Find the part with execute_cell
+                for i, part in enumerate(parts):
+                    if i % 2 == 1 and ("async def execute_cell" in part or "def execute_cell" in part):
+                        cleaned = part.strip()
+                        break
+                else:
+                    # No execute_cell found, use the largest odd-indexed part (code blocks)
+                    code_parts = [parts[i] for i in range(1, len(parts), 2)]
+                    if code_parts:
+                        cleaned = max(code_parts, key=len).strip()
 
         cleaned = cleaned.strip()
 

@@ -289,7 +289,8 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
             model="claude-sonnet-4-20250514",
             max_tokens=8000,
             system=system_prompt,
-            messages=[{"role": "user", "content": fix_prompt}]
+            messages=[{"role": "user", "content": fix_prompt}],
+            timeout=600.0  # 10 minute timeout
         )
 
         fixed_code = response.content[0].text
@@ -431,7 +432,8 @@ CRITICAL RULES:
             model="claude-sonnet-4-20250514",
             max_tokens=8000,
             system=system_prompt,
-            messages=[{"role": "user", "content": fix_prompt}]
+            messages=[{"role": "user", "content": fix_prompt}],
+            timeout=600.0  # 10 minute timeout
         )
 
         fixed_code = response.content[0].text
