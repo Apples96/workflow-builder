@@ -9,7 +9,7 @@ Uses Claude to understand the workflow requirements and generate appropriate UI.
 import json
 import anthropic
 from typing import Dict, Any
-from api.config import settings
+from ...config import settings
 
 
 async def analyze_workflow_for_ui(workflow_code: str, workflow_name: str, workflow_description: str) -> Dict[str, Any]:

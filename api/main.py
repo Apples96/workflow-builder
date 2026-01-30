@@ -59,12 +59,12 @@ from .models import (
     CellExecuteSingleRequest,
     ExecuteWithEvaluationRequest,
 )
-from .workflow.generator import workflow_generator
-from .workflow.enhancer import WorkflowEnhancer
-from .workflow.executor import workflow_executor
+from .workflow.core.generator import workflow_generator
+from .workflow.core.enhancer import WorkflowEnhancer
+from .workflow.core.executor import workflow_executor
 from .workflow.models import Workflow, WorkflowExecution, ExecutionStatus, WorkflowPlan, WorkflowCell, CellStatus
-from .workflow.cell_planner import WorkflowPlanner
-from .workflow.cell_executor import CellExecutor
+from .workflow.cell.planner import WorkflowPlanner
+from .workflow.cell.executor import CellExecutor
 from .api_clients import paradigm_client  # Updated import
 
 # Configure logging based on debug settings
@@ -1621,9 +1621,11 @@ Please regenerate the complete cell code incorporating the user's feedback above
         # This method already handles Claude integration and prompt loading properly
         new_code = await executor.fix_cell_code(
             cell=cell,
+            failed_code=cell.generated_code or "",
             error_message=feedback_context,
-            shared_context=plan.shared_context_schema or {},
-            workflow_description=workflow.description
+            execution_context=plan.shared_context_schema or {},
+            workflow_description=workflow.description,
+            attempt_number=1
         )
 
         if not new_code:
@@ -2006,8 +2008,8 @@ async def generate_workflow_package(workflow_id: str):
         )
 
     try:
-        from .workflow.package_generator import WorkflowPackageGenerator, generate_ui_config_simple
-        from .workflow.workflow_analyzer import analyze_workflow_for_ui, generate_simple_description
+        from .workflow.generators.workflow_package import WorkflowPackageGenerator, generate_ui_config_simple
+        from .workflow.core.analyzer import analyze_workflow_for_ui, generate_simple_description
 
         logger.info(f"Generating package for workflow: {workflow_id}")
 
@@ -2029,7 +2031,7 @@ async def generate_workflow_package(workflow_id: str):
                 # Check if any cells have generated code
                 has_code = any(cell.generated_code for cell in plan.cells)
                 if has_code:
-                    from .workflow.workflow_combiner import combine_workflow_cells
+                    from .workflow.cell.combiner import combine_workflow_cells
                     workflow_code = combine_workflow_cells(
                         plan=plan,
                         workflow_description=workflow.description or ""
@@ -2139,8 +2141,8 @@ async def generate_mcp_package(workflow_id: str):
         )
 
     try:
-        from .workflow.mcp_package_generator import MCPPackageGenerator, extract_workflow_parameters_simple
-        from .workflow.workflow_analyzer import generate_simple_description
+        from .workflow.generators.mcp_package import MCPPackageGenerator, extract_workflow_parameters_simple
+        from .workflow.core.analyzer import generate_simple_description
 
         logger.info("Generating MCP package for workflow: {}".format(workflow_id))
 
@@ -2162,7 +2164,7 @@ async def generate_mcp_package(workflow_id: str):
                 # Check if any cells have generated code
                 has_code = any(cell.generated_code for cell in plan.cells)
                 if has_code:
-                    from .workflow.workflow_combiner import combine_workflow_cells
+                    from .workflow.cell.combiner import combine_workflow_cells
                     workflow_code = combine_workflow_cells(
                         plan=plan,
                         workflow_description=workflow.description or ""

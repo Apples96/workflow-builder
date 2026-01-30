@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
 from anthropic import Anthropic
-from .models import WorkflowCell, CellStatus
-from ..config import settings
+from ..models import WorkflowCell, CellStatus
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def load_cell_prompt() -> str:
     """
     try:
         current_dir = Path(__file__).parent
-        prompt_file = current_dir / "cell_prompt.md"
+        prompt_file = current_dir.parent / "prompts" / "cell.md"
 
         if prompt_file.exists():
             with open(prompt_file, 'r', encoding='utf-8') as f:

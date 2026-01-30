@@ -37,7 +37,7 @@ def load_progress_enhancement_prompt() -> str:
     """
     try:
         current_dir = Path(__file__).parent
-        prompt_file = current_dir / "progress_enhancer_prompt.md"
+        prompt_file = current_dir.parent / "prompts" / "progress_enhancer.md"
         
         if prompt_file.exists():
             with open(prompt_file, 'r', encoding='utf-8') as f:

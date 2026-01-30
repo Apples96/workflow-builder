@@ -56,7 +56,7 @@ class MCPPackageGenerator:
         self.workflow_code = workflow_code
         self.workflow_parameters = workflow_parameters
         self.workflow_output_format = workflow_output_format
-        self.templates_dir = Path(__file__).parent / "templates" / "mcp_server"
+        self.templates_dir = Path(__file__).parent.parent / "templates" / "mcp_server"
 
     def generate_zip(self) -> io.BytesIO:
         """

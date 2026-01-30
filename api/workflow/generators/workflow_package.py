@@ -53,7 +53,7 @@ class WorkflowPackageGenerator:
         self.workflow_description = workflow_description
         self.workflow_code = workflow_code
         self.ui_config = ui_config
-        self.templates_dir = Path(__file__).parent / "templates" / "workflow_runner"
+        self.templates_dir = Path(__file__).parent.parent / "templates" / "workflow_runner"
 
     def generate_zip(self) -> io.BytesIO:
         """

@@ -4,11 +4,11 @@ import re
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
-from .models import Workflow
+from ..models import Workflow
 from .enhancer import WorkflowEnhancer
 from .progress_enhancer import get_progress_enhancer
 from anthropic import Anthropic
-from ..config import settings
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def load_generator_prompt() -> str:
     """
     try:
         current_dir = Path(__file__).parent
-        prompt_file = current_dir / "generator_prompt.md"
+        prompt_file = current_dir.parent / "prompts" / "generator.md"
         
         if prompt_file.exists():
             with open(prompt_file, 'r', encoding='utf-8') as f:

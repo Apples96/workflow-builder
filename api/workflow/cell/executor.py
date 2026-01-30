@@ -37,10 +37,10 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, AsyncGenerator, Tuple
 from dataclasses import dataclass
 
-from .models import WorkflowCell, WorkflowPlan, CellStatus
-from .cell_generator import CellCodeGenerator
-from .cell_evaluator import CellOutputEvaluator, ExampleOutput, EvaluationResult
-from ..config import settings
+from ..models import WorkflowCell, WorkflowPlan, CellStatus
+from .generator import CellCodeGenerator
+from .evaluator import CellOutputEvaluator, ExampleOutput, EvaluationResult
+from ...config import settings
 
 
 @dataclass
@@ -140,7 +140,7 @@ class CellExecutor:
         """
         try:
             from pathlib import Path
-            prompt_file = Path(__file__).parent / "cell_prompt.md"
+            prompt_file = Path(__file__).parent.parent / "prompts" / "cell.md"
 
             if not prompt_file.exists():
                 logger.warning("Cell prompt file not found")

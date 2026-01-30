@@ -22,8 +22,18 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-# Import the generated workflow
-from workflow import execute_workflow, paradigm_client
+# Import the generated workflow and Paradigm client
+from workflow import execute_workflow
+from paradigm_client import ParadigmClient
+
+# Initialize Paradigm client for file operations
+PARADIGM_API_KEY = os.environ.get("LIGHTON_API_KEY") or os.environ.get("PARADIGM_API_KEY")
+PARADIGM_BASE_URL = os.environ.get("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
+
+if not PARADIGM_API_KEY:
+    raise ValueError("LIGHTON_API_KEY or PARADIGM_API_KEY environment variable is required")
+
+paradigm_client = ParadigmClient(api_key=PARADIGM_API_KEY, base_url=PARADIGM_BASE_URL)
 
 # Configure logging
 logging.basicConfig(

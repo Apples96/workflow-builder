@@ -20,7 +20,7 @@ import logging
 from typing import List, Dict, Any, Set, Tuple, Optional
 from dataclasses import dataclass
 
-from .models import WorkflowPlan, WorkflowCell
+from ..models import WorkflowPlan, WorkflowCell
 
 logger = logging.getLogger(__name__)
 
@@ -474,9 +474,9 @@ async def run_workflow(
 # ENTRY POINT
 # =============================================================================
 
-def execute_workflow(user_input: str, file_ids: Optional[List[int]] = None) -> Dict[str, Any]:
+async def execute_workflow(user_input: str, file_ids: Optional[List[int]] = None) -> Dict[str, Any]:
     """
-    Synchronous entry point for workflow execution.
+    Async entry point for workflow execution.
 
     Args:
         user_input: User's input query
@@ -485,7 +485,7 @@ def execute_workflow(user_input: str, file_ids: Optional[List[int]] = None) -> D
     Returns:
         Dict containing all workflow outputs
     """
-    return asyncio.run(run_workflow(user_input, file_ids))
+    return await run_workflow(user_input, file_ids)
 
 
 if __name__ == "__main__":
@@ -501,7 +501,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2:
         file_ids = [int(fid) for fid in sys.argv[2].split(",")]
 
-    result = execute_workflow(user_input, file_ids)
+    result = asyncio.run(execute_workflow(user_input, file_ids))
     print(json.dumps(result, indent=2, ensure_ascii=False, default=str))'''
 
     def _cell_name_to_function(self, name: str) -> str:
