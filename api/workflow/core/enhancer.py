@@ -21,9 +21,11 @@ Architecture:
 """
 
 import logging
-from pathlib import Path
 from typing import Dict, Any, List
-from anthropic import Anthropic
+
+from ...clients import create_anthropic_client
+from ...config import settings
+from ..prompts.loader import PromptLoader
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +37,7 @@ def load_enhancement_prompt() -> str:
     Returns:
         str: The enhancement prompt content, or empty string if not found
     """
-    try:
-        current_dir = Path(__file__).parent
-        prompt_file = current_dir.parent / "prompts" / "enhancer.md"
-
-        if prompt_file.exists():
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            logger.info(f"✅ Loaded enhancement prompt from {prompt_file}")
-            return content
-        else:
-            logger.warning(f"⚠️ Enhancement prompt not found at {prompt_file}")
-            return ""
-    except Exception as e:
-        logger.error(f"❌ Error loading enhancement prompt: {e}")
-        return ""
+    return PromptLoader.load_optional("enhancer")
 
 
 def load_parallelization_prompt() -> str:
@@ -59,31 +47,17 @@ def load_parallelization_prompt() -> str:
     Returns:
         str: The parallelization prompt content, or empty string if not found
     """
-    try:
-        current_dir = Path(__file__).parent
-        prompt_file = current_dir.parent / "prompts" / "parallelization.md"
-
-        if prompt_file.exists():
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            logger.info(f"✅ Loaded parallelization prompt from {prompt_file}")
-            return content
-        else:
-            logger.warning(f"⚠️ Parallelization prompt not found at {prompt_file}")
-            return ""
-    except Exception as e:
-        logger.error(f"❌ Error loading parallelization prompt: {e}")
-        return ""
+    return PromptLoader.load_optional("parallelization")
 
 
 class WorkflowEnhancer:
     """
     Enhances raw workflow descriptions into detailed specifications.
-    
+
     This class takes user-provided natural language workflow descriptions
     and transforms them into comprehensive, step-by-step specifications
     that can be effectively converted to executable code.
-    
+
     Features:
         - Language preservation (responds in same language as input)
         - Automatic parallelization optimization
@@ -91,15 +65,16 @@ class WorkflowEnhancer:
         - Paradigm API tool selection guidance
         - Professional output formatting specifications
     """
-    
-    def __init__(self, anthropic_client: Anthropic):
+
+    def __init__(self, anthropic_client=None):
         """
         Initialize the workflow enhancer.
-        
+
         Args:
-            anthropic_client: Configured Anthropic client for AI enhancement
+            anthropic_client: Optional Anthropic client. If not provided,
+                            creates one using the centralized factory.
         """
-        self.anthropic_client = anthropic_client
+        self.anthropic_client = anthropic_client or create_anthropic_client()
         self._enhancement_prompt = None
     
     @property
@@ -165,7 +140,7 @@ Enhance this workflow description:"""
             logger.info(f"🔄 Enhancing workflow description: {raw_description[:100]}...")
             
             response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=settings.anthropic_model,
                 max_tokens=12000,  # Increased for complex workflows
                 system=self.enhancement_prompt,
                 messages=[{"role": "user", "content": user_message}]
@@ -221,10 +196,10 @@ Enhance this workflow description:"""
 
         try:
             response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=settings.anthropic_model,
                 max_tokens=12000,
                 system=parallelization_prompt,
-                messages=[{"role": "user", "content": f"ENHANCED WORKFLOW DESCRIPTION:\n{enhanced_description}"}]
+                messages=[{"role": "user", "content": "ENHANCED WORKFLOW DESCRIPTION:\n{}".format(enhanced_description)}]
             )
 
             result_text = response.content[0].text.strip()
@@ -263,11 +238,11 @@ Enhance this workflow description:"""
 
         Returns:
             str: System prompt for the parallelization LLM call
+
+        Raises:
+            FileNotFoundError: If the parallelization prompt cannot be loaded
         """
-        prompt = load_parallelization_prompt()
-        if not prompt:
-            raise Exception("Could not load parallelization prompt from prompts/parallelization.md")
-        return prompt
+        return PromptLoader.load("parallelization")
 
     def _parse_parallelization_info(self, result_text: str) -> Dict[str, Any]:
         """

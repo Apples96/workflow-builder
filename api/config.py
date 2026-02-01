@@ -65,6 +65,12 @@ class Settings:
         # Workflow execution settings
         self.max_execution_time: int = 1800  # 20 minutes maximum execution time
         self.max_workflow_steps: int = 50   # Maximum number of workflow steps
+
+        # LLM Configuration (Anthropic)
+        self.anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+        self.anthropic_timeout: float = float(os.getenv("ANTHROPIC_TIMEOUT", "120"))
+        self.anthropic_max_tokens_cell: int = int(os.getenv("ANTHROPIC_MAX_TOKENS_CELL", "16000"))
+        self.anthropic_max_tokens_plan: int = int(os.getenv("ANTHROPIC_MAX_TOKENS_PLAN", "8000"))
         
     def validate(self) -> None:
         """

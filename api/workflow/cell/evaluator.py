@@ -20,12 +20,12 @@ The evaluator uses a "smoke test" approach:
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from anthropic import Anthropic
 from ..models import WorkflowCell
+from ...clients import create_anthropic_client
 from ...config import settings
+from ..prompts.loader import PromptLoader
 
 logger = logging.getLogger(__name__)
 
@@ -73,21 +73,7 @@ def load_evaluator_prompt() -> str:
     Returns:
         str: The evaluation system prompt content, or empty string if not found
     """
-    try:
-        current_dir = Path(__file__).parent
-        prompt_file = current_dir.parent / "prompts" / "evaluator.md"
-
-        if prompt_file.exists():
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            logger.info("Loaded evaluator prompt from {}".format(prompt_file))
-            return content
-        else:
-            logger.warning("Evaluator prompt not found at {}".format(prompt_file))
-            return ""
-    except Exception as e:
-        logger.error("Error loading evaluator prompt: {}".format(e))
-        return ""
+    return PromptLoader.load_optional("evaluator")
 
 
 class CellOutputEvaluator:
@@ -105,7 +91,7 @@ class CellOutputEvaluator:
 
     def __init__(
         self,
-        anthropic_client: Optional[Anthropic] = None,
+        anthropic_client=None,
         max_evaluation_retries: int = 5
     ):
         """
@@ -113,12 +99,10 @@ class CellOutputEvaluator:
 
         Args:
             anthropic_client: Optional Anthropic client. If not provided,
-                            creates one using settings.
+                            creates one using the centralized factory.
             max_evaluation_retries: Maximum evaluation/fix retry cycles
         """
-        self.anthropic_client = anthropic_client or Anthropic(
-            api_key=settings.anthropic_api_key
-        )
+        self.anthropic_client = anthropic_client or create_anthropic_client()
         self.max_evaluation_retries = max_evaluation_retries
 
     async def evaluate_smoke_test_output(
@@ -162,11 +146,11 @@ class CellOutputEvaluator:
         try:
             # Call Claude to evaluate the output
             response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=settings.anthropic_model,
                 max_tokens=4000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
-                timeout=600.0  # 10 minute timeout
+                timeout=settings.anthropic_timeout
             )
 
             # Parse the evaluation response

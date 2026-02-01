@@ -20,12 +20,12 @@ a structured plan with:
 import json
 import logging
 import re
-from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
-from anthropic import Anthropic
 from ..models import WorkflowPlan, WorkflowCell, CellStatus
+from ...clients import create_anthropic_client
 from ...config import settings
+from ..prompts.loader import PromptLoader
 
 logger = logging.getLogger(__name__)
 
@@ -84,23 +84,12 @@ def load_planner_prompt() -> str:
     Load the workflow planner system prompt from markdown file.
 
     Returns:
-        str: The planner system prompt content, or empty string if not found
-    """
-    try:
-        current_dir = Path(__file__).parent
-        prompt_file = current_dir.parent / "prompts" / "planner.md"
+        str: The planner system prompt content
 
-        if prompt_file.exists():
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            logger.info("Loaded planner system prompt from {}".format(prompt_file))
-            return content
-        else:
-            logger.warning("Planner system prompt not found at {}".format(prompt_file))
-            return ""
-    except Exception as e:
-        logger.error("Error loading planner system prompt: {}".format(e))
-        return ""
+    Raises:
+        FileNotFoundError: If the planner prompt cannot be loaded
+    """
+    return PromptLoader.load("planner")
 
 
 class WorkflowPlanner:
@@ -115,17 +104,15 @@ class WorkflowPlanner:
         anthropic_client: Anthropic API client for Claude calls
     """
 
-    def __init__(self, anthropic_client: Optional[Anthropic] = None):
+    def __init__(self, anthropic_client=None):
         """
         Initialize the workflow planner.
 
         Args:
             anthropic_client: Optional Anthropic client. If not provided,
-                            creates one using settings.
+                            creates one using the centralized factory.
         """
-        self.anthropic_client = anthropic_client or Anthropic(
-            api_key=settings.anthropic_api_key
-        )
+        self.anthropic_client = anthropic_client or create_anthropic_client()
 
     async def create_plan(
         self,
@@ -172,8 +159,8 @@ class WorkflowPlanner:
 
             # Call Claude to generate the plan
             response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=8000,  # Increased to handle complex workflows
+                model=settings.anthropic_model,
+                max_tokens=settings.anthropic_max_tokens_plan,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}]
             )

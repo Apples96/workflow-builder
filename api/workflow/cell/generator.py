@@ -20,12 +20,12 @@ The generator produces code that:
 import asyncio
 import logging
 import re
-from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
-from anthropic import Anthropic
 from ..models import WorkflowCell, CellStatus
+from ...clients import create_anthropic_client
 from ...config import settings
+from ..prompts.loader import PromptLoader
 
 logger = logging.getLogger(__name__)
 
@@ -35,23 +35,12 @@ def load_cell_prompt() -> str:
     Load the cell generation system prompt from markdown file.
 
     Returns:
-        str: The cell generation system prompt content, or empty string if not found
-    """
-    try:
-        current_dir = Path(__file__).parent
-        prompt_file = current_dir.parent / "prompts" / "cell.md"
+        str: The cell generation system prompt content
 
-        if prompt_file.exists():
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            logger.info("Loaded cell generation prompt from {}".format(prompt_file))
-            return content
-        else:
-            logger.warning("Cell generation prompt not found at {}".format(prompt_file))
-            return ""
-    except Exception as e:
-        logger.error("Error loading cell generation prompt: {}".format(e))
-        return ""
+    Raises:
+        FileNotFoundError: If the cell prompt cannot be loaded
+    """
+    return PromptLoader.load("cell")
 
 
 class CellCodeGenerator:
@@ -65,17 +54,15 @@ class CellCodeGenerator:
         anthropic_client: Anthropic API client for Claude calls
     """
 
-    def __init__(self, anthropic_client: Optional[Anthropic] = None):
+    def __init__(self, anthropic_client=None):
         """
         Initialize the cell code generator.
 
         Args:
             anthropic_client: Optional Anthropic client. If not provided,
-                            creates one using settings.
+                            creates one using the centralized factory.
         """
-        self.anthropic_client = anthropic_client or Anthropic(
-            api_key=settings.anthropic_api_key
-        )
+        self.anthropic_client = anthropic_client or create_anthropic_client()
 
     async def generate_cell_code(
         self,
@@ -113,13 +100,13 @@ class CellCodeGenerator:
 
         try:
             # Call Claude to generate the code
-            # Add timeout to avoid the 10-minute limit that requires streaming
+            # Use configured max tokens (reduced from 32000 to save costs)
             response = self.anthropic_client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=32000,
+                model=settings.anthropic_model,
+                max_tokens=settings.anthropic_max_tokens_cell,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
-                timeout=600.0  # 10 minute timeout
+                timeout=settings.anthropic_timeout
             )
 
             # Get the raw output

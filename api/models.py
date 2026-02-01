@@ -46,23 +46,37 @@ class WorkflowStatus(str, Enum):
 class WorkflowCreateRequest(BaseModel):
     """
     Request model for creating a new workflow.
-    
+
     Used when users want to create a workflow from a natural language description.
     The system will generate executable code based on the description and context.
     """
-    description: str = Field(..., description="Natural language description of the workflow")
+    description: str = Field(
+        ...,
+        description="Natural language description of the workflow",
+        min_length=10,
+        max_length=50000
+    )
     name: Optional[str] = Field(None, description="Optional name for the workflow")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context for code generation")
 
 class WorkflowExecuteRequest(BaseModel):
     """
     Request model for executing an existing workflow.
-    
+
     Contains the user input to process and optional file attachments.
     The workflow will be executed with this input and return results.
     """
-    user_input: str = Field(..., description="Input data to process through the workflow")
-    attached_file_ids: Optional[List[int]] = Field(None, description="List of file IDs attached to this query")
+    user_input: str = Field(
+        ...,
+        description="Input data to process through the workflow",
+        min_length=1,
+        max_length=10000
+    )
+    attached_file_ids: Optional[List[int]] = Field(
+        None,
+        description="List of file IDs attached to this query",
+        max_length=20
+    )
 
 class WorkflowResponse(BaseModel):
     """

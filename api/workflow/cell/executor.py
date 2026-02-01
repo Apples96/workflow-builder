@@ -271,8 +271,8 @@ The code must be complete and executable.
         )
 
         # Call Claude to fix the code
-        from anthropic import Anthropic
-        anthropic_client = Anthropic(api_key=settings.anthropic_api_key)
+        from ...clients import create_anthropic_client
+        anthropic_client = create_anthropic_client()
 
         system_prompt = """You are an expert Python debugger specializing in fixing workflow automation code.
 
@@ -287,11 +287,11 @@ CRITICAL RULES YOU MUST FOLLOW:
 Your fix MUST be syntactically correct and follow all the coding guidelines exactly."""
 
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=8000,
+            model=settings.anthropic_model,
+            max_tokens=settings.anthropic_max_tokens_plan,
             system=system_prompt,
             messages=[{"role": "user", "content": fix_prompt}],
-            timeout=600.0  # 10 minute timeout
+            timeout=settings.anthropic_timeout
         )
 
         fixed_code = response.content[0].text
@@ -414,8 +414,8 @@ The code must be complete and executable.
         )
 
         # Call Claude to fix the code
-        from anthropic import Anthropic
-        anthropic_client = Anthropic(api_key=settings.anthropic_api_key)
+        from ...clients import create_anthropic_client
+        anthropic_client = create_anthropic_client()
 
         system_prompt = """You are an expert Python developer fixing workflow automation code.
 
@@ -430,11 +430,11 @@ CRITICAL RULES:
 6. Follow all formatting rules from the REMEMBER section"""
 
         response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=8000,
+            model=settings.anthropic_model,
+            max_tokens=settings.anthropic_max_tokens_plan,
             system=system_prompt,
             messages=[{"role": "user", "content": fix_prompt}],
-            timeout=600.0  # 10 minute timeout
+            timeout=settings.anthropic_timeout
         )
 
         fixed_code = response.content[0].text

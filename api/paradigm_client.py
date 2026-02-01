@@ -40,6 +40,13 @@ except ImportError:
     HAS_SETTINGS = False
     settings = None
 
+# Try to import retry logic
+try:
+    from .clients.retry import call_with_retry
+    HAS_RETRY = True
+except ImportError:
+    HAS_RETRY = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -200,13 +207,15 @@ class ParadigmClient:
         company_scope: bool = False,
         model: str = "alfred-ft5",
         chat_setting_id: Optional[int] = None,
-        timeout: int = 300
+        timeout: int = 300,
+        max_retries: int = 3
     ) -> Dict[str, Any]:
         """
         Unified v3 Agent API - the primary interface for Paradigm queries.
 
         Uses the /api/v3/threads/turns endpoint which combines thread creation
-        and turn creation in a single request.
+        and turn creation in a single request. Includes automatic retry logic
+        for transient failures.
 
         Args:
             query: The query or instruction for the agent
@@ -218,6 +227,7 @@ class ParadigmClient:
             model: The model to use (default: "alfred-ft5")
             chat_setting_id: Agent settings ID (uses instance default if not provided)
             timeout: Request timeout in seconds (default: 300)
+            max_retries: Maximum number of retry attempts for transient failures (default: 3)
 
         Returns:
             dict: Full v3 API response
@@ -225,7 +235,55 @@ class ParadigmClient:
         Raises:
             Exception: If API call fails or returns an error
         """
-        endpoint = f"{self.v3_base_url}{self.v3_agent_endpoint}"
+        # Use retry wrapper if available
+        if HAS_RETRY and max_retries > 0:
+            return await call_with_retry(
+                lambda: self._agent_query_impl(
+                    query=query,
+                    file_ids=file_ids,
+                    force_tool=force_tool,
+                    workspace_ids=workspace_ids,
+                    private_scope=private_scope,
+                    company_scope=company_scope,
+                    model=model,
+                    chat_setting_id=chat_setting_id,
+                    timeout=timeout
+                ),
+                max_retries=max_retries,
+                operation_name="Paradigm agent_query"
+            )
+        else:
+            return await self._agent_query_impl(
+                query=query,
+                file_ids=file_ids,
+                force_tool=force_tool,
+                workspace_ids=workspace_ids,
+                private_scope=private_scope,
+                company_scope=company_scope,
+                model=model,
+                chat_setting_id=chat_setting_id,
+                timeout=timeout
+            )
+
+    async def _agent_query_impl(
+        self,
+        query: str,
+        file_ids: Optional[List[int]] = None,
+        force_tool: Optional[str] = None,
+        workspace_ids: Optional[List[int]] = None,
+        private_scope: bool = True,
+        company_scope: bool = False,
+        model: str = "alfred-ft5",
+        chat_setting_id: Optional[int] = None,
+        timeout: int = 300
+    ) -> Dict[str, Any]:
+        """
+        Internal implementation of agent_query without retry wrapper.
+
+        This method contains the actual API call logic and is wrapped by
+        agent_query with retry support.
+        """
+        endpoint = "{}{}".format(self.v3_base_url, self.v3_agent_endpoint)
 
         # Use provided chat_setting_id or fall back to instance value
         setting_id = chat_setting_id or self.chat_setting_id
@@ -246,50 +304,49 @@ class ParadigmClient:
         if force_tool:
             payload["force_tool"] = force_tool
 
-        try:
-            logger.info(f"🤖 PARADIGM v3 AGENT QUERY")
-            logger.info(f"📡 ENDPOINT: {endpoint}")
-            logger.info(f"🔍 QUERY: {query[:100]}...")
-            logger.info(f"📋 FILE_IDS: {file_ids}")
-            logger.info(f"🔧 FORCE_TOOL: {force_tool or 'None (agent chooses)'}")
-            logger.info(f"⚙️ CHAT_SETTING_ID: {setting_id}")
+        logger.info("PARADIGM v3 AGENT QUERY")
+        logger.info("ENDPOINT: {}".format(endpoint))
+        logger.info("QUERY: {}...".format(query[:100]))
+        logger.info("FILE_IDS: {}".format(file_ids))
+        logger.info("FORCE_TOOL: {}".format(force_tool or 'None (agent chooses)'))
+        logger.info("CHAT_SETTING_ID: {}".format(setting_id))
 
-            session = await self._get_session()
-            async with session.post(
-                endpoint,
-                json=payload,
-                headers=self._get_headers(),
-                timeout=aiohttp.ClientTimeout(total=timeout)
-            ) as response:
-                response_text = await response.text()
-                logger.info(f"📥 RAW RESPONSE: Status {response.status}, Body: {response_text[:500]}...")
+        session = await self._get_session()
+        async with session.post(
+            endpoint,
+            json=payload,
+            headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as response:
+            response_text = await response.text()
+            logger.info("RAW RESPONSE: Status {}, Body: {}...".format(response.status, response_text[:500]))
 
-                if response.status == 200:
-                    result = json.loads(response_text)
-                    answer = _extract_v3_answer(result)
-                    logger.info(f"✅ AGENT QUERY SUCCESS")
-                    logger.info(f"💬 ANSWER: {answer[:300]}..." if answer else "No text answer")
-                    return result
+            if response.status == 200:
+                result = json.loads(response_text)
+                answer = _extract_v3_answer(result)
+                logger.info("AGENT QUERY SUCCESS")
+                logger.info("ANSWER: {}...".format(answer[:300]) if answer else "No text answer")
+                return result
 
-                elif response.status == 202:
-                    # Background processing - return partial result
-                    logger.info(f"⏳ AGENT QUERY ACCEPTED (202) - processing in background")
-                    result = json.loads(response_text)
-                    return result
+            elif response.status == 202:
+                # Background processing - return partial result
+                logger.info("AGENT QUERY ACCEPTED (202) - processing in background")
+                result = json.loads(response_text)
+                return result
 
-                else:
-                    logger.error(f"❌ PARADIGM v3 AGENT ERROR: {response.status} - {response_text}")
-                    raise Exception(f"Paradigm v3 agent query failed: {response.status} - {response_text}")
+            elif response.status in (429, 500, 502, 503, 504):
+                # Retryable server errors - raise to trigger retry
+                logger.warning("PARADIGM v3 AGENT RETRYABLE ERROR: {} - {}".format(response.status, response_text))
+                raise aiohttp.ClientResponseError(
+                    request_info=response.request_info,
+                    history=response.history,
+                    status=response.status,
+                    message=response_text
+                )
 
-        except asyncio.TimeoutError:
-            logger.error(f"❌ AGENT QUERY TIMEOUT after {timeout}s")
-            raise Exception(f"Agent query timed out after {timeout} seconds")
-        except aiohttp.ClientError as e:
-            logger.error(f"❌ NETWORK ERROR: {str(e)}")
-            raise Exception(f"Network error calling Paradigm v3 agent API: {str(e)}")
-        except Exception as e:
-            logger.error(f"❌ AGENT QUERY FAILED: {str(e)}")
-            raise
+            else:
+                logger.error("PARADIGM v3 AGENT ERROR: {} - {}".format(response.status, response_text))
+                raise Exception("Paradigm v3 agent query failed: {} - {}".format(response.status, response_text))
 
     def extract_answer(self, response: Dict[str, Any]) -> str:
         """Extract text answer from v3 response."""
