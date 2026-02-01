@@ -76,7 +76,7 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
             "depends_on": [],
             "inputs_required": ["list", "of", "variable_names"],
             "outputs_produced": ["list", "of", "variable_names"],
-            "paradigm_tools_used": ["agent_query", "agent_query_with_retry", "etc"]
+            "paradigm_tools_used": ["agent_query", "get_file_chunks", "wait_for_embedding", "etc"]
         }
     ],
     "shared_context_schema": {
@@ -104,15 +104,10 @@ When planning steps, use these tool names in `paradigm_tools_used`:
 
 ### 🚨 CRITICAL: Tool Selection Guide (v3 API)
 
-**Use `agent_query_with_retry` for MOST document queries (RECOMMENDED):**
-- Best reliability with automatic retry strategy
-- "Liberty first, forced tools on retry" approach
-- Examples: "Extract invoice data", "Summarize document", "Find specific fields"
-
-**Use `agent_query` with force_tool for SPECIFIC needs:**
-- force_tool="document_search": Quick simple queries (2-5 seconds)
-- force_tool="document_analysis": Comprehensive analysis (NO POLLING NEEDED in v3!)
-- force_tool=None: Let agent choose (for general queries)
+**Use `agent_query` with appropriate force_tool:**
+- force_tool="document_search": Quick simple queries (2-5 seconds) - finding specific fields
+- force_tool="document_analysis": Comprehensive analysis (10-30 seconds, NO POLLING NEEDED in v3!)
+- force_tool=None: Let agent choose automatically (for general queries)
 
 **Use `get_file_chunks` for RAW TEXT extraction:**
 - Getting literal text content without AI interpretation
@@ -126,36 +121,30 @@ When planning steps, use these tool names in `paradigm_tools_used`:
 
 ### Tool Descriptions (v3 Agent API)
 
-1. **agent_query_with_retry** - Unified v3 query with retry strategy (RECOMMENDED)
-   - Use when: Any document query requiring reliable results
-   - Inputs: query, file_ids
-   - Outputs: v3 response (use _extract_answer() for text)
-   - **KEY**: Automatic retries for best reliability
-
-2. **agent_query** - Unified v3 Agent API query
-   - Use when: Direct queries with optional force_tool
+1. **agent_query** - Unified v3 Agent API query
+   - Use when: All document queries
    - Inputs: query, file_ids, optional force_tool
    - Outputs: v3 response with thread_id, turn_id, messages
-   - force_tool options: "document_search", "document_analysis", None
+   - force_tool options: "document_search" (fast), "document_analysis" (comprehensive), None (agent chooses)
 
-3. **wait_for_embedding** - Wait for file to be indexed (v2 API)
+2. **wait_for_embedding** - Wait for file to be indexed (v2 API)
    - Use when: After uploading files, before using them
    - Inputs: file_id
    - Outputs: file metadata when ready
    - **CRITICAL**: Always wait for embedding before agent queries
 
-4. **get_file_chunks** - Get raw text chunks from documents (v2 API)
+3. **get_file_chunks** - Get raw text chunks from documents (v2 API)
    - Use when: Extracting literal text, exact content, verbatim quotes
    - Inputs: file_id
    - Outputs: chunks array with raw text and positions
    - **KEY**: Returns ACTUAL document text, not AI-generated answers
 
-5. **upload_file** - Upload a file to Paradigm (v2 API)
+4. **upload_file** - Upload a file to Paradigm (v2 API)
    - Use when: User wants to add new documents
    - Inputs: file content
    - Outputs: file_id, file metadata
 
-**NOTE**: v3 Agent API replaces separate document_search/document_analysis/chat_completion with unified agent_query methods. No polling needed for document_analysis in v3!
+**NOTE**: v3 Agent API uses unified agent_query() with force_tool parameter. No polling needed for document_analysis in v3!
 
 ## PLANNING RULES
 

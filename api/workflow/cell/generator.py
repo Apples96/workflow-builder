@@ -82,9 +82,9 @@ class CellCodeGenerator:
         cell: WorkflowCell,
         available_context: Dict[str, str],
         workflow_description: str
-    ) -> tuple[str, str]:
+    ) -> str:
         """
-        Generate Python code and description for a single cell.
+        Generate Python code for a single cell.
 
         Args:
             cell: The cell definition with inputs/outputs
@@ -92,8 +92,7 @@ class CellCodeGenerator:
             workflow_description: Original workflow description for context
 
         Returns:
-            tuple: (description, code) - Description explaining what the cell does
-                   in plain English, and the complete Python code for this cell
+            str: The complete Python code for this cell
 
         Raises:
             Exception: If code generation fails
@@ -126,16 +125,10 @@ class CellCodeGenerator:
             # Get the raw output
             raw_output = response.content[0].text
             logger.info("Raw cell output generated ({} chars)".format(len(raw_output)))
-            # Debug: log the start of raw output to verify DESCRIPTION/CODE format
-            logger.info("Raw cell output (first 1000 chars):\n{}".format(raw_output[:1000]))
+            logger.info("Raw cell output (first 500 chars):\n{}".format(raw_output[:500]))
 
-            # Parse description and code
-            description, code = self._parse_output(raw_output)
-            logger.info("Parsed code ({} chars)".format(len(code)))
-            logger.info("Parsed code (first 500 chars):\n{}".format(code[:500]))
-
-            # Clean up the code
-            cleaned_code = self._clean_code(code)
+            # Extract and clean up the code
+            cleaned_code = self._extract_code(raw_output)
             logger.info("Cleaned code ({} chars)".format(len(cleaned_code)))
             logger.info("Cleaned code (first 500 chars):\n{}".format(cleaned_code[:500]))
 
@@ -150,7 +143,7 @@ class CellCodeGenerator:
                 )
 
             logger.info("Cell code validated successfully")
-            return (description, cleaned_code)
+            return cleaned_code
 
         except Exception as e:
             logger.error("Cell code generation failed: {}".format(str(e)))
@@ -225,146 +218,42 @@ Generate complete, self-contained Python code that:
 
         return message
 
-    def _parse_output(self, raw_output: str) -> tuple[str, str]:
+    def _extract_code(self, raw_output: str) -> str:
         """
-        Parse Claude's output to extract description and code.
+        Extract Python code from Claude's output.
 
-        Expected format:
-        DESCRIPTION:
-        [description text]
-
-        CODE:
-        [python code]
+        The prompt asks for pure code, but we handle cases where:
+        - Code is wrapped in markdown code blocks
+        - There's explanatory text before/after the code
 
         Args:
             raw_output: Raw text from Claude
 
         Returns:
-            tuple: (description, code)
-
-        Raises:
-            Exception: If parsing fails
+            str: Cleaned Python code
         """
-        try:
-            # Strategy 1: Look for DESCRIPTION: and CODE: markers
-            # Use rfind to find the LAST occurrence of CODE: (in case examples use it)
-            if "DESCRIPTION:" in raw_output and "CODE:" in raw_output:
-                # Find the last CODE: marker (not in an example)
-                code_marker_pos = raw_output.rfind("\nCODE:")
-                if code_marker_pos == -1:
-                    code_marker_pos = raw_output.rfind("CODE:")
+        cleaned = raw_output.strip()
 
-                if code_marker_pos != -1:
-                    desc_section = raw_output[:code_marker_pos]
-                    code_section = raw_output[code_marker_pos + 5:].strip()  # +5 for "CODE:"
-
-                    # Extract description (find first DESCRIPTION:)
-                    desc_start = desc_section.find("DESCRIPTION:")
-                    if desc_start != -1:
-                        description = desc_section[desc_start + 12:].strip()  # +12 for "DESCRIPTION:"
-                    else:
-                        description = desc_section.strip()
-
-                    logger.info("Parsed description ({} chars) and code ({} chars)".format(
-                        len(description), len(code_section)
-                    ))
-
-                    return (description, code_section)
-
-            # Strategy 2: Look for async def execute_cell directly
-            # This handles cases where markers are malformed
-            if "async def execute_cell" in raw_output:
-                logger.warning("Markers not found, searching for execute_cell function directly")
-
-                # Find the imports section (usually starts with "import")
-                import_match = re.search(r'^(import |from )', raw_output, re.MULTILINE)
-                if import_match:
-                    code_start = import_match.start()
-                    description = raw_output[:code_start].strip()
-                    code = raw_output[code_start:].strip()
-
-                    # Clean any trailing non-code content after the function
-                    # Look for closing ``` that would end the code block
-                    if "```" in code:
-                        # Find the code block that contains execute_cell
-                        code_blocks = re.findall(r'```python\s*(.*?)```', code, re.DOTALL)
-                        for block in code_blocks:
-                            if "async def execute_cell" in block:
-                                code = block.strip()
-                                break
-
-                    logger.info("Found execute_cell via direct search ({} chars)".format(len(code)))
-                    return (description or "No description provided", code)
-
-            # Strategy 3: Fallback to code blocks
-            logger.warning("DESCRIPTION/CODE markers not found, attempting fallback parsing")
-
-            if "```python" in raw_output:
-                # Find all python code blocks and pick the one with execute_cell
-                code_blocks = re.findall(r'```python\s*(.*?)```', raw_output, re.DOTALL)
-                for block in code_blocks:
-                    if "async def execute_cell" in block or "def execute_cell" in block:
-                        logger.info("Found execute_cell in code block ({} chars)".format(len(block)))
-                        # Get description from before the first code block
-                        first_block_pos = raw_output.find("```python")
-                        description = raw_output[:first_block_pos].strip()
-                        return (description or "No description provided", block.strip())
-
-                # No execute_cell found, use the largest code block
-                if code_blocks:
-                    largest_block = max(code_blocks, key=len)
-                    first_block_pos = raw_output.find("```python")
-                    description = raw_output[:first_block_pos].strip()
-                    logger.warning("Using largest code block ({} chars), execute_cell not found".format(len(largest_block)))
-                    return (description or "No description provided", largest_block.strip())
-
-            # Last resort: assume entire output is code
-            logger.warning("Could not parse description, using default")
-            return ("No description provided", raw_output)
-
-        except Exception as e:
-            logger.error("Failed to parse output: {}".format(e))
-            # Return safe defaults
-            return ("Error parsing description", raw_output)
-
-    def _clean_code(self, code: str) -> str:
-        """
-        Clean up generated code by removing markdown and fixing common issues.
-
-        Args:
-            code: Raw code from Claude
-
-        Returns:
-            str: Cleaned code
-        """
-        cleaned = code.strip()
-
-        # Remove markdown code blocks if present
-        # First check if the code is wrapped in a single code block
+        # Strategy 1: Extract from markdown code blocks if present
         if "```python" in cleaned:
-            # Find all code blocks
             blocks = re.findall(r'```python\s*(.*?)```', cleaned, re.DOTALL)
             if blocks:
                 # Find the block with execute_cell, or use the largest one
-                best_block = None
                 for block in blocks:
                     if "async def execute_cell" in block or "def execute_cell" in block:
-                        best_block = block
+                        cleaned = block.strip()
                         break
-                if best_block is None and blocks:
-                    best_block = max(blocks, key=len)
-                if best_block:
-                    cleaned = best_block.strip()
+                else:
+                    # No execute_cell found, use the largest block
+                    cleaned = max(blocks, key=len).strip()
             else:
-                # Fallback: simple split (handles unclosed code block at end)
+                # Unclosed code block - extract everything after ```python
                 parts = cleaned.split("```python", 1)
                 if len(parts) > 1:
                     code_part = parts[1]
-                    # Check if there's a closing ```
                     if "```" in code_part:
                         cleaned = code_part.split("```")[0].strip()
                     else:
-                        # No closing ```, use everything after ```python
                         cleaned = code_part.strip()
         elif "```" in cleaned:
             # Generic code block without language specifier
@@ -376,12 +265,16 @@ Generate complete, self-contained Python code that:
                         cleaned = part.strip()
                         break
                 else:
-                    # No execute_cell found, use the largest odd-indexed part (code blocks)
+                    # Use the largest odd-indexed part (inside code blocks)
                     code_parts = [parts[i] for i in range(1, len(parts), 2)]
                     if code_parts:
                         cleaned = max(code_parts, key=len).strip()
 
-        cleaned = cleaned.strip()
+        # Strategy 2: Find code by looking for imports if output starts with text
+        if not cleaned.startswith("import") and not cleaned.startswith("from") and not cleaned.startswith("#"):
+            import_match = re.search(r'^(import |from )', cleaned, re.MULTILINE)
+            if import_match:
+                cleaned = cleaned[import_match.start():].strip()
 
         # Ensure execute_cell is async
         if "def execute_cell(" in cleaned and "async def execute_cell(" not in cleaned:
@@ -443,7 +336,7 @@ Generate complete, self-contained Python code that:
         cells: List[WorkflowCell],
         available_context: Dict[str, str],
         workflow_description: str
-    ) -> List[Tuple[WorkflowCell, str, str, Optional[Exception]]]:
+    ) -> List[Tuple[WorkflowCell, str, Optional[Exception]]]:
         """
         Generate code for all cells in a layer concurrently.
 
@@ -457,9 +350,8 @@ Generate complete, self-contained Python code that:
             workflow_description: Original workflow description for context
 
         Returns:
-            List of tuples: (cell, description, code, error)
+            List of tuples: (cell, code, error)
             - cell: The WorkflowCell object
-            - description: Generated code description (or empty if error)
             - code: Generated code (or empty if error)
             - error: Exception if generation failed, None if successful
         """
@@ -471,28 +363,28 @@ Generate complete, self-contained Python code that:
             len(cells), layer
         ))
 
-        async def generate_single_cell(cell: WorkflowCell) -> Tuple[WorkflowCell, str, str, Optional[Exception]]:
+        async def generate_single_cell(cell: WorkflowCell) -> Tuple[WorkflowCell, str, Optional[Exception]]:
             """Generate code for a single cell, capturing any errors."""
             try:
-                description, code = await self.generate_cell_code(
+                code = await self.generate_cell_code(
                     cell=cell,
                     available_context=available_context,
                     workflow_description=workflow_description
                 )
-                return (cell, description, code, None)
+                return (cell, code, None)
             except Exception as e:
                 logger.error("Failed to generate code for cell '{}': {}".format(
                     cell.name, str(e)
                 ))
-                return (cell, "", "", e)
+                return (cell, "", e)
 
         # Generate all cells in parallel
         tasks = [generate_single_cell(cell) for cell in cells]
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
         # Count successes and failures
-        successes = sum(1 for _, _, _, err in results if err is None)
-        failures = sum(1 for _, _, _, err in results if err is not None)
+        successes = sum(1 for _, _, err in results if err is None)
+        failures = sum(1 for _, _, err in results if err is not None)
 
         logger.info("Layer {} code generation complete: {} successes, {} failures".format(
             layer, successes, failures

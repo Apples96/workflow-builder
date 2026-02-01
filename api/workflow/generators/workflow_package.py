@@ -119,7 +119,7 @@ class WorkflowPackageGenerator:
         zip_file.writestr('backend/workflow.py', self.workflow_code)
 
         # Add paradigm_client.py (standalone client)
-        paradigm_client_path = Path(__file__).parent.parent / "paradigm_client_standalone.py"
+        paradigm_client_path = Path(__file__).parent.parent.parent / "paradigm_client_standalone.py"
         with open(paradigm_client_path, 'r', encoding='utf-8') as f:
             paradigm_client_code = f.read()
 

@@ -56,17 +56,15 @@ class ParadigmClient:
     - _get_session
     - close
     - agent_query  <-- PRIMARY: Unified v3 API for all queries!
-    - agent_query_with_retry  <-- RECOMMENDED: Liberty first, forced tools on retry!
     - _extract_answer  <-- Helper to extract text from v3 response
     - upload_file  <-- v2 API for file uploads (unchanged)
     - get_file  <-- v2 API for checking file status (unchanged)
     - wait_for_embedding  <-- v2 API for waiting until files are ready (unchanged)
 
-    ⚠️ RETRY STRATEGY (RECOMMENDED):
-    Use agent_query_with_retry() which implements:
-    1. First: Let agent choose tool freely
-    2. Retry 1: Force document_search
-    3. Retry 2: Force document_analysis
+    ⚠️ force_tool OPTIONS for agent_query:
+    - force_tool=None: Agent chooses automatically (default)
+    - force_tool="document_search": Quick queries (2-5 seconds)
+    - force_tool="document_analysis": Comprehensive analysis (10-30 seconds)
     '''
 
     def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai", chat_setting_id: int = 160):
@@ -164,10 +162,9 @@ class ParadigmClient:
             query: The query or instruction for the agent
             file_ids: Optional list of file IDs to work with
             force_tool: Optional tool to force the agent to use:
-                       - "document_search": Search through documents
-                       - "document_analysis": Deep analysis of documents
-                       - "code_execution": Execute code (if available)
-                       - None: Let the agent choose the appropriate tool
+                       - "document_search": Search through documents (fast, 2-5 seconds)
+                       - "document_analysis": Deep analysis of documents (comprehensive)
+                       - None: Let the agent choose the appropriate tool (recommended)
             response_format: Optional dict specifying response format (e.g., JSON schema)
             model: The model to use (default: "alfred-ft5")
             timeout: Request timeout in seconds (default: 300)
@@ -297,88 +294,6 @@ class ParadigmClient:
             elapsed += poll_interval
 
         raise Exception("Polling timed out after {}s".format(max_wait_time))
-
-    async def agent_query_with_retry(
-        self,
-        query: str,
-        file_ids: Optional[List[int]] = None,
-        retry_tools: List[str] = None,
-        model: str = "alfred-ft5",
-        timeout: int = 300
-    ) -> Dict[str, Any]:
-        '''
-        Liberty first, forced tools on retry strategy.
-
-        This implements the recommended retry pattern:
-        1. First attempt: Let agent choose tool freely
-        2. Retry 1: Force document_search if file_ids provided
-        3. Retry 2: Force document_analysis if file_ids provided
-
-        Args:
-            query: The query or instruction
-            file_ids: Optional list of file IDs
-            retry_tools: List of tools to try on retries (default: ["document_search", "document_analysis"])
-            model: The model to use
-            timeout: Request timeout per attempt
-
-        Returns:
-            dict: The successful v3 API response
-
-        Example:
-            result = await paradigm_client.agent_query_with_retry(
-                query="Extract the invoice total",
-                file_ids=[123]
-            )
-            answer = paradigm_client._extract_answer(result)
-        '''
-        if retry_tools is None:
-            retry_tools = ["document_search", "document_analysis"] if file_ids else []
-
-        # Attempt 1: Liberty - let agent choose
-        try:
-            logger.info("🔄 ATTEMPT 1 (Liberty): Agent chooses tool")
-            result = await self.agent_query(
-                query=query,
-                file_ids=file_ids,
-                force_tool=None,
-                model=model,
-                timeout=timeout
-            )
-
-            answer = self._extract_answer(result)
-            if answer and len(answer.strip()) > 10:
-                logger.info("✅ Liberty attempt success")
-                return result
-            else:
-                logger.warning("⚠️ Liberty attempt returned empty/short answer")
-
-        except Exception as e:
-            logger.warning("⚠️ Liberty attempt failed: {}".format(str(e)))
-
-        # Retry attempts with forced tools
-        for i, force_tool in enumerate(retry_tools, start=2):
-            try:
-                logger.info("🔄 ATTEMPT {} (Forced): force_tool={}".format(i, force_tool))
-                result = await self.agent_query(
-                    query=query,
-                    file_ids=file_ids,
-                    force_tool=force_tool,
-                    model=model,
-                    timeout=timeout
-                )
-
-                answer = self._extract_answer(result)
-                if answer and len(answer.strip()) > 10:
-                    logger.info("✅ Forced tool {} success".format(force_tool))
-                    return result
-                else:
-                    logger.warning("⚠️ Forced {} returned empty/short answer".format(force_tool))
-
-            except Exception as e:
-                logger.warning("⚠️ Forced {} failed: {}".format(force_tool, str(e)))
-
-        # All attempts failed
-        raise Exception("All retry attempts failed for query: {}...".format(query[:50]))
 
     # =========================================================================
     # v2 FILE OPERATIONS (unchanged - file operations stay on v2)
@@ -1123,28 +1038,25 @@ if attached_files:
         logger.info("✅ Proceeding after fallback wait...")
 
     # 🚨 STEP 2: QUERY THE FILE WITH v3 AGENT API
-    # RECOMMENDED: Use agent_query_with_retry for best results
 
-    # OPTION A: Let agent choose tool with retry strategy (RECOMMENDED)
-    try:
-        logger.info("🤖 Starting v3 Agent query with retry strategy...")
-        result = await paradigm_client.agent_query_with_retry(
-            query="Your extraction query here - be specific about what fields to extract",  # ADAPT THIS QUERY
-            file_ids=[file_id]
-        )
-        extracted_data = paradigm_client._extract_answer(result)
-        logger.info("✅ Extraction completed!")
-    except Exception as query_err:
-        # Fallback: Force document_search tool
-        logger.warning("⚠️ agent_query_with_retry failed, falling back to forced document_search")
-        result = await paradigm_client.agent_query(
-            query="Your extraction query here",  # ADAPT THIS QUERY
-            file_ids=[file_id],
-            force_tool="document_search"
-        )
-        extracted_data = paradigm_client._extract_answer(result)
+    # OPTION A: Let agent choose tool automatically (default)
+    logger.info("🤖 Starting v3 Agent query...")
+    result = await paradigm_client.agent_query(
+        query="Your extraction query here - be specific about what fields to extract",  # ADAPT THIS QUERY
+        file_ids=[file_id]
+    )
+    extracted_data = paradigm_client._extract_answer(result)
+    logger.info("✅ Extraction completed!")
 
-    # OPTION B: Force document_analysis for comprehensive extraction
+    # OPTION B: Force document_search for quick simple queries (2-5 seconds)
+    # result = await paradigm_client.agent_query(
+    #     query="What is the total amount?",
+    #     file_ids=[file_id],
+    #     force_tool="document_search"
+    # )
+    # extracted_data = paradigm_client._extract_answer(result)
+
+    # OPTION C: Force document_analysis for comprehensive extraction (10-30 seconds)
     # Use this for CVs, complex forms, multi-page documents
     # result = await paradigm_client.agent_query(
     #     query="Provide comprehensive extraction of all fields",
@@ -1153,17 +1065,9 @@ if attached_files:
     # )
     # extracted_data = paradigm_client._extract_answer(result)
 
-    # OPTION C: Force document_search for quick simple queries
-    # result = await paradigm_client.agent_query(
-    #     query="What is the total amount?",
-    #     file_ids=[file_id],
-    #     force_tool="document_search"
-    # )
-    # extracted_data = paradigm_client._extract_answer(result)
-
 else:
     # No uploaded files - search workspace with v3 Agent API
-    result = await paradigm_client.agent_query_with_retry(
+    result = await paradigm_client.agent_query(
         query=query
         # No file_ids means search across workspace
     )
@@ -1175,29 +1079,33 @@ else:
 CRITICAL RULES:
 1. ALWAYS wait for file embedding BEFORE querying (wait_for_embedding or asyncio.sleep)
 2. NEVER skip the if/else check for attached_files
-3. ALWAYS include fallback strategy for robustness
-4. Use agent_query_with_retry() for best reliability
+3. Use agent_query() with appropriate force_tool parameter
 
 ⚠️ CRITICAL API SELECTION RULES FOR UPLOADED FILES (v3):
 
 When user uploads files (attached_files exists), YOU MUST CHOOSE the right approach:
 
-1️⃣ Use agent_query_with_retry() (RECOMMENDED) when:
+1️⃣ Use agent_query(force_tool="document_analysis") when:
    ✅ Extracting COMPLETE structured data (CV, comprehensive forms)
    ✅ Need ALL fields extracted automatically (skills, experience, education, etc.)
    ✅ Complex analysis across documents
-   ✅ Can wait 20-30 seconds for comprehensive result
+   ✅ Can wait 10-30 seconds for comprehensive result
    ✅ Want structured Markdown output with all sections
-   ⏱️ Performance: ~20-30 seconds, comprehensive results
+   ⏱️ Performance: ~10-30 seconds, comprehensive results
 
-2️⃣ Use document_search(file_ids=[...]) when:
+2️⃣ Use agent_query(force_tool="document_search") when:
    ✅ Simple quick question about ONE specific field ("What is the name?")
    ✅ Fast response needed (2-5 seconds)
    ✅ Single piece of information extraction
    ✅ Loop through multiple documents individually with specific queries
    ⏱️ Performance: ~2-5 seconds, targeted results
 
-3️⃣ Use document_search() WITHOUT file_ids when:
+3️⃣ Use agent_query() without force_tool when:
+   ✅ General queries where you want the agent to choose the best approach
+   ✅ Mixed queries that might need search or analysis
+   ⏱️ Performance: Varies based on agent's choice
+
+4️⃣ Use agent_query() WITHOUT file_ids when:
    ✅ attached_files is None/empty (user wants to search workspace)
    ✅ No specific files uploaded
    ✅ Searching across entire workspace/company documents
@@ -1366,26 +1274,8 @@ AVAILABLE API METHODS (v3 Agent API):
    answer = paradigm_client._extract_answer(result)
    ```
 
-🎯 RECOMMENDED - Use this for best results with automatic retry:
-2. await paradigm_client.agent_query_with_retry(query: str, file_ids=None, retry_tools=None, model="alfred-ft5")
-   "Liberty first, forced tools on retry" strategy.
-
-   Retry pattern:
-   1. First: Let agent choose tool freely
-   2. Retry 1: Force document_search
-   3. Retry 2: Force document_analysis
-
-   Example:
-   ```python
-   result = await paradigm_client.agent_query_with_retry(
-       query="Extract the invoice total and date",
-       file_ids=[123]
-   )
-   answer = paradigm_client._extract_answer(result)
-   ```
-
 📄 HELPER METHOD:
-3. paradigm_client._extract_answer(response: Dict) -> str
+2. paradigm_client._extract_answer(response: Dict) -> str
    Extract the text answer from a v3 API response.
 
    Example:
@@ -1398,7 +1288,7 @@ AVAILABLE API METHODS (v3 Agent API):
 ⚠️ KEY DIFFERENCES FROM v2:
 - NO POLLING NEEDED! v3 returns results directly (even for document_analysis)
 - Use _extract_answer() to get text from response
-- Use agent_query_with_retry() for best reliability
+- Use force_tool parameter to control agent behavior
 - file_ids (not document_ids) - use integer file IDs directly
 
 ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter.
@@ -1425,13 +1315,13 @@ Example approach (adapt to your specific fields):
 - Default: Use .get("field", "Non trouvé") to handle missing values
 
 📁 FILE OPERATIONS (v2 - unchanged):
-4. await paradigm_client.upload_file(file_content: bytes, filename: str, collection_type="private")
-5. await paradigm_client.get_file(file_id: int, include_content=False)
-6. await paradigm_client.wait_for_embedding(file_id: int, max_wait_time=300, poll_interval=2)
-7. await paradigm_client.delete_file(file_id: int)
-8. await paradigm_client.get_file_chunks(file_id: int)
-9. await paradigm_client.filter_chunks(query: str, chunk_ids: List[str], n=None)
-10. await paradigm_client.analyze_image(query: str, document_ids: List[str])
+3. await paradigm_client.upload_file(file_content: bytes, filename: str, collection_type="private")
+4. await paradigm_client.get_file(file_id: int, include_content=False)
+5. await paradigm_client.wait_for_embedding(file_id: int, max_wait_time=300, poll_interval=2)
+6. await paradigm_client.delete_file(file_id: int)
+7. await paradigm_client.get_file_chunks(file_id: int)
+8. await paradigm_client.filter_chunks(query: str, chunk_ids: List[str], n=None)
+9. await paradigm_client.analyze_image(query: str, document_ids: List[str])
 
 ⚠️ MODEL ROBUSTNESS: Use "alfred-ft5" or omit model for API default. NEVER hardcode version numbers like "alfred-40b-1123".
 

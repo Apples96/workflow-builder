@@ -44,8 +44,8 @@ analysis = await paradigm.analyze_documents_with_polling(
 )
 ```
 
-Version: 1.8.0 (get_file + wait_for_embedding + Session Reuse)
-Date: 2025-11-27
+Version: 2.0.0 (v3 Agent API + v2 File Operations)
+Date: 2025-01-31
 Author: LightOn Workflow Builder Team
 """
 
@@ -108,12 +108,52 @@ def clean_json_response(text: str) -> str:
     return text
 
 
+def _extract_v3_answer(response: Dict[str, Any]) -> str:
+    """
+    Extract the final text answer from a v3 Agent API response.
+
+    The v3 response format is:
+    {
+        "messages": [
+            {"role": "user", "parts": [...]},
+            {"role": "assistant", "parts": [
+                {"type": "tool_call", ...},
+                {"type": "reasoning", ...},
+                {"type": "text", "text": "Final answer here"}
+            ]}
+        ]
+    }
+
+    Args:
+        response: The v3 API response dictionary
+
+    Returns:
+        str: The extracted text answer, or empty string if not found
+    """
+    messages = response.get("messages", [])
+    if not messages:
+        return ""
+
+    # Get the last message (assistant response)
+    last_message = messages[-1]
+    parts = last_message.get("parts", [])
+
+    # Search for text parts from the end (final answer is usually last)
+    for part in reversed(parts):
+        if part.get("type") == "text":
+            return part.get("text", "")
+
+    return ""
+
+
 class ParadigmClient:
     """
     Complete standalone client for LightOn Paradigm API with session reuse optimization.
 
     This client can be copied as-is into any Python project and provides
     full access to Paradigm's document search, analysis, and chat capabilities.
+
+    Supports both v2 API (file operations) and v3 Agent API (unified queries).
 
     Performance: Uses session reuse for 5.55x speed improvement over creating
     new connections for each request (1.86s vs 10.33s for 20 requests).
@@ -134,27 +174,49 @@ class ParadigmClient:
     Attributes:
         api_key (str): Your Paradigm API authentication key
         base_url (str): The Paradigm API base URL (usually https://paradigm.lighton.ai)
+        v3_base_url (str): The v3 Agent API base URL
+        chat_setting_id (int): Agent settings ID for v3 API (default: 160)
         headers (dict): HTTP headers for authentication
 
-    Example:
+    Example (v3 Agent API - Recommended):
+        >>> client = ParadigmClient(api_key="sk-...", base_url="https://paradigm.lighton.ai")
+        >>> try:
+        >>>     result = await client.agent_query("Find the invoice total", file_ids=[123])
+        >>>     answer = client.extract_answer(result)
+        >>>     print(answer)
+        >>> finally:
+        >>>     await client.close()  # Always close to free resources
+
+    Example (v2 API - Legacy):
         >>> client = ParadigmClient(api_key="sk-...", base_url="https://paradigm.lighton.ai")
         >>> try:
         >>>     result = await client.document_search("Find the invoice total", file_ids=[123])
         >>>     print(result["answer"])
         >>> finally:
-        >>>     await client.close()  # Always close to free resources
+        >>>     await client.close()
     """
 
-    def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://paradigm.lighton.ai",
+        v3_base_url: Optional[str] = None,
+        chat_setting_id: int = 160
+    ):
         """
         Initialize the Paradigm client.
 
         Args:
             api_key: Your secret API key from Paradigm
             base_url: The Paradigm API address (default: https://paradigm.lighton.ai)
+            v3_base_url: The v3 Agent API base URL (defaults to base_url)
+            chat_setting_id: Agent settings ID for v3 API (default: 160)
         """
         self.api_key = api_key
         self.base_url = base_url
+        self.v3_base_url = v3_base_url or base_url
+        self.chat_setting_id = chat_setting_id
+        self.v3_agent_endpoint = "/api/v3/threads/turns"
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
@@ -199,6 +261,143 @@ class ParadigmClient:
             await self._session.close()
             logger.debug("🔌 Closed aiohttp session")
             self._session = None
+
+    # =========================================================================
+    # v3 AGENT API METHODS (Primary Interface)
+    # =========================================================================
+
+    async def agent_query(
+        self,
+        query: str,
+        file_ids: Optional[List[int]] = None,
+        force_tool: Optional[str] = None,
+        workspace_ids: Optional[List[int]] = None,
+        private_scope: bool = True,
+        company_scope: bool = False,
+        model: str = "alfred-ft5",
+        chat_setting_id: Optional[int] = None,
+        timeout: int = 300
+    ) -> Dict[str, Any]:
+        """
+        Unified v3 Agent API - the primary interface for Paradigm queries.
+
+        Uses the /api/v3/threads/turns endpoint which combines thread creation
+        and turn creation in a single request.
+
+        Args:
+            query: The query or instruction for the agent
+            file_ids: Optional list of file IDs to work with
+            force_tool: Optional tool to force: "document_search" or "document_analysis"
+            workspace_ids: Optional list of workspace IDs to search
+            private_scope: Include user's private workspace (default True)
+            company_scope: Include company's workspace (default False)
+            model: The model to use (default: "alfred-ft5")
+            chat_setting_id: Agent settings ID (uses instance default if not provided)
+            timeout: Request timeout in seconds (default: 300)
+
+        Returns:
+            dict: Full v3 API response - use extract_answer() to get text
+
+        Raises:
+            Exception: If API call fails or returns an error
+
+        Example:
+            >>> result = await client.agent_query("Find the invoice total", file_ids=[123])
+            >>> answer = client.extract_answer(result)
+            >>> print(answer)
+        """
+        endpoint = f"{self.v3_base_url}{self.v3_agent_endpoint}"
+
+        # Use provided chat_setting_id or fall back to instance value
+        setting_id = chat_setting_id or self.chat_setting_id
+
+        payload = {
+            "chat_setting_id": setting_id,
+            "query": query,
+            "ml_model": model,
+            "private_scope": private_scope,
+            "company_scope": company_scope
+        }
+
+        # Add optional parameters
+        if file_ids:
+            payload["file_ids"] = file_ids
+        if workspace_ids:
+            payload["workspace_ids"] = workspace_ids
+        if force_tool:
+            payload["force_tool"] = force_tool
+
+        try:
+            logger.info(f"🤖 PARADIGM v3 AGENT QUERY")
+            logger.info(f"📡 ENDPOINT: {endpoint}")
+            logger.info(f"🔍 QUERY: {query[:100]}...")
+            logger.info(f"📋 FILE_IDS: {file_ids}")
+            logger.info(f"🔧 FORCE_TOOL: {force_tool or 'None (agent chooses)'}")
+            logger.info(f"⚙️ CHAT_SETTING_ID: {setting_id}")
+
+            session = await self._get_session()
+            async with session.post(
+                endpoint,
+                json=payload,
+                headers=self.headers,
+                timeout=aiohttp.ClientTimeout(total=timeout)
+            ) as response:
+                response_text = await response.text()
+                logger.info(f"📥 RAW RESPONSE: Status {response.status}, Body: {response_text[:500]}...")
+
+                if response.status == 200:
+                    result = json.loads(response_text)
+                    answer = _extract_v3_answer(result)
+                    logger.info(f"✅ AGENT QUERY SUCCESS")
+                    logger.info(f"💬 ANSWER: {answer[:300]}..." if answer else "No text answer")
+                    return result
+
+                elif response.status == 202:
+                    # Background processing - return partial result
+                    logger.info(f"⏳ AGENT QUERY ACCEPTED (202) - processing in background")
+                    result = json.loads(response_text)
+                    return result
+
+                else:
+                    logger.error(f"❌ PARADIGM v3 AGENT ERROR: {response.status} - {response_text}")
+                    raise Exception(f"Paradigm v3 agent query failed: {response.status} - {response_text}")
+
+        except asyncio.TimeoutError:
+            logger.error(f"❌ AGENT QUERY TIMEOUT after {timeout}s")
+            raise Exception(f"Agent query timed out after {timeout} seconds")
+        except aiohttp.ClientError as e:
+            logger.error(f"❌ NETWORK ERROR: {str(e)}")
+            raise Exception(f"Network error calling Paradigm v3 agent API: {str(e)}")
+        except Exception as e:
+            logger.error(f"❌ AGENT QUERY FAILED: {str(e)}")
+            raise
+
+    def extract_answer(self, response: Dict[str, Any]) -> str:
+        """
+        Extract text answer from v3 response.
+
+        The v3 response format is:
+        {
+            "messages": [
+                {"role": "assistant", "parts": [{"type": "text", "text": "..."}]}
+            ]
+        }
+
+        Args:
+            response: The v3 API response dictionary
+
+        Returns:
+            str: The extracted text answer
+
+        Example:
+            >>> result = await client.agent_query("Find total", file_ids=[123])
+            >>> answer = client.extract_answer(result)
+        """
+        return _extract_v3_answer(response)
+
+    # =========================================================================
+    # v2 API METHODS (File Operations & Legacy)
+    # =========================================================================
 
     async def document_search(
         self,
@@ -1037,6 +1236,44 @@ class ParadigmClient:
             logger.error(f"❌ Wait for embedding error: {str(e)}")
             raise
 
+    async def delete_file(self, file_id: int) -> Dict[str, Any]:
+        """
+        Delete a file from Paradigm.
+
+        Endpoint: DELETE /api/v2/files/{id}
+
+        Args:
+            file_id: The ID of the file to delete
+
+        Returns:
+            Dict with success status and file_id
+
+        Example:
+            result = await paradigm.delete_file(12345)
+            # Returns: {"success": True, "file_id": 12345}
+
+        Performance:
+            Uses session reuse internally for 5.55x faster performance
+        """
+        endpoint = f"{self.base_url}/api/v2/files/{file_id}"
+
+        try:
+            logger.info(f"🗑️ Deleting file: {file_id}")
+
+            session = await self._get_session()
+            async with session.delete(endpoint, headers=self.headers) as response:
+                if response.status in [200, 204]:
+                    logger.info(f"✅ File deleted: ID={file_id}")
+                    return {"success": True, "file_id": file_id}
+                else:
+                    error = await response.text()
+                    logger.error(f"❌ Delete file failed: {response.status}")
+                    raise Exception(f"Delete file failed: {response.status} - {error}")
+
+        except Exception as e:
+            logger.error(f"❌ Delete file error: {str(e)}")
+            raise
+
     async def analyze_image(
         self,
         query: str,
@@ -1092,6 +1329,6 @@ class ParadigmClient:
 
 
 # Module metadata
-__version__ = "1.9.0"  # tool parameter (VisionDocumentSearch) + system_prompt documentation
+__version__ = "2.0.0"  # Added v3 Agent API (agent_query, agent_query_with_retry, extract_answer)
 __author__ = "LightOn Workflow Builder Team"
-__all__ = ["ParadigmClient"]
+__all__ = ["ParadigmClient", "_extract_v3_answer"]

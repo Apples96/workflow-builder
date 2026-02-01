@@ -1,77 +1,77 @@
 # LightOn Workflow Builder
 
-Application de génération et d'exécution de workflows automatisés utilisant l'API Anthropic Claude et l'API LightOn Paradigm.
+Automated workflow generation and execution application using Anthropic Claude API and LightOn Paradigm API.
 
-## 🚀 Démarrage Rapide avec Docker
+## 🚀 Quick Start with Docker
 
 ```bash
-# 1. Cloner le repository
+# 1. Clone the repository
 git clone https://github.com/Isydoria/lighton-workflow-generator-.git
 cd lighton-workflow-generator-
 
-# 2. Configurer les clés API
+# 2. Configure API keys
 cp .env.example .env
-# Éditer .env et ajouter vos clés :
-# ANTHROPIC_API_KEY=votre_clé_anthropic
-# LIGHTON_API_KEY=votre_clé_lighton
+# Edit .env and add your keys:
+# ANTHROPIC_API_KEY=your_anthropic_key
+# LIGHTON_API_KEY=your_lighton_key
 
-# 3. Démarrer avec Docker Compose
+# 3. Start with Docker Compose
 docker-compose up --build
 
-# 4. Accéder à l'application
-# Frontend : http://localhost:3000
-# API Backend : http://localhost:8000/docs
+# 4. Access the application
+# Frontend: http://localhost:3000
+# API Backend: http://localhost:8000/docs
 ```
 
-**✅ Avantages Docker** :
-- Configuration minimale
-- Environnement isolé et reproductible
-- Prêt pour production (déployable sur n'importe quel serveur avec Docker)
-- Pas de limite de functions serverless
+**✅ Docker Benefits**:
+- Minimal configuration
+- Isolated and reproducible environment
+- Production-ready (deployable on any server with Docker)
+- No serverless function limits
 
-## 🔧 Autres Options de Déploiement
+## 🔧 Other Deployment Options
 
-### Option Vercel (Requires Pro Plan)
+### Vercel Option (Requires Pro Plan)
 
-⚠️ **Attention** : Le workflow builder nécessite Vercel Pro ($20/mois) pour fonctionner correctement.
+⚠️ **Warning**: The workflow builder requires Vercel Pro ($20/month) to function properly.
 
-**Pourquoi Pro est requis** :
-- **Python Runtime** : Le workflow builder utilise Python/FastAPI (pas disponible en free tier)
-- **Execution Time** : La génération de workflows peut prendre 30-60s+ (free tier limité à 10s)
-- **Function Count** : Le builder utilise plusieurs endpoints API (limite atteinte rapidement en free tier)
+**Why Pro is required**:
+- **Python Runtime**: The workflow builder uses Python/FastAPI (not available in free tier)
+- **Execution Time**: Workflow generation can take 30-60s+ (free tier limited to 10s)
+- **Function Count**: The builder uses multiple API endpoints (limit quickly reached in free tier)
 
-**Déploiement Vercel** :
-1. Connectez votre repo GitHub/GitLab à Vercel
-2. Ajoutez les variables d'environnement dans Vercel :
+**Vercel Deployment**:
+1. Connect your GitHub/GitLab repo to Vercel
+2. Add environment variables in Vercel:
    - `ANTHROPIC_API_KEY`
    - `LIGHTON_API_KEY`
-3. Liez Vercel KV (Storage) :
-   - Les variables `KV_REST_API_URL` et `KV_REST_API_TOKEN` sont créées automatiquement
-   - Le code détecte et utilise ces variables automatiquement
-4. Déployez : `git push` (automatique)
+3. Link Vercel KV (Storage):
+   - `KV_REST_API_URL` and `KV_REST_API_TOKEN` variables are created automatically
+   - The code detects and uses these variables automatically
+4. Deploy: `git push` (automatic)
 
-**Note** : Le code supporte automatiquement les deux conventions :
-- Variables Vercel KV (créées automatiquement lors du linking)
-- Variables Upstash directes (configuration manuelle)
+**Note**: The code automatically supports both conventions:
+- Vercel KV variables (automatically created when linking)
+- Direct Upstash variables (manual configuration)
 
-### Option Python Manuel
+### Manual Python Option
 
-Déployer sur votre propre infrastructure (VPS, cloud VM, serveur on-premises).
+Deploy on your own infrastructure (VPS, cloud VM, on-premises server).
 
 ```bash
-# 1. Cloner et installer
+# 1. Clone and install
 git clone https://github.com/Isydoria/lighton-workflow-generator-.git
 cd lighton-workflow-generator-
 pip install -r requirements.txt
 
-# 2. Configurer les variables d'environnement
+# 2. Configure environment variables
 cp .env.example .env
-nano .env  # Ajouter ANTHROPIC_API_KEY et LIGHTON_API_KEY
+nano .env  # Add ANTHROPIC_API_KEY and LIGHTON_API_KEY
 
-# 3. Démarrer le serveur
+# 3. Start the server
 python -m uvicorn api.index:app --host 0.0.0.0 --port 8000
 
-# Ou avec plus d'options de production
+# Or with more production options
 uvicorn api.index:app \
   --host 0.0.0.0 \
   --port 8000 \
@@ -79,7 +79,7 @@ uvicorn api.index:app \
   --log-level info
 ```
 
-**Configuration Nginx (optionnel)** :
+**Nginx Configuration (optional)**:
 ```nginx
 server {
     listen 80;
@@ -96,154 +96,154 @@ server {
 }
 ```
 
-## 📋 Prérequis
+## 📋 Prerequisites
 
-1. **Docker Desktop** installé (pour démarrage rapide)
-2. **Clés API** :
-   - Anthropic API key (pour la génération de workflows)
-   - LightOn Paradigm API key (pour l'exécution des workflows)
+1. **Docker Desktop** installed (for quick start)
+2. **API Keys**:
+   - Anthropic API key (for workflow generation)
+   - LightOn Paradigm API key (for workflow execution)
 
-## ✨ Fonctionnalités Principales
+## ✨ Key Features
 
-### 1. Génération de Workflows par IA
+### 1. AI-Powered Workflow Generation
 
-- **Natural Language to Code**: Décrivez vos workflows en langage naturel, Claude Sonnet 4 génère le code Python exécutable
-- **Enhancement Description**: Amélioration automatique des descriptions utilisateur avant génération
-- **Auto-Validation avec Retry**: Jusqu'à 3 tentatives avec feedback d'erreur contextuel pour auto-correction
-- **Post-Processing Intelligent**: Correction automatique des erreurs de syntaxe f-strings
-- **Détection de Complexité**: Identification automatique de workflows complexes (>40 appels API) avec gestion de rate limiting
-- **Optimisation des Performances**: Parallelisation automatique via asyncio.gather() pour les opérations indépendantes
+- **Natural Language to Code**: Describe workflows in natural language, Claude Sonnet 4 generates executable Python code
+- **Description Enhancement**: Automatic improvement of user descriptions before generation
+- **Auto-Validation with Retry**: Up to 3 attempts with contextual error feedback for self-correction
+- **Intelligent Post-Processing**: Automatic correction of f-string syntax errors
+- **Complexity Detection**: Automatic identification of complex workflows (>40 API calls) with rate limiting management
+- **Performance Optimization**: Automatic parallelization via asyncio.gather() for independent operations
 
-### 2. Intégration Complète Paradigm API
+### 2. Complete Paradigm API Integration
 
-**Recherche et Analyse de Documents:**
-- `document_search()` - Recherche sémantique dans vos documents
-- `search_with_vision_fallback()` - Fallback automatique vers VisionDocumentSearch pour documents scannés
-- `analyze_documents_with_polling()` - Analyse approfondie avec récupération automatique des résultats
-- `chat_completion()` - Complétion IA avec extraction de données structurées :
-  - **guided_choice**: Sélection forcée parmi liste prédéfinie (classification)
-  - **guided_regex**: Format garanti (SIRET, IBAN, téléphones, dates, montants)
-  - **guided_json**: Extraction JSON structurée
+**Document Search and Analysis:**
+- `document_search()` - Semantic search in your documents
+- `search_with_vision_fallback()` - Automatic fallback to VisionDocumentSearch for scanned documents
+- `analyze_documents_with_polling()` - In-depth analysis with automatic result retrieval
+- `chat_completion()` - AI completion with structured data extraction:
+  - **guided_choice**: Forced selection from predefined list (classification)
+  - **guided_regex**: Guaranteed format (SIRET, IBAN, phone numbers, dates, amounts)
+  - **guided_json**: Structured JSON extraction
 
-**Gestion de Fichiers:**
-- `upload_file()` - Upload vers Paradigm avec indexation automatique
-- `wait_for_embedding()` - Attente automatique de l'indexation (timeout 5min)
-- `get_file()` / `delete_file()` - Gestion complète du cycle de vie
-- `get_file_chunks()` - Récupération des chunks de documents
+**File Management:**
+- `upload_file()` - Upload to Paradigm with automatic indexing
+- `wait_for_embedding()` - Automatic wait for indexing (5min timeout)
+- `get_file()` / `delete_file()` - Complete lifecycle management
+- `get_file_chunks()` - Retrieve document chunks
 
-**APIs Avancées:**
-- `filter_chunks()` - Filtrage par pertinence (+20% précision)
-- `query()` - Extraction de chunks sans synthèse AI (30% plus rapide)
-- `analyze_image()` - Analyse d'images avec IA
+**Advanced APIs:**
+- `filter_chunks()` - Relevance filtering (+20% accuracy)
+- `query()` - Chunk extraction without AI synthesis (30% faster)
+- `analyze_image()` - AI-powered image analysis
 
 **Performance:**
-- Session HTTP réutilisable (5.55x plus rapide)
-- Support complet des opérations async
+- Reusable HTTP session (5.55x faster)
+- Full async operations support
 
-### 3. Exécution Sécurisée
+### 3. Secure Execution
 
-- **Sandboxing**: Environnement d'exécution restreint avec built-ins sécurisés uniquement
-- **Timeout Configurable**: Protection contre les exécutions infinies (défaut 30 min)
-- **File Attachments**: Support natif de fichiers joints via `attached_file_ids`
-- **Injection Sécurisée**: Clés API injectées automatiquement à l'exécution
-- **Logging Complet**: Capture stdout/stderr avec traçage API détaillé
-- **Support Async**: Workflows synchrones et asynchrones
+- **Sandboxing**: Restricted execution environment with only secure built-ins
+- **Configurable Timeout**: Protection against infinite executions (default 30 min)
+- **File Attachments**: Native support for attached files via `attached_file_ids`
+- **Secure Injection**: API keys automatically injected at runtime
+- **Complete Logging**: Stdout/stderr capture with detailed API tracing
+- **Async Support**: Synchronous and asynchronous workflows
 
-### 4. Persistance et Stockage
+### 4. Persistence and Storage
 
-- **Upstash Redis**: Stockage serverless-compatible (TTL 24h)
-- **Vercel KV**: Détection et utilisation automatique des variables Vercel
-- **Fallback In-Memory**: Fonctionnement sans Redis si nécessaire
-- **Workflow History**: Stockage des exécutions et résultats
+- **Upstash Redis**: Serverless-compatible storage (24h TTL)
+- **Vercel KV**: Automatic detection and use of Vercel variables
+- **In-Memory Fallback**: Works without Redis if necessary
+- **Workflow History**: Storage of executions and results
 
-### 5. Export et Packages
+### 5. Export and Packages
 
-**Workflow Runner (Package Standalone):**
-- Interface web dynamique générée automatiquement par analyse du code
-- Détection intelligente des champs (inputs texte, uploads fichiers, types multiples)
-- Backend FastAPI complet avec client Paradigm
-- Documentation bilingue (FR/EN)
-- Configuration Docker prête à l'emploi
-- Export PDF intégré (jsPDF)
-- ⚠️ Local dev uniquement (limite serverless Vercel)
+**Workflow Runner (Standalone Package):**
+- Dynamic web interface automatically generated by code analysis
+- Intelligent field detection (text inputs, file uploads, multiple types)
+- Complete FastAPI backend with Paradigm client
+- Bilingual documentation (FR/EN)
+- Docker-ready configuration
+- Integrated PDF export (jsPDF)
+- ⚠️ Local dev only (Vercel serverless limit)
 
 **MCP Server Package:**
-- Serveur MCP dual-mode (stdio pour Claude Desktop + HTTP pour Paradigm)
-- Support multi-formats d'entrée (paths locaux, file IDs, auto-upload)
-- Attente automatique d'indexation (wait_for_embedding 5min)
-- Configuration Docker + bearer token auth
-- ⚠️ Limitations: 4min timeout Claude Desktop, bug file_ids Paradigm
+- Dual-mode MCP server (stdio for Claude Desktop + HTTP for Paradigm)
+- Multi-format input support (local paths, file IDs, auto-upload)
+- Automatic indexing wait (wait_for_embedding 5min)
+- Docker configuration + bearer token auth
+- ⚠️ Limitations: 4min Claude Desktop timeout, Paradigm file_ids bug
 
-### 6. Rapports PDF Professionnels
+### 6. Professional PDF Reports
 
-- Génération automatique de rapports vendor-neutral
-- Support Markdown (headers, listes, tables, bold/italic)
-- Affichage structuré des données JSON
-- Métadonnées complètes (nom, description, durée, status)
-- Typographie professionnelle (ReportLab)
+- Automatic vendor-neutral report generation
+- Markdown support (headers, lists, tables, bold/italic)
+- Structured JSON data display
+- Complete metadata (name, description, duration, status)
+- Professional typography (ReportLab)
 
-### 7. Interface Web Moderne
+### 7. Modern Web Interface
 
-- **Vanilla JavaScript**: Sans dépendances framework
-- **Upload Drag-and-Drop**: Interface visuelle de fichiers
-- **Monitoring en Temps Réel**: Logs colorés avec traçage API complet
-- **Code Preview**: Visualisation du workflow généré
-- **Téléchargements**: PDF, Workflow Runner Package, MCP Package
-- **Responsive**: Compatible desktop et mobile
+- **Vanilla JavaScript**: No framework dependencies
+- **Drag-and-Drop Upload**: Visual file interface
+- **Real-Time Monitoring**: Colored logs with complete API tracing
+- **Code Preview**: Generated workflow visualization
+- **Downloads**: PDF, Workflow Runner Package, MCP Package
+- **Responsive**: Desktop and mobile compatible
 
 
 ## 📖 API Endpoints
 
 ### Workflows
-- `POST /api/workflows` - Créer un workflow depuis une description
-- `POST /api/workflows/enhance-description` - Améliorer une description avec l'IA
-- `GET /api/workflows/{id}` - Récupérer les détails d'un workflow
-- `POST /api/workflows/{id}/execute` - Exécuter un workflow
-- `GET /api/workflows/{id}/executions/{exec_id}` - Détails d'exécution
-- `GET /api/workflows/{id}/executions/{exec_id}/pdf` - Télécharger rapport PDF
-- `POST /api/workflows-with-files` - Créer un workflow avec accès à des fichiers spécifiques
+- `POST /api/workflows` - Create a workflow from description
+- `POST /api/workflows/enhance-description` - Enhance description with AI
+- `GET /api/workflows/{id}` - Get workflow details
+- `POST /api/workflows/{id}/execute` - Execute a workflow
+- `GET /api/workflows/{id}/executions/{exec_id}` - Execution details
+- `GET /api/workflows/{id}/executions/{exec_id}/pdf` - Download PDF report
+- `POST /api/workflows-with-files` - Create workflow with access to specific files
 
-### Packages (Local uniquement)
-- `POST /api/workflow/generate-package/{id}` - Générer Workflow Runner Package (ZIP)
-- `POST /api/workflow/generate-mcp-package/{id}` - Générer MCP Server Package (ZIP)
+### Packages (Local only)
+- `POST /api/workflow/generate-package/{id}` - Generate Workflow Runner Package (ZIP)
+- `POST /api/workflow/generate-mcp-package/{id}` - Generate MCP Server Package (ZIP)
 
 ### Files
-- `POST /api/files/upload` - Uploader un fichier vers Paradigm
-- `GET /api/files/{id}` - Info sur un fichier (status, taille, etc.)
-- `DELETE /api/files/{id}` - Supprimer un fichier
+- `POST /api/files/upload` - Upload file to Paradigm
+- `GET /api/files/{id}` - File info (status, size, etc.)
+- `DELETE /api/files/{id}` - Delete file
 
 ### Health
-- `GET /health` - Health check pour monitoring
-- `GET /` - Interface web (frontend)
+- `GET /health` - Health check for monitoring
+- `GET /` - Web interface (frontend)
 
 ### Usage Example
 
 ```bash
-# 1. Créer un workflow
+# 1. Create a workflow
 curl -X POST "http://localhost:8000/api/workflows" \
   -H "Content-Type: application/json" \
   -d '{
-    "description": "Analyser les CV uploadés et les comparer à une fiche de poste",
-    "name": "Analyse de CV"
+    "description": "Analyze uploaded resumes and compare them to a job description",
+    "name": "Resume Analysis"
   }'
 
-# 2. Uploader des fichiers
+# 2. Upload files
 curl -X POST "http://localhost:8000/api/files/upload" \
-  -F "file=@cv1.pdf" \
+  -F "file=@resume1.pdf" \
   -F "collection_type=private"
 
-# 3. Exécuter le workflow avec fichiers attachés
+# 3. Execute workflow with attached files
 curl -X POST "http://localhost:8000/api/workflows/{workflow_id}/execute" \
   -H "Content-Type: application/json" \
   -d '{
-    "user_input": "Analyser les CV",
+    "user_input": "Analyze resumes",
     "attached_file_ids": [123, 124, 125]
   }'
 ```
 
 ## Example Workflow
 
-The system is designed to handle workflows like the example provided:
+The system is designed to handle workflows like this example:
 
 **Description**: "User inputs a long prompt with multiple sentences. For each sentence, perform a search using the Paradigm Docsearch tool. Return results formatted as 'Question: [sentence]' followed by 'Answer: [result]'."
 
@@ -261,180 +261,180 @@ Question: What are the benefits of cloud computing?
 Answer: [Search result about cloud computing benefits]
 ```
 
-## 🔧 APIs Disponibles dans les Workflows Générés
+## 🔧 Available APIs in Generated Workflows
 
-Les workflows générés ont accès à un **ParadigmClient complet** avec toutes les APIs LightOn Paradigm :
+Generated workflows have access to a **complete ParadigmClient** with all LightOn Paradigm APIs:
 
-### Recherche et Analyse de Documents
-- `document_search(query, file_ids=...)` - Recherche sémantique dans vos documents
-- `search_with_vision_fallback(query, file_ids)` - Recherche avec OCR automatique pour documents scannés
-- `analyze_documents_with_polling(query, document_ids)` - Analyse approfondie avec récupération auto des résultats
-- `chat_completion(prompt, guided_choice=..., guided_regex=..., guided_json=...)` - Complétion avec extraction structurée
-  - **guided_choice** : Sélection forcée parmi liste prédéfinie (classification)
-  - **guided_regex** : Format garanti (SIRET, IBAN, téléphone, dates, montants)
-  - **guided_json** : Extraction JSON structurée avec schéma
+### Document Search and Analysis
+- `document_search(query, file_ids=...)` - Semantic search in your documents
+- `search_with_vision_fallback(query, file_ids)` - Search with automatic OCR for scanned documents
+- `analyze_documents_with_polling(query, document_ids)` - In-depth analysis with automatic result retrieval
+- `chat_completion(prompt, guided_choice=..., guided_regex=..., guided_json=...)` - Completion with structured extraction
+  - **guided_choice**: Forced selection from predefined list (classification)
+  - **guided_regex**: Guaranteed format (SIRET, IBAN, phone, dates, amounts)
+  - **guided_json**: Structured JSON extraction with schema
 
-### Gestion de Fichiers
-- `upload_file(file_content, filename, collection_type=...)` - Upload vers Paradigm avec indexation auto
-- `wait_for_embedding(file_id, timeout=300)` - Attente auto de l'indexation (timeout 5min)
-- `get_file(file_id)` / `delete_file(file_id)` - Gestion complète du cycle de vie
-- `get_file_chunks(file_id)` - Récupération des chunks de documents
+### File Management
+- `upload_file(file_content, filename, collection_type=...)` - Upload to Paradigm with auto indexing
+- `wait_for_embedding(file_id, timeout=300)` - Auto wait for indexing (5min timeout)
+- `get_file(file_id)` / `delete_file(file_id)` - Complete lifecycle management
+- `get_file_chunks(file_id)` - Retrieve document chunks
 
-### APIs Avancées
-- `filter_chunks(query, chunk_ids, n=...)` - Filtrage par pertinence (+20% précision)
-- `query(query, collection=...)` - Extraction de chunks sans synthèse AI (30% plus rapide)
-- `analyze_image(image_path_or_url, prompt)` - Analyse d'images avec IA
+### Advanced APIs
+- `filter_chunks(query, chunk_ids, n=...)` - Relevance filtering (+20% accuracy)
+- `query(query, collection=...)` - Chunk extraction without AI synthesis (30% faster)
+- `analyze_image(image_path_or_url, prompt)` - AI-powered image analysis
 
-### Extraction de Données Structurées
+### Structured Data Extraction
 
-Les workflows peuvent extraire des données avec **garantie de format** :
+Workflows can extract data with **format guarantee**:
 
 ```python
-# Extraction de SIRET avec format garanti (14 chiffres)
+# SIRET extraction with guaranteed format (14 digits)
 siret = await paradigm_client.chat_completion(
-    prompt="Extrais le numéro SIRET du document",
+    prompt="Extract the SIRET number from the document",
     guided_regex=r"\d{14}"
 )
 
-# Classification stricte parmi choix prédéfinis
+# Strict classification among predefined choices
 status = await paradigm_client.chat_completion(
-    prompt="Le document est-il conforme aux exigences ?",
-    guided_choice=["conforme", "non_conforme", "incomplet"]
+    prompt="Is the document compliant with requirements?",
+    guided_choice=["compliant", "non_compliant", "incomplete"]
 )
 
-# Extraction JSON structurée
+# Structured JSON extraction
 invoice_data = await paradigm_client.chat_completion(
-    prompt="Extrais les données de la facture",
+    prompt="Extract invoice data",
     guided_json={
         "type": "object",
         "properties": {
-            "numero": {"type": "string"},
-            "montant": {"type": "number"},
+            "number": {"type": "string"},
+            "amount": {"type": "number"},
             "date": {"type": "string"}
         }
     }
 )
 ```
 
-**Patterns regex prédéfinis inclus** : SIRET (14 chiffres), SIREN (9 chiffres), IBAN, téléphone FR, dates ISO, montants EUR, emails.
+**Predefined regex patterns included**: SIRET (14 digits), SIREN (9 digits), IBAN, FR phone, ISO dates, EUR amounts, emails.
 
 ### Performance
-- Session HTTP réutilisable pour toutes les méthodes (5.55x plus rapide)
-- Support complet des opérations async/await
+- Reusable HTTP session for all methods (5.55x faster)
+- Full async/await operations support
 
-## 📦 Workflow Runner - Package Standalone
+## 📦 Workflow Runner - Standalone Package
 
-Le **Workflow Runner** permet d'exporter un workflow complet sous forme de package ZIP autonome, prêt à être déployé chez un client.
+The **Workflow Runner** allows exporting a complete workflow as a standalone ZIP package, ready to be deployed to a client.
 
-### Génération d'un Package
+### Package Generation
 
-**En mode développement local uniquement** (endpoint désactivé sur Vercel) :
+**In local development mode only** (endpoint disabled on Vercel):
 
 ```bash
-# Via l'API
+# Via API
 curl -X POST "http://localhost:8000/api/workflow/generate-package/{workflow_id}" \
   --output workflow-package.zip
 
-# Via l'interface web
-# Cliquer sur "Download Workflow Package" après création du workflow
+# Via web interface
+# Click "Download Workflow Package" after workflow creation
 ```
 
-### Contenu du Package
+### Package Contents
 
-Le ZIP généré contient une **application complète et autonome** :
+The generated ZIP contains a **complete standalone application**:
 
 ```
 workflow-{name}-{id}.zip
 ├── frontend/
-│   ├── index.html              # Interface dynamique auto-générée
-│   ├── config.json             # Configuration UI (champs, types, etc.)
-│   └── styles intégrés         # CSS responsive
+│   ├── index.html              # Auto-generated dynamic interface
+│   ├── config.json             # UI configuration (fields, types, etc.)
+│   └── integrated styles       # Responsive CSS
 ├── backend/
-│   ├── main.py                 # Serveur FastAPI
-│   ├── workflow_code.py        # Code du workflow généré
-│   ├── paradigm_client.py      # Client Paradigm complet
-│   └── requirements.txt        # Dépendances Python
-├── docker-compose.yml          # Configuration Docker
-├── Dockerfile                  # Image Docker optimisée
-├── README.md (FR)              # Documentation française
-├── README_EN.md                # Documentation anglaise
-└── .env.example                # Template de configuration
+│   ├── main.py                 # FastAPI server
+│   ├── workflow_code.py        # Generated workflow code
+│   ├── paradigm_client.py      # Complete Paradigm client
+│   └── requirements.txt        # Python dependencies
+├── docker-compose.yml          # Docker configuration
+├── Dockerfile                  # Optimized Docker image
+├── README.md (FR)              # French documentation
+├── README_EN.md                # English documentation
+└── .env.example                # Configuration template
 ```
 
-### Caractéristiques
+### Features
 
-- ✅ **UI Dynamique** : Interface générée automatiquement par analyse Claude du code
-- ✅ **Bilingue** : Documentation complète FR + EN
-- ✅ **Docker Ready** : `docker-compose up` et c'est prêt
-- ✅ **PDF Export** : Génération de rapports intégrée
-- ✅ **Standalone** : Aucune dépendance au système principal
-- ✅ **Production Ready** : Configuration Uvicorn optimisée
+- ✅ **Dynamic UI**: Interface automatically generated by Claude code analysis
+- ✅ **Bilingual**: Complete FR + EN documentation
+- ✅ **Docker Ready**: `docker-compose up` and it's ready
+- ✅ **PDF Export**: Integrated report generation
+- ✅ **Standalone**: No dependency on main system
+- ✅ **Production Ready**: Optimized Uvicorn configuration
 
-### Déploiement Client
+### Client Deployment
 
 ```bash
-# 1. Extraire le ZIP
+# 1. Extract ZIP
 unzip workflow-package.zip
 cd workflow-{name}-{id}
 
-# 2. Configurer les clés API
+# 2. Configure API keys
 cp .env.example .env
-nano .env  # Ajouter LIGHTON_API_KEY et ANTHROPIC_API_KEY
+nano .env  # Add LIGHTON_API_KEY and ANTHROPIC_API_KEY
 
-# 3. Lancer avec Docker
+# 3. Launch with Docker
 docker-compose up -d
 
-# 4. Accéder à l'interface
+# 4. Access the interface
 # http://localhost:8080
 ```
 
-### Note Importante
+### Important Note
 
-⚠️ La génération de packages est **désactivée sur Vercel** pour rester dans la limite de 12 serverless functions. Utilisez le mode développement local pour générer des packages.
+⚠️ Package generation is **disabled on Vercel** to stay within the 12 serverless functions limit. Use local development mode to generate packages.
 
-## 🔌 MCP Server Package - Intégration Claude Desktop
+## 🔌 MCP Server Package - Claude Desktop Integration
 
-Le **MCP (Model Context Protocol) Package** permet d'intégrer vos workflows directement dans Claude Desktop ou Paradigm via le protocole MCP d'Anthropic.
+The **MCP (Model Context Protocol) Package** allows integrating your workflows directly into Claude Desktop or Paradigm via Anthropic's MCP protocol.
 
-### Génération d'un Package MCP
+### MCP Package Generation
 
-**En mode développement local uniquement** :
+**In local development mode only**:
 
 ```bash
-# Via l'interface web
-# Cliquer sur "Download MCP Package" après création du workflow
+# Via web interface
+# Click "Download MCP Package" after workflow creation
 ```
 
-### Contenu du Package MCP
+### MCP Package Contents
 
 ```
 mcp-workflow-{name}.zip
-├── server.py                   # Serveur MCP (stdio + HTTP)
-├── workflow.py                 # Code du workflow généré
-├── paradigm_client.py          # Client Paradigm complet
-├── requirements.txt            # Dépendances Python
-├── docker-compose.yml          # Configuration Docker
-├── Dockerfile                  # Image Docker
-├── .env.example                # Template de configuration
-└── README.md                   # Documentation complète
+├── server.py                   # MCP server (stdio + HTTP)
+├── workflow.py                 # Generated workflow code
+├── paradigm_client.py          # Complete Paradigm client
+├── requirements.txt            # Python dependencies
+├── docker-compose.yml          # Docker configuration
+├── Dockerfile                  # Docker image
+├── .env.example                # Configuration template
+└── README.md                   # Complete documentation
 ```
 
-### Utilisation avec Claude Desktop
+### Usage with Claude Desktop
 
 ```bash
-# 1. Extraire le package
+# 1. Extract package
 unzip mcp-workflow-{name}.zip
 cd mcp-workflow-{name}
 
-# 2. Installer les dépendances
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configurer Claude Desktop
-# Éditer %APPDATA%\Claude\claude_desktop_config.json (Windows)
-# ou ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)
+# 3. Configure Claude Desktop
+# Edit %APPDATA%\Claude\claude_desktop_config.json (Windows)
+# or ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)
 ```
 
-Ajouter cette configuration :
+Add this configuration:
 
 ```json
 {
@@ -452,153 +452,153 @@ Ajouter cette configuration :
 }
 ```
 
-**4. Redémarrer Claude Desktop** - Le workflow est maintenant disponible comme outil !
+**4. Restart Claude Desktop** - The workflow is now available as a tool!
 
-### Utilisation avec Paradigm (HTTP Mode)
+### Usage with Paradigm (HTTP Mode)
 
-Pour déployer le serveur MCP et l'utiliser avec Paradigm :
+To deploy the MCP server and use it with Paradigm:
 
 ```bash
-# 1. Déployer sur un serveur avec URL publique
+# 1. Deploy on a server with public URL
 docker-compose up -d
 
-# 2. Dans Paradigm Admin → MCP Servers
-# Ajouter : https://votre-serveur.com/mcp
-# Bearer Token : optionnel (configuré dans .env)
+# 2. In Paradigm Admin → MCP Servers
+# Add: https://your-server.com/mcp
+# Bearer Token: optional (configured in .env)
 ```
 
-⚠️ **Bug Connu Paradigm** : Les `file_ids` uploadés via l'interface Paradigm ne sont pas correctement transmis aux workflows MCP. Workaround : utilisez Claude Desktop en local jusqu'à correction du bug.
+⚠️ **Known Paradigm Bug**: `file_ids` uploaded via Paradigm interface are not correctly transmitted to MCP workflows. Workaround: use Claude Desktop locally until bug is fixed.
 
 ### Limitations
 
-- **Claude Desktop** : Timeout de 4 minutes maximum par requête MCP
-  - Limiter à 3-5 documents par requête
-  - Pour workflows complexes, préférer le Workflow Runner Package standard
-- **Paradigm HTTP** : Bug de transmission des file_ids (en cours de correction)
+- **Claude Desktop**: 4 minutes maximum timeout per MCP request
+  - Limit to 3-5 documents per request
+  - For complex workflows, prefer standard Workflow Runner Package
+- **Paradigm HTTP**: file_ids transmission bug (being fixed)
 
 ## 🧪 Tests
 
 ```bash
-# Tests unitaires
+# Unit tests
 pytest tests/
 
-# Tests d'intégration
+# Integration tests
 pytest tests/test_integration.py
 
-# Test Docker
+# Docker test
 docker-compose up --build
 ```
 
-## 📁 Structure du Projet
+## 📁 Project Structure
 
 ```
-├── api/                          # Backend FastAPI
-│   ├── index.py                 # Point d'entrée
-│   ├── main.py                  # Application FastAPI principale
-│   ├── config.py                # Configuration et variables d'env
-│   ├── models.py                # Modèles Pydantic (requêtes/réponses)
-│   ├── api_clients.py           # Clients HTTP Anthropic + Paradigm
-│   ├── pdf_generator.py         # Génération de rapports PDF
-│   └── workflow/                # Module de workflows
-│       ├── generator.py         # Génération de code par IA
-│       ├── executor.py          # Exécution sécurisée
-│       ├── models.py            # Modèles de workflows
-│       ├── package_generator.py # Génération de packages ZIP
-│       └── workflow_analyzer.py # Analyse de workflows
-├── tests/                       # Tests unitaires et d'intégration
-├── index.html                   # Frontend (interface web)
-├── requirements.txt             # Dépendances Python
-├── .env                         # Variables d'environnement (NE PAS commiter!)
-├── docker-compose.yml           # Configuration Docker
-├── Dockerfile                   # Image Docker
-└── vercel.json                  # Configuration Vercel
+├── api/                          # FastAPI backend
+│   ├── index.py                 # Entry point
+│   ├── main.py                  # Main FastAPI application
+│   ├── config.py                # Configuration and env variables
+│   ├── models.py                # Pydantic models (requests/responses)
+│   ├── api_clients.py           # HTTP clients Anthropic + Paradigm
+│   ├── pdf_generator.py         # PDF report generation
+│   └── workflow/                # Workflow module
+│       ├── generator.py         # AI code generation
+│       ├── executor.py          # Secure execution
+│       ├── models.py            # Workflow models
+│       ├── package_generator.py # ZIP package generation
+│       └── workflow_analyzer.py # Workflow analysis
+├── tests/                       # Unit and integration tests
+├── index.html                   # Frontend (web interface)
+├── requirements.txt             # Python dependencies
+├── .env                         # Environment variables (DO NOT commit!)
+├── docker-compose.yml           # Docker configuration
+├── Dockerfile                   # Docker image
+└── vercel.json                  # Vercel configuration
 ```
 
 ## 📚 Documentation
 
-- **API Backend** : http://localhost:8000/docs (quand le serveur tourne)
-- **Docker** : Voir [DOCKER_README.md](DOCKER_README.md)
-- **API Paradigm** : https://paradigm.lighton.ai/docs
+- **API Backend**: http://localhost:8000/docs (when server is running)
+- **Docker**: See [DOCKER_README.md](DOCKER_README.md)
+- **Paradigm API**: https://paradigm.lighton.ai/docs
 
-## 🔒 Sécurité
+## 🔒 Security
 
-- **Sandboxed Execution**: Le code s'exécute dans un environnement restreint
-- **Timeout Protection**: Les exécutions sont limitées dans le temps
-- **Input Validation**: Toutes les entrées sont validées
-- **Error Handling**: Gestion complète des erreurs et logging
+- **Sandboxed Execution**: Code runs in a restricted environment
+- **Timeout Protection**: Executions are time-limited
+- **Input Validation**: All inputs are validated
+- **Error Handling**: Complete error handling and logging
 
-## 🐛 Dépannage
+## 🐛 Troubleshooting
 
-**Problème : "Port already in use"**
-- Arrêtez les conteneurs Docker : `docker-compose down`
-- Vérifiez les processus sur les ports : `netstat -ano | findstr :8000`
-- Si besoin, tuez les processus : `taskkill /F /PID <pid>`
+**Problem: "Port already in use"**
+- Stop Docker containers: `docker-compose down`
+- Check processes on ports: `netstat -ano | findstr :8000`
+- If needed, kill processes: `taskkill /F /PID <pid>`
 
-**Problème : "API key not configured"**
-- Vérifiez que le fichier `.env` existe à la racine du projet
-- Vérifiez que les clés API sont correctes et commencent par les bons préfixes
-- Redémarrez Docker : `docker-compose restart`
+**Problem: "API key not configured"**
+- Verify `.env` file exists at project root
+- Verify API keys are correct and start with proper prefixes
+- Restart Docker: `docker-compose restart`
 
-**Problème : "File not embedded yet"**
-- Les fichiers uploadés doivent être indexés avant utilisation
-- Le workflow attend automatiquement jusqu'à 60s
-- Pour workflows personnalisés, utilisez `wait_for_embedding(file_id)`
+**Problem: "File not embedded yet"**
+- Uploaded files must be indexed before use
+- Workflow automatically waits up to 60s
+- For custom workflows, use `wait_for_embedding(file_id)`
 
-**Problème : "Workflow execution timeout"**
-- Timeout par défaut : 1800s (30 min) - configurable dans `config.py`
-- Pour workflows longs, augmentez `max_execution_time` dans les settings
-- Utilisez `asyncio.gather()` pour paralléliser les opérations indépendantes
+**Problem: "Workflow execution timeout"**
+- Default timeout: 1800s (30 min) - configurable in `config.py`
+- For long workflows, increase `max_execution_time` in settings
+- Use `asyncio.gather()` to parallelize independent operations
 
 ## 📝 Technologies
 
-**Backend** :
-- FastAPI (API REST avec documentation automatique)
+**Backend**:
+- FastAPI (REST API with automatic documentation)
 - Python 3.11+
-- Pydantic 2.0+ (validation de données)
-- aiohttp (client HTTP async)
-- Upstash Redis / Vercel KV (persistance)
+- Pydantic 2.0+ (data validation)
+- aiohttp (async HTTP client)
+- Upstash Redis / Vercel KV (persistence)
 
-**Frontend** :
-- HTML/CSS/JavaScript vanilla (pas de framework)
-- Interface responsive avec drag-and-drop
-- jsPDF (export PDF côté client dans packages)
+**Frontend**:
+- HTML/CSS/JavaScript vanilla (no framework)
+- Responsive interface with drag-and-drop
+- jsPDF (client-side PDF export in packages)
 
-**IA & Document Processing** :
+**AI & Document Processing**:
 - Anthropic Claude API (claude-sonnet-4-20250514)
-- LightOn Paradigm API (recherche, analyse, extraction structurée)
+- LightOn Paradigm API (search, analysis, structured extraction)
 
-**Génération de Packages** :
-- ReportLab (rapports PDF serveur)
-- Workflow Package Generator (UI dynamique auto-générée)
-- MCP Package Generator (protocole Anthropic)
+**Package Generation**:
+- ReportLab (server PDF reports)
+- Workflow Package Generator (auto-generated dynamic UI)
+- MCP Package Generator (Anthropic protocol)
 
-**Déploiement** :
-- Docker + Docker Compose (recommandé)
-- Vercel (Pro requis)
-- Python/Uvicorn manuel
+**Deployment**:
+- Docker + Docker Compose (recommended)
+- Vercel (Pro required)
+- Manual Python/Uvicorn
 
-## 🔄 Améliorations Récentes
+## 🔄 Recent Improvements
 
-**v1.1.0-mcp (Janvier 2025)** :
-- ✨ **MCP Server Package** : Intégration Claude Desktop et Paradigm via protocole MCP
-  - Serveur dual-mode (stdio local + HTTP remote)
-  - Support multi-formats d'entrée (paths, file IDs, auto-upload)
-  - Configuration Docker avec bearer token auth
-- ✨ **Workflow Runner Package** : Package standalone avec UI auto-générée
-  - Analyse Claude du code pour génération UI intelligente
-  - Support drag-and-drop fichiers
-  - Export PDF intégré côté client
-  - Documentation bilingue (FR/EN)
+**v1.1.0-mcp (January 2025)**:
+- ✨ **MCP Server Package**: Claude Desktop and Paradigm integration via MCP protocol
+  - Dual-mode server (local stdio + remote HTTP)
+  - Multi-format input support (paths, file IDs, auto-upload)
+  - Docker configuration with bearer token auth
+- ✨ **Workflow Runner Package**: Standalone package with auto-generated UI
+  - Claude code analysis for intelligent UI generation
+  - Drag-and-drop file support
+  - Integrated client-side PDF export
+  - Bilingual documentation (FR/EN)
 
-**Fonctionnalités Principales** :
-- ✅ **Extraction Structurée** : `guided_choice`, `guided_regex`, `guided_json`
-  - Formats garantis : SIRET, SIREN, IBAN, téléphones FR, dates, montants
-  - Classification stricte avec choix prédéfinis
-  - Extraction JSON avec schéma
-- ✅ **Description Enhancement** : Amélioration auto des descriptions utilisateur
-- ✅ **Auto-Validation** : Retry automatique (3 tentatives) avec feedback d'erreur
-- ✅ **Post-Processing** : Correction auto des erreurs de syntaxe f-strings
-- ✅ **Complexity Detection** : Identification workflows complexes (>40 API calls)
-- ✅ **Performance** : Parallelisation auto via asyncio.gather()
-- ✅ **APIs Paradigm** : Support complet (Vision OCR, filter_chunks, analyze_image, etc.)
-- ✅ **Session Reuse** : Client HTTP réutilisable (5.55x plus rapide)
+**Main Features**:
+- ✅ **Structured Extraction**: `guided_choice`, `guided_regex`, `guided_json`
+  - Guaranteed formats: SIRET, SIREN, IBAN, FR phones, dates, amounts
+  - Strict classification with predefined choices
+  - JSON extraction with schema
+- ✅ **Description Enhancement**: Auto improvement of user descriptions
+- ✅ **Auto-Validation**: Automatic retry (3 attempts) with error feedback
+- ✅ **Post-Processing**: Auto correction of f-string syntax errors
+- ✅ **Complexity Detection**: Complex workflow identification (>40 API calls)
+- ✅ **Performance**: Auto parallelization via asyncio.gather()
+- ✅ **Paradigm APIs**: Full support (Vision OCR, filter_chunks, analyze_image, etc.)
+- ✅ **Session Reuse**: Reusable HTTP client (5.55x faster)

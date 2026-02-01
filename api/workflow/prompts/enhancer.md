@@ -114,17 +114,7 @@ STEP 1: Call the DataAPI search endpoint with the user's query
 
 📁 FOR WORKFLOWS WITH UPLOADED FILES (user provides documents):
 
-### 1. agent_query_with_retry (RECOMMENDED - BEST RELIABILITY) ⭐⭐⭐
-- USE FOR: All document queries - lets agent choose best tool, retries if needed
-- Pattern: result = agent_query_with_retry(query, file_ids=[doc_id])
-           answer = _extract_answer(result)
-- Performance: FAST (5-15 seconds) with automatic retries
-- Can process MULTIPLE documents in PARALLEL with asyncio.gather()
-- Returns: Full v3 response (use _extract_answer() to get text)
-- Retry strategy: 1) Let agent choose → 2) Force document_search → 3) Force document_analysis
-- ✅ USE THIS when you need reliable extraction from any document type
-
-### 2. agent_query with force_tool="document_search" - FOR QUICK QUERIES
+### 1. agent_query with force_tool="document_search" - FOR QUICK QUERIES
 - USE FOR: Extracting specific fields quickly
 - USE FOR: Simple questions about specific values
 - Performance: FAST (2-5 seconds)
@@ -132,7 +122,7 @@ STEP 1: Call the DataAPI search endpoint with the user's query
 - Example: Get name, find total, extract specific date
 - ✅ USE THIS when workflow mentions: "find", "get", "what is", single field
 
-### 3. agent_query with force_tool="document_analysis" - FOR COMPREHENSIVE ANALYSIS
+### 2. agent_query with force_tool="document_analysis" - FOR COMPREHENSIVE ANALYSIS
 - USE FOR: Long documents (>5 pages) requiring deep analysis
 - USE FOR: Complex multi-document synthesis
 - Performance: ~10-30 seconds (NO POLLING NEEDED in v3!)
@@ -141,7 +131,7 @@ STEP 1: Call the DataAPI search endpoint with the user's query
 - ✅ USE THIS when workflow mentions: "summarize", "résumer", "comprehensive"
 - 🚀 v3 BENEFIT: Returns directly, no polling required unlike v2!
 
-### 4. agent_query without force_tool - LET AGENT CHOOSE
+### 3. agent_query without force_tool - LET AGENT CHOOSE
 - USE FOR: When unsure which tool is best
 - The agent will automatically select the most appropriate tool
 - Performance: Varies based on tool chosen
@@ -153,7 +143,7 @@ STEP 1: Call the DataAPI search endpoint with the user's query
 
 🔍 FOR WORKFLOWS WITHOUT UPLOADED FILES (search workspace):
 
-### 5. agent_query without file_ids - Search User's Workspace
+### 4. agent_query without file_ids - Search User's Workspace
 - USE FOR: Finding documents in workspace using natural language
 - Performance: FAST (2-5 seconds)
 - Returns: AI answer + relevant documents

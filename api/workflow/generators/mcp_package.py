@@ -331,7 +331,7 @@ class WorkflowExecutor:
     def _add_paradigm_client(self, zip_file: zipfile.ZipFile):
         """Add the standalone Paradigm client to the ZIP"""
 
-        paradigm_client_path = Path(__file__).parent.parent / "paradigm_client_standalone.py"
+        paradigm_client_path = Path(__file__).parent.parent.parent / "paradigm_client_standalone.py"
         with open(paradigm_client_path, 'r', encoding='utf-8') as f:
             paradigm_client_code = f.read()
 

@@ -41,6 +41,7 @@ from ..models import WorkflowCell, WorkflowPlan, CellStatus
 from .generator import CellCodeGenerator
 from .evaluator import CellOutputEvaluator, ExampleOutput, EvaluationResult
 from ...config import settings
+from ...paradigm_client import ParadigmClient, _extract_v3_answer
 
 
 @dataclass
@@ -296,7 +297,7 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
         fixed_code = response.content[0].text
 
         # Clean up the code
-        fixed_code = self.cell_generator._clean_code(fixed_code)
+        fixed_code = self.cell_generator._extract_code(fixed_code)
 
         logger.info("Generated fixed code for cell '{}' ({} chars)".format(
             cell.name, len(fixed_code)
@@ -439,7 +440,7 @@ CRITICAL RULES:
         fixed_code = response.content[0].text
 
         # Clean up the code
-        fixed_code = self.cell_generator._clean_code(fixed_code)
+        fixed_code = self.cell_generator._extract_code(fixed_code)
 
         logger.info("Generated evaluation-fixed code for cell '{}' ({} chars)".format(
             cell.name, len(fixed_code)
@@ -551,13 +552,13 @@ CRITICAL RULES:
                             )
                         else:
                             # First attempt - generate normally
-                            description, code = await self.cell_generator.generate_cell_code(
+                            code = await self.cell_generator.generate_cell_code(
                                 cell=cell,
                                 available_context=plan.shared_context_schema,
                                 workflow_description=workflow_description
                             )
 
-                        cell.mark_ready(code, description if not is_retry else None)
+                        cell.mark_ready(code, cell.description)
 
                         yield {
                             "type": "cell_ready",
@@ -565,7 +566,7 @@ CRITICAL RULES:
                             "cell_name": cell.name,
                             "code_preview": code[:300] + "..." if len(code) > 300 else code,
                             "full_code": code,
-                            "code_description": cell.code_description or description if not is_retry else cell.code_description,
+                            "code_description": cell.description,
                             "attempt": attempt,
                             "is_retry": is_retry,
                             "timestamp": datetime.utcnow().isoformat()
@@ -862,6 +863,12 @@ CRITICAL RULES:
         """
         Create a safe execution environment for cell code.
 
+        The environment includes:
+        - Standard builtins for basic Python operations
+        - Pre-injected ParadigmClient class (cells don't need to define it)
+        - Pre-injected API configuration (LIGHTON_API_KEY, LIGHTON_BASE_URL)
+        - Helper function _extract_v3_answer for parsing v3 responses
+
         Returns:
             dict: Global namespace for code execution
         """
@@ -953,6 +960,13 @@ CRITICAL RULES:
                 'pow': pow,
                 'callable': callable,
             },
+            # Pre-injected Paradigm API client and configuration
+            # Cells can use ParadigmClient directly without defining it
+            'ParadigmClient': ParadigmClient,
+            'LIGHTON_API_KEY': settings.lighton_api_key,
+            'LIGHTON_BASE_URL': settings.lighton_base_url,
+            # Helper function for parsing v3 API responses
+            '_extract_v3_answer': _extract_v3_answer,
         }
 
     async def execute_workflow_with_evaluation(
@@ -1223,13 +1237,13 @@ CRITICAL RULES:
         })
 
         try:
-            description, code = await self.cell_generator.generate_cell_code(
+            code = await self.cell_generator.generate_cell_code(
                 cell=cell,
                 available_context=plan.shared_context_schema,
                 workflow_description=workflow_description
             )
             cell_code = code
-            cell.mark_ready(code, description)
+            cell.mark_ready(code, cell.description)
 
             events.append({
                 "type": "cell_ready",
@@ -1238,7 +1252,7 @@ CRITICAL RULES:
                 "display_step": cell.get_display_step(),
                 "code_preview": code[:300] + "..." if len(code) > 300 else code,
                 "full_code": code,
-                "code_description": description,
+                "code_description": cell.description,
                 "timestamp": datetime.utcnow().isoformat()
             })
         except Exception as e:
@@ -1617,13 +1631,13 @@ CRITICAL RULES:
         })
 
         try:
-            description, code = await self.cell_generator.generate_cell_code(
+            code = await self.cell_generator.generate_cell_code(
                 cell=cell,
                 available_context=plan.shared_context_schema,
                 workflow_description=workflow_description
             )
             cell_code = code
-            cell.mark_ready(code, description)
+            cell.mark_ready(code, cell.description)
 
             await emit({
                 "type": "cell_ready",
@@ -1632,7 +1646,7 @@ CRITICAL RULES:
                 "display_step": cell.get_display_step(),
                 "code_preview": code[:300] + "..." if len(code) > 300 else code,
                 "full_code": code,
-                "code_description": description,
+                "code_description": cell.description,
                 "timestamp": datetime.utcnow().isoformat()
             })
         except Exception as e:
@@ -1995,13 +2009,13 @@ CRITICAL RULES:
             }
 
             try:
-                description, code = await self.cell_generator.generate_cell_code(
+                code = await self.cell_generator.generate_cell_code(
                     cell=cell,
                     available_context=plan.shared_context_schema,
                     workflow_description=workflow_description
                 )
                 cell_code = code
-                cell.mark_ready(code, description)
+                cell.mark_ready(code, cell.description)
 
                 yield {
                     "type": "cell_ready",
@@ -2009,7 +2023,7 @@ CRITICAL RULES:
                     "cell_name": cell.name,
                     "code_preview": code[:300] + "..." if len(code) > 300 else code,
                     "full_code": code,
-                    "code_description": description,
+                    "code_description": cell.description,
                     "timestamp": datetime.utcnow().isoformat()
                 }
             except Exception as e:
@@ -2450,13 +2464,13 @@ CRITICAL RULES:
             })
 
             try:
-                description, code = await self.cell_generator.generate_cell_code(
+                code = await self.cell_generator.generate_cell_code(
                     cell=cell,
                     available_context={},  # Context schema would be passed here
                     workflow_description=workflow_description
                 )
                 cell_code = code
-                cell.mark_ready(code, description)
+                cell.mark_ready(code, cell.description)
                 events.append({
                     "type": "cell_ready",
                     "cell_id": cell.id,
@@ -2464,7 +2478,7 @@ CRITICAL RULES:
                     "display_step": cell.get_display_step(),
                     "code_preview": code[:300] + "..." if len(code) > 300 else code,
                     "full_code": code,
-                    "code_description": description,
+                    "code_description": cell.description,
                     "timestamp": datetime.utcnow().isoformat()
                 })
             except Exception as e:

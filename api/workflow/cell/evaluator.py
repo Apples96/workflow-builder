@@ -270,9 +270,6 @@ CELL INFORMATION:
 - Expected Outputs: {outputs}
 - Paradigm Tools Used: {tools}
 
-CELL CODE DESCRIPTION:
-{code_description}
-
 GENERATED CELL CODE:
 ```python
 {cell_code}
@@ -300,7 +297,6 @@ Provide your evaluation in the specified format (VALID, FEEDBACK, ISSUES, SUGGES
             inputs=", ".join(cell.inputs_required) if cell.inputs_required else "none",
             outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none",
             tools=", ".join(cell.paradigm_tools_used) if cell.paradigm_tools_used else "none",
-            code_description=cell.code_description or "No description available",
             cell_code=cell_code[:3000] if len(cell_code) > 3000 else cell_code,
             user_input=smoke_test_output.user_input[:500] if smoke_test_output.user_input else "(empty)",
             output_text=smoke_test_output.output_text or "(no printed output)",

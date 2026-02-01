@@ -1600,8 +1600,8 @@ async def submit_cell_feedback(workflow_id: str, cell_id: str, request: CellFeed
         executor = CellExecutor()
 
         # Build comprehensive feedback context message for Claude
-        feedback_context = """CURRENT CODE DESCRIPTION:
-{code_description}
+        feedback_context = """CELL DESCRIPTION:
+{cell_description}
 
 USER FEEDBACK ON CODE:
 {feedback}
@@ -1611,9 +1611,8 @@ Please regenerate the complete cell code incorporating the user's feedback above
 - Address all points in the user's feedback
 - Maintain the same inputs and outputs as specified in the cell plan
 - Follow all coding guidelines and best practices from the cell generation prompt
-- Keep the code standalone with full API documentation
-- Update the DESCRIPTION section to reflect any changes made""".format(
-            code_description=cell.code_description or "No description available",
+- Keep the code standalone with full API documentation""".format(
+            cell_description=cell.description or "No description available",
             feedback=feedback
         )
 
@@ -1634,6 +1633,9 @@ Please regenerate the complete cell code incorporating the user's feedback above
         # Update the cell with new code
         cell.generated_code = new_code
         cell.status = CellStatus.READY
+
+        # Persist the updated plan so the new code is available for future reruns
+        workflow_executor.update_workflow_plan(workflow_id, plan)
 
         logger.info("Successfully regenerated code for cell {} with user feedback".format(cell_id))
 

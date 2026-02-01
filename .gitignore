@@ -69,6 +69,10 @@ RAPPORT_TEST_UGAP_DC4.md
 # Test files
 test_*.py
 test_*.json
+tests/ugap-test/
+
+# Log files
+*.log
 
 # Startup scripts with API keys
 start.bat
