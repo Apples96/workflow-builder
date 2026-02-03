@@ -567,6 +567,7 @@ CRITICAL RULES:
                             "code_preview": code[:300] + "..." if len(code) > 300 else code,
                             "full_code": code,
                             "code_description": cell.description,
+                            "success_criteria": cell.success_criteria,
                             "attempt": attempt,
                             "is_retry": is_retry,
                             "timestamp": datetime.utcnow().isoformat()
@@ -1253,6 +1254,7 @@ CRITICAL RULES:
                 "code_preview": code[:300] + "..." if len(code) > 300 else code,
                 "full_code": code,
                 "code_description": cell.description,
+                "success_criteria": cell.success_criteria,
                 "timestamp": datetime.utcnow().isoformat()
             })
         except Exception as e:
@@ -1647,6 +1649,7 @@ CRITICAL RULES:
                 "code_preview": code[:300] + "..." if len(code) > 300 else code,
                 "full_code": code,
                 "code_description": cell.description,
+                "success_criteria": cell.success_criteria,
                 "timestamp": datetime.utcnow().isoformat()
             })
         except Exception as e:
@@ -2024,6 +2027,7 @@ CRITICAL RULES:
                     "code_preview": code[:300] + "..." if len(code) > 300 else code,
                     "full_code": code,
                     "code_description": cell.description,
+                    "success_criteria": cell.success_criteria,
                     "timestamp": datetime.utcnow().isoformat()
                 }
             except Exception as e:
@@ -2479,6 +2483,7 @@ CRITICAL RULES:
                     "code_preview": code[:300] + "..." if len(code) > 300 else code,
                     "full_code": code,
                     "code_description": cell.description,
+                    "success_criteria": cell.success_criteria,
                     "timestamp": datetime.utcnow().isoformat()
                 })
             except Exception as e:

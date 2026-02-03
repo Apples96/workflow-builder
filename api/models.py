@@ -231,6 +231,7 @@ class CellResponse(BaseModel):
     paradigm_tools_used: List[str] = Field(default_factory=list, description="Paradigm API tools used")
     generated_code: Optional[str] = Field(None, description="Generated Python code for this cell")
     code_description: Optional[str] = Field(None, description="Human-readable explanation of what the code does")
+    success_criteria: Optional[str] = Field(None, description="User-editable criteria for LLM validation")
     output: Optional[str] = Field(None, description="Human-readable output after execution")
     execution_time: Optional[float] = Field(None, description="Time taken to execute in seconds")
     error: Optional[str] = Field(None, description="Error message if cell failed")
@@ -347,6 +348,16 @@ class CellFeedbackRequest(BaseModel):
     incorporating the feedback.
     """
     feedback: str = Field(..., description="User feedback describing desired changes to the cell code")
+
+
+class SuccessCriteriaRequest(BaseModel):
+    """
+    Request model for updating a cell's success criteria.
+
+    Used when users want to edit the validation criteria for a cell's output.
+    After updating, the cell will be reset and re-executed with the new criteria.
+    """
+    success_criteria: str = Field(..., description="Custom success criteria for LLM validation")
 
 
 class CellExecuteSingleRequest(BaseModel):

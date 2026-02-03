@@ -242,6 +242,7 @@ SUGGESTED_FIX:
             smoke_test_output.formatted_variables
         )
 
+        # Build base message
         message = """Please evaluate the following cell output from a smoke test execution:
 
 WORKFLOW CONTEXT:
@@ -286,6 +287,17 @@ Provide your evaluation in the specified format (VALID, FEEDBACK, ISSUES, SUGGES
             output_text=smoke_test_output.output_text or "(no printed output)",
             variables=variables_display
         )
+
+        # Append cell-specific success criteria if present
+        if cell.success_criteria:
+            message += """
+
+CELL-SPECIFIC SUCCESS CRITERIA:
+{criteria}
+
+Use these criteria IN ADDITION to the general guidelines when evaluating. The output should meet these specific requirements.""".format(
+                criteria=cell.success_criteria
+            )
 
         return message
 

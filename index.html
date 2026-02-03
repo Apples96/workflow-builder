@@ -1218,62 +1218,6 @@ Architecture:
             border-color: #007bff;
         }
 
-        .cell-description-section {
-            margin-top: 10px;
-            padding: 14px;
-            background: #e7f3ff;
-            border: 2px solid #0066cc;
-            border-radius: 6px;
-        }
-
-        .cell-description-header {
-            font-size: 12px;
-            font-weight: 700;
-            color: #0066cc;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .cell-description-content {
-            font-size: 14px;
-            line-height: 1.6;
-            color: #1a1a1a;
-        }
-
-        .cell-description-content .cell-desc-header {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 8px;
-        }
-
-        .cell-description-content .cell-desc-section {
-            margin-top: 12px;
-            margin-bottom: 4px;
-            color: #495057;
-        }
-
-        .cell-description-content .cell-desc-list {
-            margin: 8px 0 12px 0;
-            padding-left: 20px;
-            list-style-type: none;
-        }
-
-        .cell-description-content .cell-desc-list li {
-            position: relative;
-            padding-left: 16px;
-            margin-bottom: 6px;
-            color: #333;
-        }
-
-        .cell-description-content .cell-desc-list li::before {
-            content: "→";
-            position: absolute;
-            left: 0;
-            color: #00d4aa;
-            font-weight: bold;
-        }
-
         .cell-code-section {
             margin-top: 10px;
             padding: 12px;
@@ -1369,7 +1313,7 @@ Architecture:
 
         /* AI Reasoning and Feedback section */
         .ai-reasoning-section {
-            margin-top: 10px;
+            flex: 0 0 auto;
         }
 
         .ai-reasoning-toggle {
@@ -1441,6 +1385,135 @@ Architecture:
             border-radius: 4px;
             white-space: pre-wrap;
             color: #333;
+        }
+
+        /* User feedback item styling (distinct from AI feedback) */
+        .user-feedback-item {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-left: 4px solid #2196f3;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+        }
+
+        .user-feedback-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .user-feedback-item-header {
+            font-weight: 600;
+            color: #1565c0;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-feedback-item-header::before {
+            content: '👤';
+        }
+
+        .user-feedback-item-content {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 8px;
+            border-radius: 4px;
+            color: #333;
+            white-space: pre-wrap;
+        }
+
+        .user-feedback-item-timestamp {
+            font-size: 11px;
+            color: #1976d2;
+            margin-top: 6px;
+        }
+
+        /* Cell Criteria Row - contains Success Criteria and AI Reasoning side by side */
+        .cell-criteria-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Success Criteria Section */
+        .cell-success-criteria-section {
+            flex: 0 0 auto;
+        }
+
+        .cell-success-criteria-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #f3e5f5;
+            border: 1px solid #9c27b0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            color: #7b1fa2;
+        }
+
+        .cell-success-criteria-toggle:hover {
+            background: #e1bee7;
+        }
+
+        .cell-success-criteria-content {
+            display: none;
+            margin-top: 10px;
+            padding: 12px;
+            background: #faf4fc;
+            border: 1px solid #9c27b0;
+            border-radius: 6px;
+        }
+
+        .cell-success-criteria-content.visible {
+            display: block;
+        }
+
+        .cell-success-criteria-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ce93d8;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        .cell-success-criteria-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .cell-success-criteria-submit {
+            padding: 8px 16px;
+            background: #9c27b0;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cell-success-criteria-submit:hover {
+            background: #7b1fa2;
+        }
+
+        .cell-success-criteria-cancel {
+            padding: 8px 16px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .cell-success-criteria-cancel:hover {
+            background: #545b62;
         }
 
         /* Compact logs toggle */
@@ -1813,22 +1886,7 @@ Architecture:
                 <p>Describe your desired workflow in natural language:</p>
                 <textarea id="rawWorkflowDescription" placeholder="Example: I want to search for documents about my question and then analyze them to provide a summary..." style="color: #999;"></textarea>
 
-                <!-- Main action buttons: Run All and Stop -->
-                <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                    <button onclick="runAllWorkflow()" id="runAllButton" class="run-all-btn" style="flex: 1; font-size: 16px; padding: 12px 20px;">
-                        ▶ Run All
-                    </button>
-                    <button onclick="stopAllExecution()" id="stopAllButton" class="stop-btn" style="background: #dc3545; padding: 12px 20px; font-size: 16px;">
-                        ■ Stop
-                    </button>
-                </div>
-
-                <!-- Rerun from initial description (shown after first run) -->
-                <div id="rerunInitialContainer" style="display: none; margin-top: 10px;">
-                    <button class="rerun-btn" onclick="rerunFromStage('enhance')">🔄 Rerun from initial description</button>
-                </div>
-
-                <!-- Upfront Test Examples Section (collapsible) -->
+                <!-- Upfront Test Examples Section (collapsible) - right after description -->
                 <div class="upfront-examples-section" style="margin-top: 15px;">
                     <div class="upfront-examples-header" onclick="toggleUpfrontExamples(this)">
                         <div class="header-left">
@@ -1849,41 +1907,56 @@ Architecture:
                     </div>
                 </div>
 
-                <!-- Auto-execution Progress Indicator (hidden by default) -->
-                <div id="autoProgressContainer" class="auto-progress-container" style="display: none;">
-                    <div class="auto-progress-step" id="autoProgressEnhance">
-                        <span class="progress-checkbox">1</span>
-                        <span>Enhance</span>
-                    </div>
-                    <div class="auto-progress-connector" id="autoConnector1"></div>
-                    <div class="auto-progress-step" id="autoProgressReview">
-                        <span class="progress-checkbox">2</span>
-                        <span>Review</span>
-                    </div>
-                    <div class="auto-progress-connector" id="autoConnector2"></div>
-                    <div class="auto-progress-step" id="autoProgressCreate">
-                        <span class="progress-checkbox">3</span>
-                        <span>Plan</span>
-                    </div>
-                    <div class="auto-progress-connector" id="autoConnector3"></div>
-                    <div class="auto-progress-step" id="autoProgressTest">
-                        <span class="progress-checkbox">4</span>
-                        <span>Execute</span>
-                    </div>
-                </div>
-
-                <!-- Action Required Banner (hidden by default) -->
-                <div id="actionRequiredBanner" class="action-required-banner" style="display: none;">
-                    <h4>⚠️ User Action Required</h4>
-                    <p id="actionRequiredMessage">Questions or limitations were detected in the enhanced description. Please review before continuing.</p>
-                    <div class="banner-actions">
-                        <button class="continue-btn" onclick="continueAutoExecution()">Continue Anyway</button>
-                        <button class="cancel-btn" onclick="cancelAutoExecution()">Cancel</button>
-                    </div>
-                </div>
-
                 <!-- Hidden storage for enhanced description data -->
                 <div id="enhancedDescription" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Main action buttons: Run All and Stop (OUTSIDE dropdown) -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+            <button onclick="runAllWorkflow()" id="runAllButton" class="run-all-btn" style="flex: 1; font-size: 16px; padding: 12px 20px;">
+                ▶ Run All
+            </button>
+            <button onclick="stopAllExecution()" id="stopAllButton" class="stop-btn" style="background: #dc3545; padding: 12px 20px; font-size: 16px;">
+                ■ Stop
+            </button>
+        </div>
+
+        <!-- Rerun from initial description (shown after first run) -->
+        <div id="rerunInitialContainer" style="display: none; margin-top: 10px;">
+            <button class="rerun-btn" onclick="rerunFromStage('enhance')">🔄 Rerun from initial description</button>
+        </div>
+
+        <!-- Auto-execution Progress Indicator (OUTSIDE dropdown, hidden by default) -->
+        <div id="autoProgressContainer" class="auto-progress-container" style="display: none; margin-top: 15px;">
+            <div class="auto-progress-step" id="autoProgressEnhance">
+                <span class="progress-checkbox">1</span>
+                <span>Enhance</span>
+            </div>
+            <div class="auto-progress-connector" id="autoConnector1"></div>
+            <div class="auto-progress-step" id="autoProgressReview">
+                <span class="progress-checkbox">2</span>
+                <span>Review</span>
+            </div>
+            <div class="auto-progress-connector" id="autoConnector2"></div>
+            <div class="auto-progress-step" id="autoProgressCreate">
+                <span class="progress-checkbox">3</span>
+                <span>Plan</span>
+            </div>
+            <div class="auto-progress-connector" id="autoConnector3"></div>
+            <div class="auto-progress-step" id="autoProgressTest">
+                <span class="progress-checkbox">4</span>
+                <span>Execute</span>
+            </div>
+        </div>
+
+        <!-- Action Required Banner (OUTSIDE dropdown, hidden by default) -->
+        <div id="actionRequiredBanner" class="action-required-banner" style="display: none; margin-top: 15px;">
+            <h4>⚠️ User Action Required</h4>
+            <p id="actionRequiredMessage">Questions or limitations were detected in the enhanced description. Please review before continuing.</p>
+            <div class="banner-actions">
+                <button class="continue-btn" onclick="continueAutoExecution()">Continue Anyway</button>
+                <button class="cancel-btn" onclick="cancelAutoExecution()">Cancel</button>
             </div>
         </div>
     </div>
@@ -2299,6 +2372,8 @@ if __name__ == "__main__":
         // AI Reasoning and Feedback tracking
         // Stores evaluation feedback and retry attempts for each cell
         let cellAIFeedback = {};         // {cellId: [{attempt, feedback, issues, suggestedFix, output, passed}]}
+        let cellUserFeedback = {};       // {cellId: [{feedback, timestamp}]} - User-submitted feedback for display
+        let cellSuccessCriteria = {};    // {cellId: criteriaText} - Success criteria for each cell
 
         // Execution state tracking
         let isExecuting = false;         // Whether workflow is currently executing
@@ -2350,25 +2425,6 @@ if __name__ == "__main__":
         }
 
         /**
-         * Toggle cell description visibility.
-         */
-        function toggleCellDescription(cellId) {
-            const descSection = document.getElementById(`cell-description-${cellId}`);
-            if (!descSection) return;
-
-            const toggle = descSection.querySelector('.collapsible-toggle');
-            const content = descSection.querySelector('.collapsible-content');
-
-            if (content.classList.contains('expanded')) {
-                content.classList.remove('expanded');
-                toggle.classList.remove('expanded');
-            } else {
-                content.classList.add('expanded');
-                toggle.classList.add('expanded');
-            }
-        }
-
-        /**
          * Toggle AI reasoning and feedback visibility for a cell.
          */
         function toggleAIReasoning(cellId) {
@@ -2398,46 +2454,198 @@ if __name__ == "__main__":
 
         /**
          * Render AI reasoning section for a cell.
+         * Displays both AI evaluation feedback and user-submitted feedback in chronological order.
          */
         function renderAIReasoningSection(cellId) {
-            const feedback = cellAIFeedback[cellId];
-            if (!feedback || feedback.length === 0) return '';
+            const aiFeedback = cellAIFeedback[cellId] || [];
+            const userFeedback = cellUserFeedback[cellId] || [];
 
-            const hasRetries = feedback.length > 1 || feedback.some(f => !f.passed);
-            const btnClass = hasRetries ? 'has-retries' : 'has-feedback';
-            const retryCount = feedback.filter(f => !f.passed).length;
+            // Combine both types with a type identifier for rendering
+            const allFeedback = [
+                ...aiFeedback.map(f => ({...f, type: 'ai'})),
+                ...userFeedback.map(f => ({...f, type: 'user'}))
+            ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            if (allFeedback.length === 0) return '';
+
+            const hasRetries = aiFeedback.length > 1 || aiFeedback.some(f => !f.passed);
+            const retryCount = aiFeedback.filter(f => !f.passed).length;
+            const userCount = userFeedback.length;
+
+            // Determine button styling based on content
+            let btnClass = 'has-feedback';
+            if (hasRetries) btnClass = 'has-retries';
+
+            // Build button label with counts
+            let buttonLabel = '🤖 AI Reasoning';
+            const labelParts = [];
+            if (retryCount > 0) labelParts.push(`${retryCount} ${retryCount === 1 ? 'retry' : 'retries'}`);
+            if (userCount > 0) labelParts.push(`${userCount} user ${userCount === 1 ? 'change' : 'changes'}`);
+            if (labelParts.length > 0) buttonLabel += ` (${labelParts.join(', ')})`;
 
             let contentHTML = '';
-            feedback.forEach((item, index) => {
-                const statusIcon = item.passed ? '✅' : '❌';
-                const statusText = item.passed ? 'Passed' : 'Failed';
-                contentHTML += `
-                    <div class="ai-reasoning-item">
-                        <div class="ai-reasoning-item-header">
-                            ${statusIcon} Attempt ${item.attempt} - ${statusText}
+            allFeedback.forEach((item) => {
+                if (item.type === 'ai') {
+                    // Render AI feedback item
+                    const statusIcon = item.passed ? '✅' : '❌';
+                    const statusText = item.passed ? 'Passed' : 'Failed';
+                    contentHTML += `
+                        <div class="ai-reasoning-item">
+                            <div class="ai-reasoning-item-header">
+                                ${statusIcon} Attempt ${item.attempt} - ${statusText}
+                            </div>
+                            <div class="ai-reasoning-item-feedback">
+                                <strong>Feedback:</strong> ${item.feedback || 'No feedback provided'}
+                                ${item.issues && item.issues.length > 0 ? `
+                                    <br><br><strong>Issues:</strong>
+                                    <ul style="margin: 5px 0 0 20px; padding: 0;">
+                                        ${item.issues.map(issue => `<li>${issue}</li>`).join('')}
+                                    </ul>
+                                ` : ''}
+                                ${item.suggestedFix ? `<br><br><strong>Suggested Fix:</strong> ${item.suggestedFix}` : ''}
+                            </div>
                         </div>
-                        <div class="ai-reasoning-item-feedback">
-                            <strong>Feedback:</strong> ${item.feedback || 'No feedback provided'}
-                            ${item.issues && item.issues.length > 0 ? `
-                                <br><br><strong>Issues:</strong>
-                                <ul style="margin: 5px 0 0 20px; padding: 0;">
-                                    ${item.issues.map(issue => `<li>${issue}</li>`).join('')}
-                                </ul>
-                            ` : ''}
-                            ${item.suggestedFix ? `<br><br><strong>Suggested Fix:</strong> ${item.suggestedFix}` : ''}
+                    `;
+                } else {
+                    // Render user feedback item
+                    const timestamp = new Date(item.timestamp).toLocaleString();
+                    contentHTML += `
+                        <div class="user-feedback-item">
+                            <div class="user-feedback-item-header">
+                                User Feedback
+                            </div>
+                            <div class="user-feedback-item-content">${item.feedback}</div>
+                            <div class="user-feedback-item-timestamp">Submitted: ${timestamp}</div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
             });
 
             return `
-                <div class="ai-reasoning-section">
+                <div class="ai-reasoning-section" id="ai-reasoning-section-${cellId}">
                     <button class="ai-reasoning-toggle ${btnClass}" onclick="toggleAIReasoning('${cellId}')">
-                        🤖 AI Reasoning ${retryCount > 0 ? `(${retryCount} retries)` : ''}
+                        ${buttonLabel}
                     </button>
                     <div class="ai-reasoning-content" id="ai-reasoning-content-${cellId}">
                         ${contentHTML}
                     </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Render success criteria section for a cell.
+         * Displays editable textarea with validation criteria.
+         */
+        function renderSuccessCriteriaSection(cellId) {
+            const criteria = cellSuccessCriteria[cellId];
+            if (!criteria) return '';
+
+            // Escape HTML in criteria for safe display
+            const escapedCriteria = criteria
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+
+            return `
+                <div class="cell-success-criteria-section" id="success-criteria-section-${cellId}">
+                    <button class="cell-success-criteria-toggle" onclick="toggleSuccessCriteria('${cellId}')">
+                        📋 Success Criteria
+                    </button>
+                    <div class="cell-success-criteria-content" id="success-criteria-content-${cellId}">
+                        <textarea class="cell-success-criteria-textarea"
+                                  id="success-criteria-textarea-${cellId}">${escapedCriteria}</textarea>
+                        <div class="cell-success-criteria-actions">
+                            <button class="cell-success-criteria-submit"
+                                    onclick="submitSuccessCriteria('${cellId}', currentWorkflowId)">
+                                Save & Restart from Cell
+                            </button>
+                            <button class="cell-success-criteria-cancel"
+                                    onclick="toggleSuccessCriteria('${cellId}')">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Toggle success criteria visibility for a cell.
+         */
+        function toggleSuccessCriteria(cellId) {
+            const content = document.getElementById(`success-criteria-content-${cellId}`);
+            if (content) {
+                content.classList.toggle('visible');
+            }
+        }
+
+        /**
+         * Submit updated success criteria and restart workflow from cell.
+         */
+        async function submitSuccessCriteria(cellId, workflowId) {
+            const textarea = document.getElementById(`success-criteria-textarea-${cellId}`);
+            const criteria = textarea?.value?.trim();
+            if (!criteria) {
+                addLog('❌ Success criteria cannot be empty', 'error');
+                return;
+            }
+
+            // Hide the criteria panel
+            toggleSuccessCriteria(cellId);
+
+            // Update cell display to show restarting
+            updateCellDisplay(cellId, 'generating', '🔄 Restarting with new criteria...');
+            addLog(`📋 Updating success criteria for cell ${cellId}...`, 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${workflowId}/cells/${cellId}/success-criteria`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ success_criteria: criteria })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    // Update local storage
+                    cellSuccessCriteria[cellId] = criteria;
+                    addLog(`✅ Success criteria updated. ${result.message}`, 'response');
+
+                    // Trigger workflow re-execution with test examples
+                    if (testExamples.length > 0) {
+                        addLog(`🔄 Restarting workflow with ${testExamples.length} test examples...`, 'info');
+                        // Use the existing multi-example execution
+                        await executeCellBasedMultiExample();
+                    } else {
+                        addLog(`ℹ️ No test examples configured. Add test examples to re-run the workflow.`, 'info');
+                    }
+                } else {
+                    const error = await response.json();
+                    addLog(`❌ Failed to update success criteria: ${error.detail}`, 'error');
+                    updateCellDisplay(cellId, 'failed', '❌ Update failed');
+                }
+            } catch (error) {
+                addLog(`❌ Error updating success criteria: ${error.message}`, 'error');
+                updateCellDisplay(cellId, 'failed', '❌ Update failed');
+            }
+        }
+
+        /**
+         * Render both Success Criteria and AI Reasoning sections side by side.
+         * Returns HTML with both sections in a flex row container.
+         */
+        function renderCriteriaAndReasoningRow(cellId) {
+            const successCriteriaHTML = renderSuccessCriteriaSection(cellId);
+            const aiReasoningHTML = renderAIReasoningSection(cellId);
+
+            // If neither section has content, return empty
+            if (!successCriteriaHTML && !aiReasoningHTML) return '';
+
+            return `
+                <div class="cell-criteria-row">
+                    ${successCriteriaHTML}
+                    ${aiReasoningHTML}
                 </div>
             `;
         }
@@ -3808,7 +4016,11 @@ if __name__ == "__main__":
 
                 case 'cell_ready':
                     addLog(`  ✓ Code ready`, 'info');
-                    updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code, null, event.code_description);
+                    updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code);
+                    // Store success criteria if provided
+                    if (event.success_criteria) {
+                        cellSuccessCriteria[event.cell_id] = event.success_criteria;
+                    }
                     break;
 
                 case 'cell_executing':
@@ -4058,7 +4270,11 @@ if __name__ == "__main__":
 
                 case 'cell_ready':
                     if (exampleNumber === 1) {
-                        updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code || event.code_preview, null, event.code_description);
+                        updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code || event.code_preview);
+                        // Store success criteria if provided
+                        if (event.success_criteria) {
+                            cellSuccessCriteria[event.cell_id] = event.success_criteria;
+                        }
                     }
                     break;
 
@@ -4216,8 +4432,8 @@ if __name__ == "__main__":
                 </div>
             `;
 
-            // Add AI reasoning section if there's feedback for this cell
-            outputHTML += renderAIReasoningSection(cellId);
+            // Add success criteria and AI reasoning sections side by side
+            outputHTML += renderCriteriaAndReasoningRow(cellId);
 
             console.log(`DEBUG: Setting outputDiv.innerHTML with ${testExamples.length} example tabs and buttons`);
             outputDiv.innerHTML = outputHTML;
@@ -4462,8 +4678,12 @@ if __name__ == "__main__":
                     break;
 
                 case 'cell_ready':
-                    updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code || event.code_preview, null, event.code_description);
+                    updateCellDisplay(event.cell_id, 'ready', '✓ Code ready', null, null, event.full_code || event.code_preview);
                     addLog(`✓ Code ready for: ${event.cell_name}`, 'response');
+                    // Store success criteria if provided
+                    if (event.success_criteria) {
+                        cellSuccessCriteria[event.cell_id] = event.success_criteria;
+                    }
                     break;
 
                 case 'cell_executing':
@@ -4558,62 +4778,9 @@ if __name__ == "__main__":
         }
 
         /**
-         * Format cell description with proper HTML for structured display.
-         * Converts markdown-like format to HTML with bullet points and sections.
-         */
-        function formatCellDescription(description) {
-            if (!description) return '';
-
-            let html = description;
-
-            // Convert **text** to <strong>text</strong>
-            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-            // Convert bullet points (• or - at start of line) to list items
-            const lines = html.split('\n');
-            let inList = false;
-            let result = [];
-
-            for (let line of lines) {
-                const trimmed = line.trim();
-
-                // Check if line is a bullet point
-                if (trimmed.startsWith('•') || trimmed.startsWith('- ')) {
-                    if (!inList) {
-                        result.push('<ul class="cell-desc-list">');
-                        inList = true;
-                    }
-                    const content = trimmed.replace(/^[•\-]\s*/, '');
-                    result.push(`<li>${content}</li>`);
-                } else {
-                    if (inList) {
-                        result.push('</ul>');
-                        inList = false;
-                    }
-                    if (trimmed) {
-                        // Check if it's a section header (ends with :)
-                        if (trimmed.match(/^<strong>[^<]+:<\/strong>$/)) {
-                            result.push(`<div class="cell-desc-section">${trimmed}</div>`);
-                        } else if (trimmed.match(/^<strong>/)) {
-                            result.push(`<div class="cell-desc-header">${trimmed}</div>`);
-                        } else {
-                            result.push(`<div>${trimmed}</div>`);
-                        }
-                    }
-                }
-            }
-
-            if (inList) {
-                result.push('</ul>');
-            }
-
-            return result.join('');
-        }
-
-        /**
          * Update a cell's display in the progress list.
          */
-        function updateCellDisplay(cellId, status, statusText, output = null, error = null, code = null, variableValues = null, codeDescription = null) {
+        function updateCellDisplay(cellId, status, statusText, output = null, error = null, code = null, variableValues = null) {
             const cellDiv = document.getElementById(`cell-item-${cellId}`);
             if (!cellDiv) return;
 
@@ -4632,34 +4799,6 @@ if __name__ == "__main__":
                     case 'failed': statusIcon.textContent = '❌'; break;
                     default: statusIcon.textContent = '⏳';
                 }
-            }
-
-            // Add or update code description if provided (collapsible)
-            if (codeDescription) {
-                let descSection = cellDiv.querySelector('.cell-description-section');
-                if (!descSection) {
-                    descSection = document.createElement('div');
-                    descSection.className = 'cell-description-section collapsible-section';
-                    descSection.id = `cell-description-${cellId}`;
-                    // Insert before code section if it exists, otherwise append
-                    const codeSection = cellDiv.querySelector('.cell-code-section');
-                    if (codeSection) {
-                        cellDiv.querySelector('.cell-content').insertBefore(descSection, codeSection);
-                    } else {
-                        cellDiv.querySelector('.cell-content').appendChild(descSection);
-                    }
-                }
-                // Format the description with proper HTML
-                const formattedDescription = formatCellDescription(codeDescription);
-                descSection.innerHTML = `
-                    <div class="collapsible-toggle" onclick="toggleCellDescription('${cellId}')">
-                        <span>📋 What This Cell Does</span>
-                        <span class="toggle-icon">▼</span>
-                    </div>
-                    <div class="collapsible-content">
-                        <div class="cell-description-content">${formattedDescription}</div>
-                    </div>
-                `;
             }
 
             // Add or update code section if provided
@@ -4742,6 +4881,9 @@ if __name__ == "__main__":
                     </div>
                 `;
 
+                // Add success criteria and AI reasoning sections side by side
+                outputHTML += renderCriteriaAndReasoningRow(cellId);
+
                 outputDiv.innerHTML = outputHTML;
             }
 
@@ -4755,16 +4897,15 @@ if __name__ == "__main__":
                 }
                 errorDiv.textContent = error;
 
-                // Add AI reasoning section for failed cells (shows evaluation attempts)
-                const aiReasoningHTML = renderAIReasoningSection(cellId);
-                if (aiReasoningHTML) {
-                    let aiReasoningDiv = cellDiv.querySelector('.ai-reasoning-section');
-                    if (!aiReasoningDiv) {
-                        aiReasoningDiv = document.createElement('div');
-                        aiReasoningDiv.className = 'ai-reasoning-section';
-                        cellDiv.querySelector('.cell-content').appendChild(aiReasoningDiv);
+                // Add success criteria and AI reasoning for failed cells
+                const criteriaRowHTML = renderCriteriaAndReasoningRow(cellId);
+                if (criteriaRowHTML) {
+                    let criteriaRowDiv = cellDiv.querySelector('.cell-criteria-row');
+                    if (!criteriaRowDiv) {
+                        criteriaRowDiv = document.createElement('div');
+                        cellDiv.querySelector('.cell-content').appendChild(criteriaRowDiv);
                     }
-                    aiReasoningDiv.innerHTML = aiReasoningHTML;
+                    criteriaRowDiv.outerHTML = criteriaRowHTML;
                 }
             }
         }
@@ -5796,6 +5937,32 @@ if __name__ == "__main__":
 
                     // Mark results as stale since cell code changed
                     markResultsStale();
+
+                    // Store user feedback for display in AI reasoning section
+                    if (!cellUserFeedback[cellId]) {
+                        cellUserFeedback[cellId] = [];
+                    }
+                    cellUserFeedback[cellId].push({
+                        feedback: feedback,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    // Re-render the AI reasoning section to include user feedback
+                    const aiSection = document.getElementById(`ai-reasoning-section-${cellId}`);
+                    const cellDiv = document.querySelector(`.cell[data-cell-id="${cellId}"]`);
+                    if (cellDiv) {
+                        const newSectionHTML = renderAIReasoningSection(cellId);
+                        if (aiSection) {
+                            // Replace existing section
+                            aiSection.outerHTML = newSectionHTML;
+                        } else if (newSectionHTML) {
+                            // Insert new section after the cell actions
+                            const cellActions = cellDiv.querySelector('.cell-actions');
+                            if (cellActions) {
+                                cellActions.insertAdjacentHTML('afterend', newSectionHTML);
+                            }
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Feedback error:', error);

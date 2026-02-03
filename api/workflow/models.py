@@ -256,6 +256,7 @@ class WorkflowCell:
     # Code generation
     generated_code: Optional[str] = None
     code_description: Optional[str] = None  # Human-readable explanation of what the code does
+    success_criteria: Optional[str] = None  # User-editable criteria for LLM validation
     status: CellStatus = CellStatus.PENDING
 
     # Execution results
@@ -328,6 +329,7 @@ class WorkflowCell:
             "paradigm_tools_used": self.paradigm_tools_used,
             "generated_code": self.generated_code,
             "code_description": self.code_description,
+            "success_criteria": self.success_criteria,
             "status": self.status.value if isinstance(self.status, CellStatus) else self.status,
             "output": self.output,
             "output_variables": self.output_variables,
@@ -354,6 +356,7 @@ class WorkflowCell:
             paradigm_tools_used=data.get("paradigm_tools_used", []),
             generated_code=data.get("generated_code"),
             code_description=data.get("code_description"),
+            success_criteria=data.get("success_criteria"),
             output=data.get("output"),
             output_variables=data.get("output_variables"),
             error=data.get("error"),

@@ -76,7 +76,8 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
             "depends_on": [],
             "inputs_required": ["list", "of", "variable_names"],
             "outputs_produced": ["list", "of", "variable_names"],
-            "paradigm_tools_used": ["agent_query", "get_file_chunks", "wait_for_embedding", "etc"]
+            "paradigm_tools_used": ["agent_query", "get_file_chunks", "wait_for_embedding", "etc"],
+            "success_criteria": "- Output must contain X\n- Result should be in Y format\n- Must include Z information"
         }
     ],
     "shared_context_schema": {
@@ -85,6 +86,15 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
     }
 }
 ```
+
+### SUCCESS CRITERIA FIELD
+
+For each cell, generate specific `success_criteria` that define validation requirements for the cell's output:
+- What output format/structure is expected (e.g., "must be a dict with 'answer' key")
+- What key information must be present (e.g., "must contain document IDs")
+- Any quality requirements specific to this step (e.g., "analysis must address the user query")
+
+Format as bullet points (use \n for line breaks in JSON). These criteria will be used by an LLM evaluator to validate the cell's output.
 
 ### PARALLELIZATION FIELDS (CRITICAL)
 
@@ -243,7 +253,8 @@ This pattern shows how to structure PARALLEL execution:
             "depends_on": [],
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_a_results"],
-            "paradigm_tools_used": ["agent_query"]
+            "paradigm_tools_used": ["agent_query"],
+            "success_criteria": "- Must return search results dict with 'answer' key\n- Answer should address Topic A specifically"
         },
         {
             "step_number": 2,
@@ -254,7 +265,8 @@ This pattern shows how to structure PARALLEL execution:
             "depends_on": [],
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_b_results"],
-            "paradigm_tools_used": ["agent_query"]
+            "paradigm_tools_used": ["agent_query"],
+            "success_criteria": "- Must return search results dict with 'answer' key\n- Answer should address Topic B specifically"
         },
         {
             "step_number": 3,
@@ -265,7 +277,8 @@ This pattern shows how to structure PARALLEL execution:
             "depends_on": ["1.1", "1.2"],
             "inputs_required": ["topic_a_results", "topic_b_results"],
             "outputs_produced": ["final_result"],
-            "paradigm_tools_used": ["agent_query"]
+            "paradigm_tools_used": ["agent_query"],
+            "success_criteria": "- Must produce a final_result string\n- Should combine insights from both Topic A and Topic B\n- Must be coherent and well-structured"
         }
     ]
 }

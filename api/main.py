@@ -58,6 +58,7 @@ from .models import (
     CellFeedbackRequest,
     CellExecuteSingleRequest,
     ExecuteWithEvaluationRequest,
+    SuccessCriteriaRequest,
 )
 from .workflow.core.generator import workflow_generator
 from .workflow.core.enhancer import WorkflowEnhancer
@@ -701,6 +702,7 @@ async def create_cell_based_workflow(request: WorkflowCreateRequest):
                 paradigm_tools_used=cell.paradigm_tools_used,
                 generated_code=cell.generated_code,
                 code_description=cell.code_description,
+                success_criteria=cell.success_criteria,
                 output=cell.output,
                 execution_time=cell.execution_time,
                 error=cell.error
@@ -1191,6 +1193,7 @@ async def get_workflow_plan(workflow_id: str):
                 paradigm_tools_used=cell.paradigm_tools_used,
                 generated_code=cell.generated_code,
                 code_description=cell.code_description,
+                success_criteria=cell.success_criteria,
                 output=cell.output,
                 execution_time=cell.execution_time,
                 error=cell.error
@@ -1652,6 +1655,98 @@ Please regenerate the complete cell code incorporating the user's feedback above
         raise HTTPException(
             status_code=500,
             detail="Failed to process cell feedback: {}".format(str(e))
+        )
+
+
+@api_router.post("/workflows/{workflow_id}/cells/{cell_id}/success-criteria", tags=["Cell-Based Workflows"])
+async def update_cell_success_criteria(workflow_id: str, cell_id: str, request: SuccessCriteriaRequest):
+    """
+    Update a cell's success criteria and reset it for re-execution.
+
+    This endpoint allows users to edit the validation criteria for a cell's output.
+    After updating, the cell and all dependent cells are reset to 'ready' status
+    so they can be re-executed with the new criteria.
+
+    Args:
+        workflow_id: ID of the workflow
+        cell_id: ID of the cell to update
+        request: SuccessCriteriaRequest with the new success criteria
+
+    Returns:
+        dict: Success status and cell ID
+
+    Raises:
+        HTTPException: 404 if workflow or cell not found, 500 for other errors
+    """
+    try:
+        logger.info("Updating success criteria for cell {} in workflow {}".format(cell_id, workflow_id))
+
+        # Verify workflow exists
+        workflow = workflow_executor.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="Workflow not found: {}".format(workflow_id)
+            )
+
+        # Get workflow plan
+        plan = workflow_executor.get_workflow_plan(workflow_id)
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found for workflow: {}".format(workflow_id)
+            )
+
+        # Find the cell in the plan
+        cell = None
+        cell_index = -1
+        for i, c in enumerate(plan.cells):
+            if c.id == cell_id:
+                cell = c
+                cell_index = i
+                break
+
+        if not cell:
+            raise HTTPException(
+                status_code=404,
+                detail="Cell not found: {}".format(cell_id)
+            )
+
+        # Update the success criteria
+        cell.success_criteria = request.success_criteria
+
+        # Reset cell status to ready (keep code, clear execution results)
+        cell.status = CellStatus.READY
+        cell.output = None
+        cell.output_variables = None
+        cell.error = None
+
+        # Reset dependent cells too (cells that depend on this cell or are in later layers)
+        for dep_cell in plan.cells:
+            if cell_id in dep_cell.depends_on or dep_cell.layer > cell.layer:
+                dep_cell.status = CellStatus.READY
+                dep_cell.output = None
+                dep_cell.output_variables = None
+                dep_cell.error = None
+
+        # Persist the updated plan
+        workflow_executor.update_workflow_plan(workflow_id, plan)
+
+        logger.info("Successfully updated success criteria for cell {}".format(cell_id))
+
+        return {
+            "success": True,
+            "cell_id": cell_id,
+            "message": "Success criteria updated. Cell and dependent cells reset for re-execution."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to update success criteria: {}".format(str(e)))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update success criteria: {}".format(str(e))
         )
 
 

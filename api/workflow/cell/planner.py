@@ -374,6 +374,8 @@ class WorkflowPlanner:
                 inputs_required=cell_data.get("inputs_required", []),
                 outputs_produced=cell_data.get("outputs_produced", []),
                 paradigm_tools_used=cell_data.get("paradigm_tools_used", []),
+                # Success criteria for LLM evaluation
+                success_criteria=cell_data.get("success_criteria"),
                 status=CellStatus.PENDING
             )
             plan.cells.append(cell)
