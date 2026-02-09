@@ -68,7 +68,8 @@ class CellCodeGenerator:
         self,
         cell: WorkflowCell,
         available_context: Dict[str, str],
-        workflow_description: str
+        workflow_description: str,
+        producer_return_hints: Optional[Dict[str, str]] = None
     ) -> str:
         """
         Generate Python code for a single cell.
@@ -77,6 +78,9 @@ class CellCodeGenerator:
             cell: The cell definition with inputs/outputs
             available_context: Schema of variables available from previous cells
             workflow_description: Original workflow description for context
+            producer_return_hints: Optional mapping from variable name to the
+                return statement snippet from the cell that produced it, helping
+                consumer cells understand the actual data format
 
         Returns:
             str: The complete Python code for this cell
@@ -95,7 +99,8 @@ class CellCodeGenerator:
 
         # Build the user message with cell context
         user_message = self._build_user_message(
-            cell, available_context, workflow_description
+            cell, available_context, workflow_description,
+            producer_return_hints=producer_return_hints
         )
 
         try:
@@ -144,7 +149,8 @@ class CellCodeGenerator:
         self,
         cell: WorkflowCell,
         available_context: Dict[str, str],
-        workflow_description: str
+        workflow_description: str,
+        producer_return_hints: Optional[Dict[str, str]] = None
     ) -> str:
         """
         Build the user message for the code generation request.
@@ -153,20 +159,29 @@ class CellCodeGenerator:
             cell: The cell definition
             available_context: Variables available from previous cells
             workflow_description: Original workflow description
+            producer_return_hints: Optional mapping from variable name to the
+                return statement from the producer cell, so this cell knows
+                the actual data format
 
         Returns:
             str: Formatted user message
         """
-        # Format available inputs
+        # Format available inputs with producer hints when available
         inputs_desc = []
         for var_name in cell.inputs_required:
             type_desc = available_context.get(var_name, "Any")
-            inputs_desc.append("  - {}: {}".format(var_name, type_desc))
+            hint = ""
+            if producer_return_hints and var_name in producer_return_hints:
+                hint = "\n    ACTUAL FORMAT from producer cell: {}".format(
+                    producer_return_hints[var_name]
+                )
+            inputs_desc.append("  - {}: {}{}".format(var_name, type_desc, hint))
 
-        # Format required outputs
+        # Format required outputs with type descriptions from the shared context schema
         outputs_desc = []
         for var_name in cell.outputs_produced:
-            outputs_desc.append("  - {}".format(var_name))
+            type_desc = available_context.get(var_name, "Any")
+            outputs_desc.append("  - {}: {}".format(var_name, type_desc))
 
         message = """
 Generate Python code for this workflow cell:
@@ -322,7 +337,8 @@ Generate complete, self-contained Python code that:
         self,
         cells: List[WorkflowCell],
         available_context: Dict[str, str],
-        workflow_description: str
+        workflow_description: str,
+        producer_return_hints: Optional[Dict[str, str]] = None
     ) -> List[Tuple[WorkflowCell, str, Optional[Exception]]]:
         """
         Generate code for all cells in a layer concurrently.
@@ -335,6 +351,8 @@ Generate complete, self-contained Python code that:
             cells: List of cells to generate code for (all in same layer)
             available_context: Schema of variables available from previous cells
             workflow_description: Original workflow description for context
+            producer_return_hints: Optional mapping from variable name to producer
+                cell return statement snippets
 
         Returns:
             List of tuples: (cell, code, error)
@@ -356,7 +374,8 @@ Generate complete, self-contained Python code that:
                 code = await self.generate_cell_code(
                     cell=cell,
                     available_context=available_context,
-                    workflow_description=workflow_description
+                    workflow_description=workflow_description,
+                    producer_return_hints=producer_return_hints
                 )
                 return (cell, code, None)
             except Exception as e:

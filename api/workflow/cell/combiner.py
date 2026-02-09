@@ -212,8 +212,8 @@ Cells:
             description=self.workflow_description or "Combined Workflow",
             total_cells=len(self.plan.cells),
             total_layers=total_layers,
-            parallel_info=f"Parallel execution enabled ({parallel_layers} parallel layers)." if parallel_layers > 0 else "Sequential execution.",
-            cell_list='\n'.join(f"  - Cell {c.step_number}: {c.name}" for c in self.plan.cells)
+            parallel_info="Parallel execution enabled ({} parallel layers).".format(parallel_layers) if parallel_layers > 0 else "Sequential execution.",
+            cell_list='\n'.join("  - Cell {}: {}".format(c.step_number, c.name) for c in self.plan.cells)
         )
 
     def _generate_imports_section(self, all_imports: Set[str]) -> str:
@@ -259,103 +259,36 @@ Cells:
         return '\n'.join(sections)
 
     def _generate_api_setup_section(self) -> str:
-        """Generate the API setup section."""
+        """Generate the API setup section with variable names matching cell code expectations."""
         return '''# =============================================================================
 # API CONFIGURATION
 # =============================================================================
 
-# Load API key from environment
-PARADIGM_API_KEY = os.environ.get("LIGHTON_API_KEY") or os.environ.get("PARADIGM_API_KEY")
-API_BASE_URL = "https://paradigm.lighton.ai"
+from paradigm_client import ParadigmClient
 
-if not PARADIGM_API_KEY:
-    raise ValueError("LIGHTON_API_KEY or PARADIGM_API_KEY environment variable is required")
+# Load API key from environment (matching cell code expectations)
+LIGHTON_API_KEY = os.environ.get("LIGHTON_API_KEY") or os.environ.get("PARADIGM_API_KEY")
+LIGHTON_BASE_URL = os.environ.get("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")
 
-# Common headers for Paradigm API calls
-def get_api_headers() -> Dict[str, str]:
-    """Get headers for Paradigm API requests."""
-    return {
-        "Authorization": f"Bearer {PARADIGM_API_KEY}",
-        "Content-Type": "application/json"
-    }'''
+if not LIGHTON_API_KEY:
+    raise ValueError("LIGHTON_API_KEY or PARADIGM_API_KEY environment variable is required")'''
 
     def _generate_helper_functions(self) -> str:
-        """Generate common helper functions."""
+        """Generate common helper functions used by cell code."""
         return '''# =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
-async def paradigm_document_search(
-    query: str,
-    file_ids: Optional[List[int]] = None,
-    tool: str = "DocumentSearch"
-) -> Dict[str, Any]:
-    """
-    Search documents using Paradigm API.
-
-    Args:
-        query: Search query in natural language
-        file_ids: Optional list of specific file IDs to search
-        tool: Search tool to use (DocumentSearch or VisionDocumentSearch)
-
-    Returns:
-        Dict with answer and source documents
-    """
-    import aiohttp
-
-    endpoint = f"{API_BASE_URL}/api/v2/chat/completions"
-
-    payload = {
-        "model": "alfred-40b-1124",
-        "messages": [{"role": "user", "content": query}],
-        "tools": [tool],
-        "stream": False
-    }
-
-    if file_ids:
-        payload["file_ids"] = file_ids
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            endpoint,
-            json=payload,
-            headers=get_api_headers()
-        ) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                raise Exception(f"Paradigm API error {response.status}: {error_text}")
-
-            result = await response.json()
-
-            # Extract answer from response
-            answer = ""
-            documents = []
-
-            if "choices" in result and result["choices"]:
-                message = result["choices"][0].get("message", {})
-                answer = message.get("content", "")
-
-                # Extract documents from tool calls
-                tool_calls = message.get("tool_calls", [])
-                for tc in tool_calls:
-                    if tc.get("type") == "document_search":
-                        docs = tc.get("documents", [])
-                        documents.extend(docs)
-
-            return {
-                "answer": answer,
-                "documents": documents,
-                "raw_response": result
-            }
-
-
 def print_output(message: str):
     """Print output message (captured for cell output)."""
-    print(f"CELL_OUTPUT: {message}")'''
+    print("CELL_OUTPUT: {}".format(message))'''
 
     def _generate_cell_function(self, cell: WorkflowCell, analysis: CellCodeAnalysis) -> str:
         """
         Generate an async function for a cell.
+
+        The cell's core_logic contains the full `async def execute_cell(context)`
+        definition. The wrapper defines it in its scope and then calls it.
 
         Args:
             cell: The cell definition
@@ -373,40 +306,50 @@ def print_output(message: str):
         # Build function signature
         params = ["context: Dict[str, Any]"]
 
-        # Build docstring
-        docstring = f'''"""
-    Cell {cell.step_number}: {cell.name}
+        # Build docstring parts
+        layer_mode = "parallel" if len(self.cells_by_layer.get(cell.layer, [])) > 1 else "sequential"
+        inputs_str = ', '.join(inputs) if inputs else 'None'
+        outputs_str = ', '.join(cell.outputs_produced) if cell.outputs_produced else 'context updates'
 
-    {cell.description}
-
-    Layer: {cell.layer} ({"parallel" if len(self.cells_by_layer.get(cell.layer, [])) > 1 else "sequential"})
-
-    Inputs: {', '.join(inputs) if inputs else 'None'}
-    Outputs: {', '.join(cell.outputs_produced) if cell.outputs_produced else 'context updates'}
-    """'''
-
-        # Process core logic - indent it properly and handle context
+        # Process core logic
         core_logic = self._process_core_logic(analysis.core_logic, inputs, cell.outputs_produced)
 
-        # Build the function
-        function_code = f'''
+        # Build the function - core_logic defines execute_cell, then we call it
+        function_code = '''
 # -----------------------------------------------------------------------------
-# CELL {cell.step_number}: {cell.name.upper()}
+# CELL {step}: {name_upper}
 # -----------------------------------------------------------------------------
 
-async def {func_name}({', '.join(params)}) -> Dict[str, Any]:
-    {docstring}
+async def {func_name}({params}) -> Dict[str, Any]:
+    """
+    Cell {step}: {name}
 
-    # Extract inputs from context
-    user_input = context.get("user_input", "")
-    attached_file_ids = context.get("attached_file_ids", [])
-{self._generate_input_extraction(inputs)}
+    {description}
 
-    # Cell logic
-{self._indent_code(core_logic, 4)}
+    Layer: {layer} ({layer_mode})
 
-    # Return outputs
-    return {self._generate_output_dict(cell.outputs_produced)}'''
+    Inputs: {inputs_str}
+    Outputs: {outputs_str}
+    """
+
+    # Cell logic (defines execute_cell)
+{core_logic}
+
+    # Execute the cell and return its result
+    return await execute_cell(context)
+'''.format(
+            step=cell.step_number,
+            name_upper=cell.name.upper(),
+            name=cell.name,
+            func_name=func_name,
+            params=', '.join(params),
+            description=cell.description,
+            layer=cell.layer,
+            layer_mode=layer_mode,
+            inputs_str=inputs_str,
+            outputs_str=outputs_str,
+            core_logic=self._indent_code(core_logic, 4)
+        )
 
         return function_code
 
@@ -423,25 +366,30 @@ async def {func_name}({', '.join(params)}) -> Dict[str, Any]:
                 # Sequential execution
                 cell = cells[0]
                 func_name = self._cell_name_to_function(cell.name)
-                layer_code_blocks.append(f'''    # Layer {layer_num}: {cell.name}
-    print_output(f"Executing Layer {layer_num}: {cell.name}")
-    layer_{layer_num}_result = await {func_name}(context)
-    context.update(layer_{layer_num}_result)''')
+                block = '    # Layer {layer}: {name}\n'.format(layer=layer_num, name=cell.name)
+                block += '    print_output("Executing Layer {layer}: {name}")\n'.format(layer=layer_num, name=cell.name)
+                block += '    layer_{layer}_result = await {func}(context)\n'.format(layer=layer_num, func=func_name)
+                block += '    context.update(layer_{layer}_result)'.format(layer=layer_num)
+                layer_code_blocks.append(block)
             else:
                 # Parallel execution
                 cell_names = [c.name for c in cells]
-                func_calls = [f"{self._cell_name_to_function(c.name)}(context.copy())" for c in cells]
+                func_calls = ["{}(context.copy())".format(self._cell_name_to_function(c.name)) for c in cells]
+                names_joined = ', '.join(cell_names)
 
-                layer_code_blocks.append(f'''    # Layer {layer_num}: PARALLEL ({', '.join(cell_names)})
-    print_output(f"Executing Layer {layer_num} in parallel: {', '.join(cell_names)}")
-    layer_{layer_num}_results = await asyncio.gather(
-        {(','+chr(10)+'        ').join(func_calls)}
-    )
-    # Merge results from parallel cells
-    for result in layer_{layer_num}_results:
-        context.update(result)''')
+                block = '    # Layer {layer}: PARALLEL ({names})\n'.format(layer=layer_num, names=names_joined)
+                block += '    print_output("Executing Layer {layer} in parallel: {names}")\n'.format(layer=layer_num, names=names_joined)
+                block += '    layer_{layer}_results = await asyncio.gather(\n'.format(layer=layer_num)
+                block += '        ' + (',\n        ').join(func_calls) + '\n'
+                block += '    )\n'
+                block += '    # Merge results from parallel cells\n'
+                block += '    for result in layer_{layer}_results:\n'.format(layer=layer_num)
+                block += '        context.update(result)'
+                layer_code_blocks.append(block)
 
-        return f'''# =============================================================================
+        layers_joined = '\n\n'.join(layer_code_blocks)
+
+        return '''# =============================================================================
 # MAIN WORKFLOW EXECUTION
 # =============================================================================
 
@@ -465,13 +413,13 @@ async def run_workflow(
         "attached_file_ids": attached_file_ids or []
     }}
 
-    print_output(f"Starting workflow with input: {{user_input[:100]}}...")
+    print_output("Starting workflow with input: {{}}...".format(user_input[:100]))
 
-{chr(10).join(layer_code_blocks)}
+{layers}
 
     print_output("Workflow completed successfully!")
 
-    return context'''
+    return context'''.format(layers=layers_joined)
 
     def _generate_entry_point(self) -> str:
         """Generate the entry point for standalone execution."""
@@ -518,17 +466,28 @@ if __name__ == "__main__":
         # Ensure it starts with a letter
         if name and name[0].isdigit():
             name = 'cell_' + name
-        return f"cell_{name}" if name else "cell_unnamed"
+        return "cell_{}".format(name) if name else "cell_unnamed"
 
     def _process_core_logic(self, code: str, inputs: List[str], outputs: List[str]) -> str:
         """
         Process core logic to work within the function context.
 
-        Replaces direct variable references with context lookups where needed.
+        The core logic should contain an `async def execute_cell(context)` definition.
+        If not present (edge case), wraps the code in a minimal execute_cell function.
         """
-        # For now, return as-is - the cell code should already handle context
-        # In a more sophisticated version, we could rewrite variable references
-        return code if code.strip() else "pass  # No logic generated"
+        if not code.strip():
+            return 'async def execute_cell(context):\n    return {}'
+
+        # Verify execute_cell is defined in the core logic
+        if 'async def execute_cell' not in code:
+            # Wrap the raw code in an execute_cell function as fallback
+            logger.warning("Core logic missing execute_cell definition, wrapping automatically")
+            indented = self._indent_code(code, 4)
+            return 'async def execute_cell(context):\n{indented}\n    return {{}}'.format(
+                indented=indented
+            )
+
+        return code
 
     def _generate_input_extraction(self, inputs: List[str]) -> str:
         """Generate code to extract inputs from context."""
@@ -537,7 +496,7 @@ if __name__ == "__main__":
 
         lines = []
         for inp in inputs:
-            lines.append(f'    {inp} = context.get("{inp}")')
+            lines.append('    {var} = context.get("{var}")'.format(var=inp))
 
         return '\n'.join(lines)
 
@@ -546,7 +505,7 @@ if __name__ == "__main__":
         if not outputs:
             return "{}"
 
-        items = [f'"{out}": {out}' for out in outputs]
+        items = ['"{var}": {var}'.format(var=out) for out in outputs]
 
         if len(items) <= 2:
             return "{" + ", ".join(items) + "}"

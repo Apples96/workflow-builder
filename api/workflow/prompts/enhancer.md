@@ -114,27 +114,19 @@ STEP 1: Call the DataAPI search endpoint with the user's query
 
 📁 FOR WORKFLOWS WITH UPLOADED FILES (user provides documents):
 
-### 1. agent_query with force_tool="document_search" - FOR QUICK QUERIES
-- USE FOR: Extracting specific fields quickly
-- USE FOR: Simple questions about specific values
-- Performance: FAST (2-5 seconds)
-- Returns: Direct answer via _extract_answer()
-- Example: Get name, find total, extract specific date
-- ✅ USE THIS when workflow mentions: "find", "get", "what is", single field
+### 1. agent_query WITHOUT force_tool (RECOMMENDED DEFAULT)
+- USE FOR: Most document queries — extraction, analysis, comparison, synthesis
+- The agent reasons in **multi-turn mode**: it can call multiple tools, search then analyze, and follow up
+- Much more effective for extracting several pieces of information or complex queries
+- Paradigm recommends this: *"It is recommended to not force a tool, as automatic routing ensures the optimal tool is used."*
+- ✅ USE THIS for: extraction, analysis, comparison, summarization, multi-field queries
 
-### 2. agent_query with force_tool="document_analysis" - FOR COMPREHENSIVE ANALYSIS
-- USE FOR: Long documents (>5 pages) requiring deep analysis
-- USE FOR: Complex multi-document synthesis
-- Performance: ~10-30 seconds (NO POLLING NEEDED in v3!)
-- Returns: Comprehensive structured analysis
-- Example: Summarize reports, synthesize multiple documents
-- ✅ USE THIS when workflow mentions: "summarize", "résumer", "comprehensive"
-- 🚀 v3 BENEFIT: Returns directly, no polling required unlike v2!
-
-### 3. agent_query without force_tool - LET AGENT CHOOSE
-- USE FOR: When unsure which tool is best
-- The agent will automatically select the most appropriate tool
-- Performance: Varies based on tool chosen
+### 2. agent_query with force_tool — SINGLE-TURN ONLY (use sparingly)
+- **force_tool="document_search"**: Quick single-field lookup (2-5s)
+- **force_tool="document_analysis"**: Force comprehensive analysis mode
+- ⚠️ When force_tool is set, the agent is limited to a **single turn with one tool call**
+- It CANNOT follow up, search again, or combine tools — much less effective for complex queries
+- Only use when you are certain you need exactly one specific tool call and nothing else
 
 📁 FILE OPERATIONS (unchanged - v2 API):
 - wait_for_embedding(file_id) - ALWAYS call after upload before queries
@@ -174,14 +166,15 @@ Instead, describe the OPERATION type (extract, summarize, search, etc.)
 Let the code generator choose the appropriate API based on the main prompt instructions.
 
 ✅ CORRECT Enhancement Examples:
-- "Extract all information from CV" (code generator will choose agent_query with force_tool="document_analysis")
-- "Get candidate name quickly" (code generator will choose agent_query with force_tool="document_search")
-- "Summarize research report" (code generator will choose agent_query with force_tool="document_analysis")
-- "Search for invoices in workspace" (code generator will choose agent_query without file_ids)
+- "Extract all information from CV" (code generator will use agent_query — agent chooses tools in multi-turn)
+- "Get candidate name quickly" (code generator will use agent_query — simple extraction)
+- "Summarize research report" (code generator will use agent_query — agent reasons across document)
+- "Search for invoices in workspace" (code generator will use agent_query without file_ids)
 
 ❌ WRONG Enhancement Examples:
 - "Extract skills using paradigm_client.agent_query" ← TOO SPECIFIC! Just say "Extract skills"
-- "Use document_search to extract from file" ← AMBIGUOUS! Be clear if it's single field or comprehensive
+- "Use document_search to extract from file" ← DON'T prescribe tools! Just say "Extract X from file"
+- "Use agent_query with force_tool='document_search'" ← DON'T prescribe force_tool! Let the code generator decide
 
 ## ENHANCEMENT GUIDELINES
 
@@ -310,7 +303,7 @@ Let the code generator choose the appropriate API based on the main prompt instr
 
    🔧 CRITICAL: HANDLING EXTRACTION FAILURES (PDFs with poor text extraction) 🔧
 
-   Sometimes analyze_documents_with_polling or document_search may return very short content (<500 chars)
+   Sometimes agent_query may return very short content (<500 chars)
    when the actual document has much more information. This happens with:
    - Scanned PDFs with poor OCR
    - PDFs with complex layouts
@@ -318,32 +311,24 @@ Let the code generator choose the appropriate API based on the main prompt instr
 
    **DETECTION AND FALLBACK PATTERN:**
    ```python
-   # Step 1: Try standard extraction
-   extracted_content = await paradigm_client.analyze_documents_with_polling(
+   # Step 1: Try standard extraction (let the agent choose tools — multi-turn)
+   result = await paradigm_client.agent_query(
        query="Extract all information from this CV: name, experience, skills, education",
-       document_ids=[doc_id],
-       max_wait_time=180,
-       poll_interval=3
+       file_ids=[doc_id]
    )
+   extracted_content = paradigm_client.extract_answer(result)
 
    # Step 2: Detect if extraction is insufficient
    if len(extracted_content) < 500:
-       logger.warning("⚠️ Short extraction detected ({} chars), using vision fallback".format(len(extracted_content)))
+       logger.warning("⚠️ Short extraction detected ({} chars), trying raw text fallback".format(len(extracted_content)))
 
-       # Fallback to vision_search which uses OCR + vision
-       extracted_content = await paradigm_client.document_search(
-           query="Extract all text and information from this document using vision analysis",
-           file_ids=[doc_id],
-           company_scope=False,
-           private_scope=False,
-           tool="VisionDocumentSearch",  # Use vision-based extraction
-           k=10  # Get more context chunks
-       )
-
-       # Combine all chunks if answer is still short
-       if 'chunks' in extracted_content:
-           full_text = "\n\n".join([chunk.get('text', '') for chunk in extracted_content.get('chunks', [])])
-           extracted_content = full_text if len(full_text) > len(extracted_content.get('answer', '')) else extracted_content.get('answer', '')
+       # Fallback to raw text chunks
+       chunks_data = await paradigm_client.get_file_chunks(doc_id)
+       chunks = chunks_data.get("chunks", [])
+       if chunks:
+           full_text = "\n\n".join([chunk.get("text", "") for chunk in chunks])
+           if len(full_text) > len(extracted_content):
+               extracted_content = full_text
 
    # Step 3: Log extraction quality
    logger.info("✅ Final extraction: {} characters".format(len(extracted_content)))
@@ -356,77 +341,55 @@ Let the code generator choose the appropriate API based on the main prompt instr
    **WHY THIS MATTERS:**
    - Ensures robust extraction even with problematic PDFs
    - Provides clear error messages when extraction truly fails
-   - Uses vision-based fallback for scanned/image PDFs
+   - Falls back to raw text chunks for scanned/image PDFs
    - Prevents incomplete analysis due to extraction issues
 
    ⚠️ ⚠️ ⚠️ CRITICAL FINAL REPORT GENERATION RULES ⚠️ ⚠️ ⚠️
 
-   When generating a FINAL REPORT using chat_completion() at the end of a workflow:
+   For structured report/aggregation steps that compile results from previous steps:
 
-   **❌ NEVER DO THIS - PLACEHOLDER PROMPTS:**
+   **✅ BEST APPROACH: Build the report in pure Python (NO API CALLS)**
+   When the data is already extracted and structured from previous steps, the report cell
+   should iterate over context dicts and assemble the report using Python string formatting.
+   Do NOT call agent_query() or any LLM to summarize — the data is already there.
+
    ```python
-   # WRONG - This creates incomplete reports with [À DÉTERMINER] everywhere!
-   final_report = await paradigm_client.chat_completion(
-       '''Generate a report with this structure:
+   # CORRECT — Pure Python report assembly (no API calls needed)
+   report_sections = []
+   for zone_name, zone_data in all_results.items():
+       status = zone_data.get("statut", "inconnu")
+       details = zone_data.get("details", "")
+       report_sections.append("### {}\n- **Statut**: {}\n- **Détails**: {}".format(
+           zone_name, status.upper(), details
+       ))
 
-       ### ZONE A - BUYER
-       [Analyze buyer comparison result]    # ❌ PLACEHOLDER!
-
-       ### ZONE B - MARKET
-       [Analyze market comparison result]   # ❌ PLACEHOLDER!
-
-       DONNÉES: {}'''.format(" | ".join(comparisons[:200]))  # ❌ TRUNCATED!
+   # Compute statistics in Python
+   validated = sum(1 for r in all_results.values() if r.get("statut") == "validé")
+   total = len(all_results)
+   summary = "# Rapport de Vérification\n\n**Résultat**: {} / {} contrôles validés\n\n{}".format(
+       validated, total, "\n\n".join(report_sections)
    )
    ```
-   **Why this fails:** The AI receives INSTRUCTIONS instead of DATA, and truncated data cannot produce a complete report!
 
-   **✅ ALWAYS DO THIS - DATA-DRIVEN PROMPTS:**
-   ```python
-   # CORRECT - Provide FULL data directly in the prompt
-   final_report = await paradigm_client.chat_completion(
-       prompt='''Génère un rapport final professionnel au format Markdown COMPLET.
+   **Why this is better than an LLM call:**
+   - No truncation risk — all data is included
+   - No hallucination — exact values from previous steps
+   - No placeholders — every section is filled with actual data
+   - Faster execution — no API call overhead
+   - Deterministic — same inputs always produce same report
 
-       Voici les résultats de TOUS les contrôles (utilise ces données pour remplir chaque section):
-
-       ZONE A - IDENTIFICATION ACHETEUR:
-       {}
-
-       ZONE B - OBJET DU MARCHÉ:
-       {}
-
-       ZONE C - DÉCLARATION SOUS-TRAITANT:
-       {}
-
-       [... tous les autres contrôles avec données complètes ...]
-
-       INSTRUCTIONS:
-       - Pour chaque zone, analyse le résultat fourni et indique CONFORME ou NON CONFORME
-       - Ajoute une explication détaillée pour CHAQUE zone (pourquoi conforme/non conforme)
-       - Calcule les statistiques: X contrôles conformes sur Y total (Z%)
-       - Détermine le statut global: ACCEPTÉ ou REJETÉ selon les règles métier
-       - Format: Markdown professionnel avec ### pour chaque zone
-       - Langue: 100% FRANÇAIS (aucun mot anglais)
-       '''.format(
-           comparison_buyer_full,      # ❌ NO [:200] truncation!
-           comparison_market_full,
-           comparison_declaration_full,
-           # ... all other complete results
-       ),
-       system_prompt='''Tu es un assistant qui génère des rapports professionnels COMPLETS.
-       Tu DOIS analyser TOUTES les données fournies et remplir TOUTES les sections du rapport.
-       AUCUNE section ne doit contenir [À DÉTERMINER] ou [À COMPLÉTER].
-       Réponds UNIQUEMENT en FRANÇAIS, AUCUN mot anglais.'''
-   )
-   ```
+   **When an LLM call IS appropriate for reports:**
+   Only use agent_query() in a report step when you need the AI to perform NEW analysis
+   (e.g., interpret results, generate recommendations, write narrative conclusions).
+   Even then, provide the complete data and never truncate.
 
    **📊 MANDATORY RULES FOR FINAL REPORT GENERATION:**
 
-   1. **✅ PROVIDE COMPLETE DATA** - Include ALL analysis results in the prompt (no truncation!)
-   2. **✅ EXPLICIT INSTRUCTIONS** - Tell the AI exactly what to analyze and how to format each section
-   3. **✅ CALCULATE STATISTICS** - Count conformities/non-conformities in Python BEFORE calling chat_completion
-   4. **✅ MAKE DECISIONS** - Determine final status (ACCEPT/REJECT) based on business rules in Python code
-   5. **✅ ENFORCE LANGUAGE** - Use system_prompt to force 100% French output (no English mixing)
-   6. **✅ NO PLACEHOLDERS** - Every section must be filled with actual analysis, never "[À DÉTERMINER]"
+   1. **✅ BUILD IN PYTHON** - For structured reports, use Python string formatting to assemble sections
+   2. **✅ CALCULATE STATISTICS** - Count conformities/non-conformities in Python code
+   3. **✅ MAKE DECISIONS** - Determine final status (ACCEPT/REJECT) based on business rules in Python code
+   4. **✅ NO PLACEHOLDERS** - Every section must be filled with actual data, never "[À DÉTERMINER]"
+   5. **✅ NO TRUNCATION** - Never truncate data passed to any formatting step
 
    **DETECTION EXAMPLES** (recognize automatically):
    User: "Extraire le nom, l'adresse et le téléphone"
@@ -448,8 +411,7 @@ Let the code generator choose the appropriate API based on the main prompt instr
    - ✅ ONLY extract the exact entities as they appear in the source text
 
 3. For each step, clearly specify:
-   - What action will be performed
-   - Which Paradigm API tool will be used
+   - What action will be performed (describe the OPERATION, not which API tool to use)
    - What input/output is expected
    - Any processing logic needed
    - All conditional logic (if/then/else statements)
@@ -534,7 +496,7 @@ return {
 **Example workflow step with structured output:**
 ```
 STEP 3: Extract amounts from all invoices and return structured comparison data
-- Use document_search to find amounts in each invoice
+- Extract amounts from each invoice using the Paradigm API
 - Compile results into JSON format:
   {
     "summary": "Found 5 invoices with total amount of 12,345.67€",
@@ -668,10 +630,34 @@ When you detect ambiguous terms in the user's description:
 2. In "QUESTIONS AND LIMITATIONS", add a section "⚠️ AMBIGUITY DETECTED - Clarification needed:" with specific questions
 3. This allows the user to provide clarifications BEFORE code generation
 
+## OUTPUT EXAMPLE (if provided)
+
+When an output example is provided by the user, analyze it to understand:
+
+1. **The desired FORMAT**: Is it a markdown table, bullet list, prose, JSON, numbered list, etc.?
+2. **The STRUCTURE**: What sections, columns, or elements are expected in the output?
+3. **The LEVEL OF DETAIL**: Is this a summary, comprehensive analysis, or detailed breakdown?
+
+**How to incorporate the output example into your step descriptions:**
+
+- For the **final step** that produces user-visible output: Explicitly describe the expected output format based on the example
+- For **intermediate steps**: Describe what data format they should produce to support the final output
+- Work **backwards from the example**: If the final output needs a table comparing two documents, intermediate steps should extract data in formats suitable for tabular comparison
+
+**IMPORTANT RULES:**
+- Do NOT copy content from the example—use it to understand the desired output SHAPE
+- The example shows DESIRED FORMAT, not expected content values
+- Extract abstract criteria (e.g., "markdown table with columns A, B, C") not literal text
+
+**Example derivation:**
+- If example shows a markdown table with "| Field | Doc A | Doc B | Match |" → describe final step as: "Format comparison results as a markdown table with columns: Field, Doc A value, Doc B value, and Match status (Yes/No)"
+- If example shows JSON with specific keys → describe final step to output JSON with those keys
+- If example shows bullet points → describe final step to format results as bullet points
+
 ## OUTPUT FORMAT
 
-CRITICAL: Provide your response as PLAIN TEXT ONLY. 
-DO NOT use JSON format. 
+CRITICAL: Provide your response as PLAIN TEXT ONLY.
+DO NOT use JSON format.
 DO NOT wrap your response in ```json or ``` blocks.
 DO NOT use curly braces { } or quotes around your response.
 Return the enhanced workflow steps directly in plain text using the step format structure below.
@@ -707,25 +693,25 @@ The goal is that STEP X contains everything needed for code generation, and QUES
 
 Simple Input: "Search for documents about my question and analyze them"
 Plain Text Response:
-STEP 1: Search for relevant documents using paradigm_client.document_search with the user's query as the search parameter, setting company_scope=True and private_scope=True to search across all available document collections, and store the returned search results which contain document metadata including IDs, titles, and relevance scores.
+STEP 1: Search the user's workspace for relevant documents using the user's query as the search parameter, searching across all available document collections (company and private), and store the returned search results including document metadata (IDs, titles, relevance scores).
 
 QUESTIONS AND LIMITATIONS: None
 
 ---
 
-STEP 2: Extract document IDs from the search results by accessing the 'documents' array in the search response, converting each document's 'id' field to string format, and handling the API limitation that maximum 5 documents can be analyzed at once by implementing batching logic if more than 5 documents are found.
+STEP 2: Extract the document IDs from the search results, handling the case where more than 5 documents are found by selecting the most relevant ones or implementing batching logic.
 
 QUESTIONS AND LIMITATIONS: None
 
 ---
 
-STEP 3: Analyze the found documents using paradigm_client.analyze_documents_with_polling with the user's original question as the analysis query, implementing the polling mechanism with up to 5-minute timeout, processing documents in batches of maximum 5 documents per API call, and collecting all analysis results which contain AI-generated insights based on document content.
+STEP 3: Analyze the found documents using the user's original question as the analysis query, processing all relevant documents and collecting the analysis results which contain AI-generated insights based on document content.
 
 QUESTIONS AND LIMITATIONS: None
 
 ---
 
-STEP 4: Compile all analysis results from processed documents into a comprehensive summary by combining insights from all batches, formatting the response in clear, readable structure with proper line breaks and organization, including source document references for transparency, and returning the final formatted summary to the user.
+STEP 4: Compile all analysis results into a comprehensive summary using Python string formatting, combining insights from all analyses, formatting the response in clear readable Markdown with proper sections and organization, including source document references for transparency, and returning the final formatted summary to the user.
 
 QUESTIONS AND LIMITATIONS: None
 

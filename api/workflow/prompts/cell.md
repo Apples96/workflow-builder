@@ -82,6 +82,71 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
         await paradigm_client.close()
 ```
 
+## OUTPUT FORMAT RULES (CRITICAL FOR INTER-CELL COMPATIBILITY)
+
+Your cell's return dict will be merged into the shared context and consumed by later cells.
+Later cells only know the variable NAME and TYPE from the plan — they cannot see your code.
+
+### Rule 1: Match the planned output type exactly
+If shared_context_schema says a variable is "str", return a string. If it says "Dict with keys X, Y, Z", return a dict with exactly those keys.
+
+### Rule 2: For text extraction cells, return the text directly as a string
+GOOD:
+```python
+return {"dc4_buyer_info": extracted_text}  # Simple string, easy to consume
+```
+
+BAD:
+```python
+return {"dc4_buyer_info": {"extracted_info": text, "source": "DC4", ...}}  # Consumer won't know the keys
+```
+
+### Rule 3: When consuming dict inputs, use the keys documented in the plan
+Read the AVAILABLE INPUTS section carefully. If it says the input is a "str", use it directly.
+If it says "Dict with keys X, Y", access those specific keys. Do NOT guess key names.
+
+### Rule 4: Never wrap simple data in unnecessary metadata dicts
+If the plan says to output a string, output a string. Save metadata for separate output variables.
+
+### Rule 5: Dict outputs consumed by report cells MUST include a top-level "details" key
+When your cell outputs a dict (e.g., comparison results, analysis results) that a later report/summary cell will display, you MUST include a top-level `"details"` key with a human-readable string summarizing all findings. Do NOT rely on the report cell to dig into nested sub-dicts.
+```python
+# GOOD — report cell can simply do result.get("details")
+return {
+    "comparison_results": {
+        "controle_1": {"status": "OK", "details": "..."},
+        "controle_2": {"status": "NOK", "details": "..."},
+        "details": "Controle 1: OK - les informations concordent. Controle 2: NOK - ecart detecte sur le montant."
+    }
+}
+```
+
+### Rule 6: Report/aggregation cells must handle dict values robustly
+When generating code for a report or aggregation cell that reads dict inputs and displays their content:
+1. **Always check if a value is a dict before treating it as a string.** If it is a dict, format it readably (e.g., extract its `"details"` or `"status"` keys) instead of dumping the raw repr.
+2. **If there is no top-level `"details"` key**, look inside nested sub-dicts and concatenate their `"details"` values.
+3. **Never display raw dict/repr output** — always produce human-readable text.
+```python
+# Pattern for safely extracting details from a variable that may or may not have a top-level "details"
+def extract_details(data):
+    if isinstance(data, str):
+        return data
+    if isinstance(data, dict):
+        # Prefer top-level "details" key
+        if "details" in data:
+            return data["details"]
+        # Fallback: look for "details" or "details_comparaison" or "validation_details" inside nested sub-dicts
+        parts = []
+        for key, value in data.items():
+            if isinstance(value, dict):
+                detail = value.get("details") or value.get("details_comparaison") or value.get("validation_details") or str(value)
+                parts.append("{}: {}".format(key, detail))
+            elif isinstance(value, str):
+                parts.append("{}: {}".format(key, value))
+        return "\n".join(parts) if parts else str(data)
+    return str(data)
+```
+
 ## PARADIGM CLIENT METHODS (v3 Agent API)
 
 The v3 Agent API provides a unified interface. Use these pre-injected methods:
@@ -93,33 +158,40 @@ The v3 Agent API provides a unified interface. Use these pre-injected methods:
 | `wait_for_embedding(file_id)` | Wait for file indexing | Dict when ready |
 | `extract_answer(response)` | Extract text from v3 response | String |
 
-**force_tool options:** `"document_search"` (fast, 2-5s) or `"document_analysis"` (comprehensive, 10-30s)
+**force_tool options:** `"document_search"` or `"document_analysis"` — but see guidance below.
 
 **Note:** `chat_setting_id` configures agent behavior (default: 160). This is set by your Paradigm account admin.
+
+### IMPORTANT: force_tool vs. letting the agent choose
+
+- **Without force_tool (RECOMMENDED DEFAULT):** The agent reasons in multi-turn mode — it can call multiple tools, search then analyze, and synthesize across steps. This is far more effective when you need to extract several pieces of information or when the optimal tool isn't obvious.
+- **With force_tool:** The agent is constrained to a **single turn with one tool call only**. Use this ONLY when you are certain you need exactly one specific tool and nothing else (e.g., a quick single-field lookup).
+
+**Paradigm's own recommendation:** *"It is recommended to not force a tool when scoping, as the automatic routing will ensure the optimal tool for your type of file(s) is used."*
 
 ### Quick Usage Examples
 
 ```python
-# Let agent choose the right tool (simplest)
+# RECOMMENDED: Let agent choose and use multi-turn reasoning
 result = await paradigm_client.agent_query(
     query="What is the total amount?",
     file_ids=[123]
 )
 answer = paradigm_client.extract_answer(result)
 
-# Force document_search for quick queries (2-5 seconds)
+# RECOMMENDED: Multi-field extraction — agent can search multiple times
 result = await paradigm_client.agent_query(
-    query="Find the invoice total",
-    file_ids=[123],
-    force_tool="document_search"
+    query="Extract the vendor name, invoice number, date, and total amount",
+    file_ids=[123]
 )
 answer = paradigm_client.extract_answer(result)
 
-# Force document_analysis for comprehensive analysis (10-30 seconds)
+# ONLY IF NEEDED: Force a specific tool (single-turn, single tool call)
+# Use sparingly — only when you know exactly which tool and need nothing else
 result = await paradigm_client.agent_query(
-    query="Comprehensive analysis of document",
+    query="Find the invoice total",
     file_ids=[123],
-    force_tool="document_analysis"
+    force_tool="document_search"  # Single-turn only — agent cannot follow up
 )
 answer = paradigm_client.extract_answer(result)
 ```
@@ -128,11 +200,11 @@ answer = paradigm_client.extract_answer(result)
 
 | Use Case | Method |
 |----------|--------|
-| General document questions | `agent_query()` (no force_tool - agent chooses) |
-| Quick simple queries (2-5s) | `agent_query(force_tool="document_search")` |
-| Comprehensive analysis (10-30s) | `agent_query(force_tool="document_analysis")` |
+| Most document queries (RECOMMENDED) | `agent_query()` — agent chooses tools, multi-turn |
+| Multi-field extraction | `agent_query()` — agent can search multiple times |
+| Simple single-field lookup (only if speed critical) | `agent_query(force_tool="document_search")` — single-turn |
 | Raw text extraction | `get_file_chunks()` |
-| After file upload | `wait_for_embedding()`
+| After file upload | `wait_for_embedding()` |
 
 ### CRITICAL: Using document_mapping to Access Specific Documents
 
@@ -261,10 +333,10 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
         # CRITICAL: Pass file_ids to search ONLY within the target document
+        # Let the agent choose tools (multi-turn) — it can search and follow up as needed
         result = await paradigm_client.agent_query(
             query="Extract key information: vendor name, invoice number, date, line items, and total amount",
-            file_ids=[file_id],  # <-- REQUIRED: targets the specific document
-            force_tool="document_search"  # Force search for quick extraction
+            file_ids=[file_id]  # <-- REQUIRED: targets the specific document
         )
 
         answer = paradigm_client.extract_answer(result)
@@ -312,11 +384,10 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     # ParadigmClient is pre-injected - just instantiate it
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
-        # v3 Agent API with force_tool="document_analysis" - returns directly!
+        # v3 Agent API — let agent choose tools for multi-turn reasoning
         result = await paradigm_client.agent_query(
             query=user_input,
-            file_ids=document_ids[:3],  # Limit to 3 documents
-            force_tool="document_analysis"  # Force comprehensive analysis
+            file_ids=document_ids[:3]  # Limit to 3 documents
         )
 
         answer = paradigm_client.extract_answer(result)
@@ -465,6 +536,146 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
         await paradigm_client.close()
 ```
 
+### Example 5: Structured Report Assembly Cell (NO API CALLS)
+
+When a cell's job is to **aggregate results from previous cells into a structured report**,
+do NOT call `agent_query()`. The data is already extracted and structured in context —
+just read it and format it with pure Python.
+
+This pattern applies whenever the cell description says "generate report", "build summary",
+"aggregate results", "compile findings", or similar. The longer and more structured the
+report, the MORE important it is to use pure Python — an LLM call would lose precision,
+truncate data, or hallucinate details.
+
+```python
+import asyncio
+import json
+import logging
+from typing import Optional, List, Dict, Any
+
+# NOTE: No ParadigmClient needed — this cell uses only data from context
+logger = logging.getLogger(__name__)
+
+
+def extract_details(data):
+    """Safely extract human-readable details from a variable that may be a str or dict."""
+    if isinstance(data, str):
+        return data
+    if isinstance(data, dict):
+        if "details" in data:
+            return data["details"]
+        parts = []
+        for key, value in data.items():
+            if isinstance(value, dict):
+                detail = value.get("details") or value.get("details_comparaison") or str(value)
+                parts.append("{}: {}".format(key, detail))
+            elif isinstance(value, str):
+                parts.append("{}: {}".format(key, value))
+        return "\n".join(parts) if parts else str(data)
+    return str(data)
+
+
+def format_control(control_data, control_label):
+    """Format a single control result into a report section."""
+    if not isinstance(control_data, dict):
+        return "### {}\n- Statut: DONNÉES MANQUANTES\n- Détail: {}\n".format(
+            control_label, str(control_data)
+        )
+    statut = control_data.get("statut", control_data.get("status", "inconnu"))
+    details = control_data.get("details", control_data.get("details_comparaison", ""))
+    verbatim_dc4 = control_data.get("verbatim_dc4", "")
+    verbatim_avis = control_data.get("verbatim_avis", "")
+
+    section = "### {}\n- **Statut**: {}\n- **Détails**: {}\n".format(
+        control_label, statut.upper(), details
+    )
+    if verbatim_dc4:
+        section += "- **Verbatim DC4**: {}\n".format(verbatim_dc4)
+    if verbatim_avis:
+        section += "- **Verbatim Avis**: {}\n".format(verbatim_avis)
+    return section
+
+
+async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Cell: Compile Final Verification Report
+    Aggregate all control results from previous cells into a structured report.
+    NO API calls — pure Python data assembly.
+    """
+    print("CELL_OUTPUT: Building structured verification report...")
+
+    # Collect all verification results from context
+    zone_a = context.get("zone_a_verification", {})
+    zone_b = context.get("zone_b_verification", {})
+    zone_c = context.get("zone_c_verification", {})
+    zone_f = context.get("zone_f_price_verification", {})
+    zone_h = context.get("zone_h_iban_validation", {})
+
+    # Build report sections from each zone's controls
+    report_sections = []
+    all_controls = []
+
+    # --- Zone A: Controls 1-2 ---
+    report_sections.append("## Zone A — Identification de l'acheteur")
+    for ctrl_key in ["controle_1", "controle_2"]:
+        ctrl = zone_a.get(ctrl_key, {})
+        all_controls.append(ctrl)
+        report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
+
+    # --- Zone B: Controls 3-4 ---
+    report_sections.append("## Zone B — Objet du marché")
+    for ctrl_key in ["controle_3", "controle_4"]:
+        ctrl = zone_b.get(ctrl_key, {})
+        all_controls.append(ctrl)
+        report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
+
+    # --- Zone C: Controls 5-8 ---
+    report_sections.append("## Zone C — Cases cochées")
+    for ctrl_key in ["controle_5", "controle_6", "controle_7", "controle_8"]:
+        ctrl = zone_c.get(ctrl_key, {})
+        if ctrl:
+            all_controls.append(ctrl)
+            report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
+
+    # --- Zone F: Control 16 ---
+    report_sections.append("## Zone F — Prix des prestations")
+    ctrl_16 = zone_f.get("controle_16", {})
+    all_controls.append(ctrl_16)
+    report_sections.append(format_control(ctrl_16, "Controle 16"))
+
+    # --- Zone H: Controls 17-18 ---
+    report_sections.append("## Zone H — Validation IBAN")
+    for ctrl_key in ["controle_17", "controle_18"]:
+        ctrl = zone_h.get(ctrl_key, {})
+        all_controls.append(ctrl)
+        report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
+
+    # Compute summary statistics
+    total = len(all_controls)
+    validated = sum(1 for c in all_controls if isinstance(c, dict) and c.get("statut", c.get("status", "")).lower() == "validé")
+    not_validated = sum(1 for c in all_controls if isinstance(c, dict) and c.get("statut", c.get("status", "")).lower() == "non validé")
+    to_check = total - validated - not_validated
+
+    summary = "# Rapport de Vérification DC4\n\n"
+    summary += "**Résultat global**: {} contrôles validés / {} total\n".format(validated, total)
+    summary += "- Validés: {}\n- Non validés: {}\n- À vérifier: {}\n\n".format(
+        validated, not_validated, to_check
+    )
+    summary += "\n\n".join(report_sections)
+
+    print("CELL_OUTPUT: Report assembled — {}/{} controls validated".format(validated, total))
+
+    return {
+        "final_result": summary,
+        "report_statistics": {
+            "total_controls": total,
+            "validated": validated,
+            "not_validated": not_validated,
+            "to_check": to_check
+        }
+    }
+```
+
 ## REMEMBER
 
 1. Output ONLY Python code - no markdown, no explanations
@@ -482,4 +693,8 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 13. **CRITICAL**: Extract document IDs from `document_mapping` dict using the document type from your cell's task (e.g., `doc_id = context["document_mapping"]["Invoice"]`)
 14. **CRITICAL**: Use `extract_answer()` method to parse v3 response
 15. **CRITICAL**: v3 document_analysis returns directly - NO POLLING NEEDED
-16. **CRITICAL**: force_tool options are only `"document_search"` or `"document_analysis"` (not "code_execution")
+16. **CRITICAL**: Prefer calling `agent_query()` WITHOUT `force_tool` — this lets the agent reason in multi-turn mode, call multiple tools, and retrieve more information. Only use `force_tool="document_search"` or `"document_analysis"` when you are certain you need exactly one specific tool call and nothing else.
+17. **CRITICAL**: ALWAYS `await` every ParadigmClient method call — `agent_query()`, `get_file_chunks()`, `wait_for_embedding()`, and `close()` are ALL async. Missing `await` causes `'coroutine' object has no attribute 'get'`.
+18. **CRITICAL**: NEVER `import paradigm_client` or `from paradigm_client import ...` — ParadigmClient is pre-injected. Just use it directly.
+19. **CRITICAL**: ALWAYS include `from typing import Optional, List, Dict, Any` in your imports, even when fixing or regenerating code.
+20. **CRITICAL**: For report/aggregation cells that compile results from previous cells into a structured report, build the report using **pure Python string formatting** — iterate over context dicts, extract statuses/details/verbatims, and assemble sections programmatically. Do NOT call `agent_query()` to summarize or rephrase — the data is already structured. The longer the report, the more important this rule is: an LLM call would truncate, lose precision, or hallucinate details. See Example 5.

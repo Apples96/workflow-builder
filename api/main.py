@@ -273,25 +273,28 @@ async def enhance_workflow_description(request: WorkflowDescriptionEnhanceReques
     validate_anthropic_api_key()
     
     try:
-        logger.info(f"Enhancing workflow description: {request.description[:100]}...")
-        
+        logger.info("Enhancing workflow description: {}...".format(request.description[:100]))
+
         # Enhance the description using the enhancer directly
         enhancer = WorkflowEnhancer(workflow_generator.anthropic_client)
-        result = await enhancer.enhance_workflow_description(request.description)
-        
+        result = await enhancer.enhance_workflow_description(
+            request.description,
+            output_example=request.output_example
+        )
+
         logger.info("Workflow description enhanced successfully")
-        
+
         return WorkflowDescriptionEnhanceResponse(
             enhanced_description=result["enhanced_description"],
             questions=result["questions"],
             warnings=result["warnings"]
         )
-        
+
     except Exception as e:
-        logger.error(f"Failed to enhance workflow description: {str(e)}")
+        logger.error("Failed to enhance workflow description: {}".format(str(e)))
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to enhance workflow description: {str(e)}"
+            detail="Failed to enhance workflow description: {}".format(str(e))
         )
 
 @api_router.post("/workflows", response_model=WorkflowResponse, tags=["Workflows"])
@@ -656,18 +659,24 @@ async def create_cell_based_workflow(request: WorkflowCreateRequest):
         # Create the workflow planner
         planner = WorkflowPlanner()
 
-        # Generate the plan
+        # Generate the plan with optional output example for deriving final cell criteria
         plan = await planner.create_plan(
             description=request.description,
-            context=request.context
+            context=request.context,
+            output_example=request.output_example
         )
+
+        # Create workflow object with output_example stored in context for later use in evaluation
+        workflow_context = request.context or {}
+        if request.output_example:
+            workflow_context["output_example"] = request.output_example
 
         # Create workflow object
         workflow = Workflow(
             name=request.name,
             description=request.description,
             status="ready",
-            context=request.context
+            context=workflow_context
         )
 
         # Store the plan with the workflow

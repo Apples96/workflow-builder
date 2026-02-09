@@ -117,7 +117,8 @@ class WorkflowPlanner:
     async def create_plan(
         self,
         description: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        output_example: Optional[str] = None
     ) -> WorkflowPlan:
         """
         Create a workflow plan from a natural language description.
@@ -128,6 +129,8 @@ class WorkflowPlanner:
         Args:
             description: Natural language description of the workflow
             context: Optional additional context (e.g., attached file IDs)
+            output_example: Optional example of desired output format for deriving
+                          success criteria for the final cell
 
         Returns:
             WorkflowPlan: Complete plan with cell definitions
@@ -142,8 +145,8 @@ class WorkflowPlanner:
         if not system_prompt:
             raise Exception("Could not load planner system prompt")
 
-        # Build the user message with context
-        user_message = self._build_user_message(description, context)
+        # Build the user message with context and output example
+        user_message = self._build_user_message(description, context, output_example)
 
         try:
             # Parse layer structure from the description BEFORE calling Claude
@@ -165,15 +168,26 @@ class WorkflowPlanner:
                 messages=[{"role": "user", "content": user_message}]
             )
 
-            # Parse the response
+            # Parse the response, checking for truncation
             raw_output = response.content[0].text
+            stop_reason = response.stop_reason
             logger.info("Raw planner output: {}".format(raw_output[:500]))
+
+            if stop_reason == "max_tokens":
+                logger.warning(
+                    "Planner response was TRUNCATED (hit max_tokens={}). "
+                    "Output length: {} chars. Will attempt JSON repair.".format(
+                        settings.anthropic_max_tokens_plan, len(raw_output)
+                    )
+                )
 
             # Parse JSON from response
             plan_data = self._parse_plan_output(raw_output)
 
-            # Create the WorkflowPlan with expected layer structure for validation
-            plan = self._create_plan_from_data(plan_data, description, expected_layer_structure)
+            # Create the WorkflowPlan with expected layer structure and output example
+            plan = self._create_plan_from_data(
+                plan_data, description, expected_layer_structure, output_example
+            )
 
             # Log parallelization info
             if plan.is_parallel_workflow():
@@ -194,7 +208,8 @@ class WorkflowPlanner:
     def _build_user_message(
         self,
         description: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        output_example: Optional[str] = None
     ) -> str:
         """
         Build the user message for the planning request.
@@ -202,6 +217,7 @@ class WorkflowPlanner:
         Args:
             description: The workflow description
             context: Optional additional context
+            output_example: Optional example of desired output format
 
         Returns:
             str: Formatted user message
@@ -230,6 +246,22 @@ class WorkflowPlanner:
                 message_parts.append(
                     "- The workflow should use the attached files"
                 )
+            message_parts.append("")
+
+        # Add output example if provided for deriving final cell success criteria
+        if output_example:
+            message_parts.append("OUTPUT EXAMPLE (for deriving final cell success criteria):")
+            message_parts.append("")
+            message_parts.append("The user has provided this example of their desired output format:")
+            message_parts.append("```")
+            message_parts.append(output_example)
+            message_parts.append("```")
+            message_parts.append("")
+            message_parts.append("IMPORTANT: Use this example to derive success_criteria for the FINAL CELL ONLY.")
+            message_parts.append("- Identify the format type (table, list, JSON, prose, etc.)")
+            message_parts.append("- Identify structural elements (columns, sections, required fields)")
+            message_parts.append("- Create verifiable criteria based on structure, NOT content")
+            message_parts.append("- Intermediate cells should use standard criteria based on their descriptions")
             message_parts.append("")
 
         message_parts.append(
@@ -312,7 +344,11 @@ class WorkflowPlanner:
 
     def _try_fix_json(self, json_str: str) -> Optional[str]:
         """
-        Attempt to fix common JSON formatting issues.
+        Attempt to fix common JSON formatting issues, including truncated output.
+
+        Handles:
+        1. Trailing commas before closing braces/brackets
+        2. Truncated JSON (unclosed strings, arrays, objects)
 
         Args:
             json_str: The malformed JSON string
@@ -321,26 +357,101 @@ class WorkflowPlanner:
             str: Fixed JSON string, or None if unfixable
         """
         try:
-            # Fix common issues:
-            # 1. Trailing commas before closing braces/brackets
+            # Fix 1: Trailing commas before closing braces/brackets
             fixed = re.sub(r',(\s*[}\]])', r'\1', json_str)
 
-            # 2. Missing commas between objects in arrays
-            # (This is harder to fix reliably, skip for now)
-
-            # 3. Unescaped quotes in strings (very hard to fix reliably)
-            # Skip this as it's too risky
+            # Fix 2: Truncated JSON - close any open structures
+            # This commonly happens when max_tokens is hit mid-response
+            fixed = self._close_truncated_json(fixed)
 
             return fixed
         except Exception as e:
             logger.error("JSON auto-fix error: {}".format(e))
             return None
 
+    def _close_truncated_json(self, json_str: str) -> str:
+        """
+        Close truncated JSON by adding missing closing characters.
+
+        Walks through the JSON string tracking open structures, then
+        appends the necessary closing characters.
+
+        Args:
+            json_str: Potentially truncated JSON string
+
+        Returns:
+            str: JSON string with all structures properly closed
+        """
+        # Track what's open
+        stack = []
+        in_string = False
+        escape_next = False
+        i = 0
+
+        while i < len(json_str):
+            char = json_str[i]
+
+            if escape_next:
+                escape_next = False
+                i += 1
+                continue
+
+            if char == '\\' and in_string:
+                escape_next = True
+                i += 1
+                continue
+
+            if char == '"':
+                in_string = not in_string
+                i += 1
+                continue
+
+            if not in_string:
+                if char == '{':
+                    stack.append('}')
+                elif char == '[':
+                    stack.append(']')
+                elif char in ('}', ']'):
+                    if stack and stack[-1] == char:
+                        stack.pop()
+
+            i += 1
+
+        # If we're still inside a string, close it
+        if in_string:
+            # Find last complete property to truncate at
+            # Try to remove the incomplete string value and close cleanly
+            last_quote = json_str.rfind('"')
+            if last_quote > 0:
+                # Check if this is a key or value by looking for ':'
+                before_quote = json_str[:last_quote].rstrip()
+                if before_quote.endswith(':'):
+                    # Incomplete value - add empty string
+                    json_str = json_str[:last_quote] + '""'
+                else:
+                    # Incomplete key or mid-string - close the string
+                    json_str = json_str + '"'
+
+        # Remove any trailing comma before we close
+        json_str = json_str.rstrip()
+        if json_str.endswith(','):
+            json_str = json_str[:-1]
+
+        # Close any remaining open structures
+        if stack:
+            logger.info("Closing {} unclosed JSON structures".format(len(stack)))
+            # Remove trailing comma before closing
+            json_str = json_str.rstrip().rstrip(',')
+            json_str += ''.join(reversed(stack))
+
+        return json_str
+
     def _create_plan_from_data(
         self,
         plan_data: Dict[str, Any],
         description: str,
-        expected_layer_structure: Optional[Dict[str, Tuple[int, int]]] = None
+        expected_layer_structure: Optional[Dict[str, Tuple[int, int]]] = None,
+        output_example: Optional[str] = None
     ) -> WorkflowPlan:
         """
         Create a WorkflowPlan object from parsed data.
@@ -348,6 +459,8 @@ class WorkflowPlanner:
         Args:
             plan_data: Parsed JSON plan data
             description: Original workflow description
+            expected_layer_structure: Optional expected layer structure from description
+            output_example: Optional example of desired output format for final cell
 
         Returns:
             WorkflowPlan: Fully constructed plan object
@@ -355,6 +468,7 @@ class WorkflowPlanner:
         plan = WorkflowPlan(
             description=description,
             shared_context_schema=plan_data.get("shared_context_schema", {}),
+            output_example=output_example,
             status="ready"
         )
 

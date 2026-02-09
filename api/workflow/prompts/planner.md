@@ -89,12 +89,59 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
 
 ### SUCCESS CRITERIA FIELD
 
-For each cell, generate specific `success_criteria` that define validation requirements for the cell's output:
-- What output format/structure is expected (e.g., "must be a dict with 'answer' key")
-- What key information must be present (e.g., "must contain document IDs")
-- Any quality requirements specific to this step (e.g., "analysis must address the user query")
+For each cell, generate specific `success_criteria` that define validation requirements for the cell's output. These criteria will be used by an LLM evaluator to validate the cell's output.
 
-Format as bullet points (use \n for line breaks in JSON). These criteria will be used by an LLM evaluator to validate the cell's output.
+**Format:** Bullet points using `\n` for line breaks in JSON.
+
+#### Two Types of Criteria
+
+**1. Hard Criteria (Verifiable)** - Binary pass/fail checks:
+- `- Must return a dict with 'answer' key`
+- `- The 'documents' field must be a non-empty list`
+- `- Output must contain at least one document ID`
+- `- Must NOT return None or empty string`
+
+**2. Soft Criteria (Quality-based)** - Require judgment but should be precise:
+- `- Answer should coherently synthesize findings from the searched documents`
+- `- Analysis should directly address the specific question asked in user_input`
+- `- Summary should cover the key points without excessive repetition`
+
+**IMPORTANT:** Soft criteria are acceptable and often necessary for evaluating quality. The key is to make them **as precise as possible** - describe what "good" looks like rather than using vague terms.
+
+**AVOID vague criteria like:**
+- `- Should return good results` (what makes results "good"?)
+- `- Output should be helpful` (helpful how?)
+- `- Results should be appropriate` (appropriate in what way?)
+
+**PREFER precise descriptions:**
+- Instead of "good results" → `Answer should include specific facts or findings from the documents`
+- Instead of "helpful" → `Response should directly answer the user's question with supporting evidence`
+- Instead of "appropriate" → `Output format should match what the next cell expects as input`
+
+#### Include Negative Criteria
+
+Specify what should NOT appear in valid output:
+
+- `- Must NOT return raw API response without extracting the answer`
+- `- Must NOT contain error messages or stack traces in successful output`
+- `- Must NOT return empty results when the query clearly matches existing documents`
+- `- Must NOT include placeholder text like "TODO" or "FIXME"`
+
+#### Criteria Categories
+
+For each cell, include a mix of:
+
+1. **Structure requirements (hard):** Expected data types and keys
+   - `- Must return dict with 'answer' (str) and 'sources' (list) keys`
+
+2. **Content requirements (soft):** What information should be present
+   - `- Answer should include specific findings relevant to the query`
+
+3. **Relationship to input (soft):** How output should relate to input
+   - `- Analysis should directly address the specific question from user_input`
+
+4. **Negative constraints (hard):** What to reject
+   - `- Must NOT return generic responses unrelated to the documents`
 
 ### PARALLELIZATION FIELDS (CRITICAL)
 
@@ -114,10 +161,11 @@ When planning steps, use these tool names in `paradigm_tools_used`:
 
 ### 🚨 CRITICAL: Tool Selection Guide (v3 API)
 
-**Use `agent_query` with appropriate force_tool:**
-- force_tool="document_search": Quick simple queries (2-5 seconds) - finding specific fields
-- force_tool="document_analysis": Comprehensive analysis (10-30 seconds, NO POLLING NEEDED in v3!)
-- force_tool=None: Let agent choose automatically (for general queries)
+**Use `agent_query` — let the agent choose tools by default (RECOMMENDED):**
+- Default (no force_tool): Agent reasons in multi-turn mode — can call multiple tools, search then analyze, and follow up. Best for most queries, especially multi-field extraction.
+- force_tool="document_search": Single-turn only — one quick search, no follow-up. Use sparingly for simple single-field lookups.
+- force_tool="document_analysis": Single-turn only — one analysis pass. Use sparingly when you specifically need the analysis tool and nothing else.
+- **Note:** Paradigm recommends NOT forcing a tool — automatic routing ensures the optimal tool is used.
 
 **Use `get_file_chunks` for RAW TEXT extraction:**
 - Getting literal text content without AI interpretation
@@ -135,7 +183,8 @@ When planning steps, use these tool names in `paradigm_tools_used`:
    - Use when: All document queries
    - Inputs: query, file_ids, optional force_tool
    - Outputs: v3 response with thread_id, turn_id, messages
-   - force_tool options: "document_search" (fast), "document_analysis" (comprehensive), None (agent chooses)
+   - Default (no force_tool): Multi-turn agent reasoning — recommended for most queries
+   - force_tool options (single-turn only, use sparingly): "document_search" (fast), "document_analysis" (comprehensive)
 
 2. **wait_for_embedding** - Wait for file to be indexed (v2 API)
    - Use when: After uploading files, before using them
@@ -154,7 +203,7 @@ When planning steps, use these tool names in `paradigm_tools_used`:
    - Inputs: file content
    - Outputs: file_id, file metadata
 
-**NOTE**: v3 Agent API uses unified agent_query() with force_tool parameter. No polling needed for document_analysis in v3!
+**NOTE**: v3 Agent API uses unified agent_query(). Prefer NOT using force_tool — multi-turn agent reasoning is more effective for complex queries. No polling needed for document_analysis in v3!
 
 ## PLANNING RULES
 
@@ -254,7 +303,7 @@ This pattern shows how to structure PARALLEL execution:
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_a_results"],
             "paradigm_tools_used": ["agent_query"],
-            "success_criteria": "- Must return search results dict with 'answer' key\n- Answer should address Topic A specifically"
+            "success_criteria": "- Must return a dict with 'answer' key (str)\n- Answer should include specific facts or findings about Topic A from the documents\n- Must NOT return None or empty string\n- Must NOT return generic responses unrelated to Topic A"
         },
         {
             "step_number": 2,
@@ -266,7 +315,7 @@ This pattern shows how to structure PARALLEL execution:
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_b_results"],
             "paradigm_tools_used": ["agent_query"],
-            "success_criteria": "- Must return search results dict with 'answer' key\n- Answer should address Topic B specifically"
+            "success_criteria": "- Must return a dict with 'answer' key (str)\n- Answer should include specific facts or findings about Topic B from the documents\n- Must NOT return None or empty string\n- Must NOT return generic responses unrelated to Topic B"
         },
         {
             "step_number": 3,
@@ -278,7 +327,7 @@ This pattern shows how to structure PARALLEL execution:
             "inputs_required": ["topic_a_results", "topic_b_results"],
             "outputs_produced": ["final_result"],
             "paradigm_tools_used": ["agent_query"],
-            "success_criteria": "- Must produce a final_result string\n- Should combine insights from both Topic A and Topic B\n- Must be coherent and well-structured"
+            "success_criteria": "- Must produce a final_result string (non-empty)\n- Should coherently synthesize findings from both Topic A and Topic B searches\n- Response should directly address the user's original question with supporting evidence from both topics\n- Must NOT omit findings from either Topic A or Topic B\n- Must NOT contain raw API responses or unprocessed data"
         }
     ]
 }
@@ -350,6 +399,31 @@ This pattern shows how to structure PARALLEL execution:
 3. This helps the code generator understand to use `document_mapping["DocType"]` to get the file ID
 
 ## CONTEXT SCHEMA GUIDELINES
+
+### CRITICAL: Prefer Simple Output Types
+
+When planning cell outputs, follow these rules:
+
+1. **Extraction cells that return text from Paradigm API should output STRINGS, not dicts**
+   - GOOD: "dc4_buyer_info": "str - Raw extracted text of buyer identification from DC4 section A"
+   - BAD: "dc4_buyer_info": "dict - Extracted buyer info from DC4"
+
+2. **Only use dict outputs when the consumer cell needs multiple named fields**
+   - GOOD for comparison results: "buyer_comparison_results": "Dict with keys: control_1 (str), control_2 (str), details (str), comparison_details (List[Dict])"
+   - BAD for raw text: "dc4_buyer_info": "dict - Contains extracted info"
+
+3. **For every dict output, you MUST specify the exact keys and their types in shared_context_schema**
+
+4. **Use separate variables for data vs metadata when both are needed**
+   - "dc4_buyer_text": "str - Raw extracted buyer identification text"
+   - "dc4_buyer_metadata": "Dict with keys: source_document (str), document_id (int), extraction_method (str)"
+
+5. **Dict variables consumed by a report/summary cell MUST include a top-level `"details"` string key**
+   - When a comparison or analysis cell outputs a dict that will later be read by a report or aggregation cell, the schema MUST require a top-level `"details"` key containing a human-readable text summary of the result.
+   - This ensures the report cell can always do `variable.get("details")` to get displayable text, regardless of how many nested sub-dicts exist.
+   - GOOD: `"buyer_comparison": "Dict with keys: controle_1 (str), controle_2 (str), details (str) - details is a human-readable summary of all controls"`
+   - BAD: `"buyer_comparison": "Dict with keys: controle_1 (dict), controle_2 (dict)"` (no top-level details — report cell will show "Aucun détail disponible")
+   - The `"details"` value should concatenate/summarize the findings from all nested controls into one readable string.
 
 The `shared_context_schema` should document every variable that flows between cells.
 **Include detailed type information and usage examples**, especially for complex types like `document_mapping`.
@@ -629,6 +703,50 @@ LAYER 3:
 }
 ```
 This is WRONG because it loses the parallel structure - cells that should run together are in different layers!
+
+## OUTPUT EXAMPLE (if provided)
+
+When an output example is provided, use it to derive **success criteria for the FINAL CELL only**.
+
+### How to derive criteria from the example:
+
+1. **Identify the format type**: Is it a markdown table, bullet list, JSON, prose, etc.?
+2. **Identify structural elements**: What columns, sections, or required fields are present?
+3. **Create verifiable criteria** based on structure, NOT content
+
+### Example derivations:
+
+| Output Example Shows | Derived Success Criteria |
+|---------------------|-------------------------|
+| Markdown table with columns A, B, C | "Must return a markdown table with columns: A, B, C" |
+| JSON with keys "summary", "data" | "Must return JSON with 'summary' (str) and 'data' (list) keys" |
+| Numbered list of findings | "Must return a numbered list of findings (at least one item)" |
+| Prose with specific sections | "Must include sections for: [section names from example]" |
+
+### Important rules:
+
+- Apply example-derived criteria to the **final cell ONLY**
+- Intermediate cells use standard criteria based on their descriptions
+- Focus on **format and structure**, not exact content
+- Use "should resemble" not "must match exactly"
+- Allow flexibility for valid alternatives that meet the same goals
+
+### Example success_criteria field for final cell:
+
+If the output example shows:
+```
+| Field | Doc A | Doc B | Match |
+|-------|-------|-------|-------|
+| Name  | ACME  | ACME  | Yes   |
+```
+
+The final cell's success_criteria should include:
+```
+- Must return a markdown table format
+- Table must include columns: Field, Doc A, Doc B, Match
+- Match column should indicate Yes/No or equivalent
+- Must NOT return plain text or unformatted data
+```
 
 ## REMEMBER
 

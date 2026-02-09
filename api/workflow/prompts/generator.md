@@ -62,9 +62,10 @@ class ParadigmClient:
     - wait_for_embedding  <-- v2 API for waiting until files are ready (unchanged)
 
     ⚠️ force_tool OPTIONS for agent_query:
-    - force_tool=None: Agent chooses automatically (default)
-    - force_tool="document_search": Quick queries (2-5 seconds)
-    - force_tool="document_analysis": Comprehensive analysis (10-30 seconds)
+    - force_tool=None: RECOMMENDED — agent reasons in multi-turn, can call multiple tools
+    - force_tool="document_search": Single-turn only — one quick search, no follow-up
+    - force_tool="document_analysis": Single-turn only — one analysis pass, no follow-up
+    Prefer NOT forcing a tool unless you need exactly one specific tool call.
     '''
 
     def __init__(self, api_key: str, base_url: str = "https://paradigm.lighton.ai", chat_setting_id: int = 160):
@@ -161,10 +162,10 @@ class ParadigmClient:
         Args:
             query: The query or instruction for the agent
             file_ids: Optional list of file IDs to work with
-            force_tool: Optional tool to force the agent to use:
-                       - "document_search": Search through documents (fast, 2-5 seconds)
-                       - "document_analysis": Deep analysis of documents (comprehensive)
-                       - None: Let the agent choose the appropriate tool (recommended)
+            force_tool: Optional tool to force the agent to use (single-turn only — use sparingly):
+                       - None: RECOMMENDED — agent reasons in multi-turn, can call multiple tools
+                       - "document_search": Single-turn, one quick search (2-5 seconds)
+                       - "document_analysis": Single-turn, one analysis pass (comprehensive)
             response_format: Optional dict specifying response format (e.g., JSON schema)
             model: The model to use (default: "alfred-ft5")
             timeout: Request timeout in seconds (default: 300)
@@ -817,6 +818,117 @@ IMPORTANT LIBRARY RESTRICTIONS:
 STRUCTURED OUTPUT BETWEEN STEPS:
 For workflow steps that extract or process information, use structured formats (JSON, lists, dicts) that make the output easy for subsequent steps to parse and use. Choose the most appropriate structure for each step's specific purpose.
 
+PARADIGM API STRUCTURED OUTPUT (response_format):
+The v3 Agent API supports a `response_format` parameter that forces the agent to return output conforming to a JSON schema. The agent_query() method already accepts this parameter. Use it to get guaranteed, machine-parseable JSON instead of free-text that requires fragile string parsing.
+
+WHEN TO USE response_format:
+
+1. **Multi-field data extraction** - When extracting multiple specific values (amounts, dates, names, IDs) from documents. A JSON schema guarantees each field is returned in a predictable structure instead of buried in free-text prose.
+
+2. **Comparison workflows** - When extracting the same field from multiple documents to compare values. Structured output returns explicit `null` for missing values instead of ambiguous phrases like "Non trouvé" or "Je n'ai pas trouvé", eliminating false-positive matches between two missing values.
+
+3. **Classification or decision steps** - When categorizing documents, assigning labels, or making yes/no decisions. The schema constrains the output to valid options.
+
+4. **Data to be consumed by downstream code** - Any step whose output will be parsed by Python code (json.loads) rather than displayed to a human.
+
+Example - Multi-field extraction with response_format:
+```python
+# Define the expected output structure as a JSON schema
+extraction_schema = {
+    "type": "object",
+    "properties": {
+        "invoice_number": {"type": ["string", "null"]},
+        "total_amount": {"type": ["number", "null"]},
+        "invoice_date": {"type": ["string", "null"]},
+        "vendor_name": {"type": ["string", "null"]}
+    },
+    "required": ["invoice_number", "total_amount", "invoice_date", "vendor_name"]
+}
+
+# Pass response_format to agent_query - the API guarantees valid JSON output
+result = await paradigm_client.agent_query(
+    query="Extract the invoice number, total amount, date, and vendor name from this document.",
+    file_ids=[file_id],
+    response_format=extraction_schema
+)
+
+# Parse the structured response - guaranteed to be valid JSON matching the schema
+answer_text = paradigm_client._extract_answer(result)
+extracted = json.loads(answer_text)
+
+# Check for missing values using explicit null - no fragile string matching needed
+if extracted["total_amount"] is None:
+    logger.warning("Total amount not found in document")
+else:
+    total = extracted["total_amount"]  # Already a number, no parsing needed
+```
+
+Example - Classification with response_format:
+```python
+classification_schema = {
+    "type": "object",
+    "properties": {
+        "document_type": {"type": "string", "enum": ["invoice", "contract", "report", "other"]},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]}
+    },
+    "required": ["document_type", "confidence"]
+}
+
+result = await paradigm_client.agent_query(
+    query="Classify this document by type.",
+    file_ids=[file_id],
+    response_format=classification_schema
+)
+
+classification = json.loads(paradigm_client._extract_answer(result))
+doc_type = classification["document_type"]  # Guaranteed to be one of the enum values
+```
+
+Example - Comparison workflow with response_format (replaces fragile is_value_missing pattern):
+```python
+# Extract the same field from two different documents using structured output
+field_schema = {
+    "type": "object",
+    "properties": {
+        "value": {"type": ["string", "null"]},
+        "source_section": {"type": ["string", "null"]}
+    },
+    "required": ["value"]
+}
+
+result_doc1 = await paradigm_client.agent_query(
+    query="Extract the total contract amount.",
+    file_ids=[doc1_id],
+    response_format=field_schema
+)
+result_doc2 = await paradigm_client.agent_query(
+    query="Extract the total contract amount.",
+    file_ids=[doc2_id],
+    response_format=field_schema
+)
+
+data_doc1 = json.loads(paradigm_client._extract_answer(result_doc1))
+data_doc2 = json.loads(paradigm_client._extract_answer(result_doc2))
+
+# Clean comparison - null means missing, no ambiguous string matching
+if data_doc1["value"] is None or data_doc2["value"] is None:
+    status = "ATTENTION - Données manquantes"
+elif data_doc1["value"] == data_doc2["value"]:
+    status = "OK - Conforme"
+else:
+    status = "ERREUR - Non conforme"
+```
+
+WHEN NOT TO USE response_format:
+
+1. **Summaries, reports, or narrative output** - When the step produces free-text meant for human reading (executive summaries, analysis reports, explanations). Forcing JSON on prose output degrades quality and readability.
+
+2. **Agent-chosen tool calls (force_tool=None)** - When letting the agent reason freely and choose its own tools, do not constrain the response format. The agent needs flexibility to reason, call tools, and synthesize results. Only use response_format when you know exactly what structure you need back.
+
+3. **Simple single-value questions** - For straightforward questions with a single text answer (e.g., "What is the company name?"), using _extract_answer() directly is simpler than defining a schema. Reserve response_format for multi-field extractions or when type safety matters (numbers, booleans, enums).
+
+4. **Exploratory or open-ended queries** - When the shape of the answer is not known in advance (e.g., "What are the key findings?"), free-text is more appropriate. Only use response_format when you can define the exact fields beforehand.
+
 CRITICAL: DETECTING MISSING VALUES IN EXTRACTION
 When extracting information from documents, ALWAYS check if the extraction was successful before comparing values.
 
@@ -1048,20 +1160,13 @@ if attached_files:
     extracted_data = paradigm_client._extract_answer(result)
     logger.info("✅ Extraction completed!")
 
-    # OPTION B: Force document_search for quick simple queries (2-5 seconds)
+    # OPTION B: Force a specific tool (SINGLE-TURN ONLY — use sparingly)
+    # Only use when you need exactly one tool call and nothing else.
+    # The agent CANNOT follow up or combine tools when force_tool is set.
     # result = await paradigm_client.agent_query(
     #     query="What is the total amount?",
     #     file_ids=[file_id],
-    #     force_tool="document_search"
-    # )
-    # extracted_data = paradigm_client._extract_answer(result)
-
-    # OPTION C: Force document_analysis for comprehensive extraction (10-30 seconds)
-    # Use this for CVs, complex forms, multi-page documents
-    # result = await paradigm_client.agent_query(
-    #     query="Provide comprehensive extraction of all fields",
-    #     file_ids=[file_id],
-    #     force_tool="document_analysis"  # NOTE: v3 returns directly, no polling!
+    #     force_tool="document_search"  # Single quick search, no follow-up
     # )
     # extracted_data = paradigm_client._extract_answer(result)
 
@@ -1079,33 +1184,26 @@ else:
 CRITICAL RULES:
 1. ALWAYS wait for file embedding BEFORE querying (wait_for_embedding or asyncio.sleep)
 2. NEVER skip the if/else check for attached_files
-3. Use agent_query() with appropriate force_tool parameter
+3. Use agent_query() — prefer NOT using force_tool (see below)
 
 ⚠️ CRITICAL API SELECTION RULES FOR UPLOADED FILES (v3):
 
 When user uploads files (attached_files exists), YOU MUST CHOOSE the right approach:
 
-1️⃣ Use agent_query(force_tool="document_analysis") when:
-   ✅ Extracting COMPLETE structured data (CV, comprehensive forms)
-   ✅ Need ALL fields extracted automatically (skills, experience, education, etc.)
-   ✅ Complex analysis across documents
-   ✅ Can wait 10-30 seconds for comprehensive result
-   ✅ Want structured Markdown output with all sections
-   ⏱️ Performance: ~10-30 seconds, comprehensive results
+1️⃣ Use agent_query() WITHOUT force_tool (RECOMMENDED DEFAULT):
+   ✅ The agent reasons in multi-turn mode — it can call multiple tools, search then analyze, and follow up
+   ✅ Best for extracting multiple fields, complex queries, comprehensive analysis
+   ✅ Best for multi-document synthesis and comparison
+   ✅ Paradigm recommends this: "automatic routing ensures the optimal tool is used"
+   ⏱️ Performance: Varies, but results are more complete and accurate
 
-2️⃣ Use agent_query(force_tool="document_search") when:
-   ✅ Simple quick question about ONE specific field ("What is the name?")
-   ✅ Fast response needed (2-5 seconds)
-   ✅ Single piece of information extraction
-   ✅ Loop through multiple documents individually with specific queries
-   ⏱️ Performance: ~2-5 seconds, targeted results
+2️⃣ Use agent_query(force_tool=...) ONLY when you specifically need single-turn (USE SPARINGLY):
+   ⚠️ force_tool constrains the agent to a SINGLE TURN with ONE tool call — no follow-up, no multi-tool reasoning
+   - force_tool="document_search": One quick search pass (2-5s) — only for simple single-field lookups
+   - force_tool="document_analysis": One analysis pass (10-30s) — only when you specifically need this tool alone
+   ⚠️ Do NOT force a tool for multi-field extraction — the agent needs multi-turn to retrieve all fields
 
-3️⃣ Use agent_query() without force_tool when:
-   ✅ General queries where you want the agent to choose the best approach
-   ✅ Mixed queries that might need search or analysis
-   ⏱️ Performance: Varies based on agent's choice
-
-4️⃣ Use agent_query() WITHOUT file_ids when:
+3️⃣ Use agent_query() WITHOUT file_ids when:
    ✅ attached_files is None/empty (user wants to search workspace)
    ✅ No specific files uploaded
    ✅ Searching across entire workspace/company documents
@@ -1238,10 +1336,10 @@ AVAILABLE API METHODS (v3 Agent API):
    Args:
    - query: Your question or instruction
    - file_ids: List of file IDs to work with (e.g., [123, 456])
-   - force_tool: Force a specific tool:
-     - None: Agent chooses (recommended first attempt)
-     - "document_search": Search through documents
-     - "document_analysis": Deep analysis of documents
+   - force_tool: Optionally force a specific tool (NOT recommended — see below):
+     - None: RECOMMENDED — agent reasons in multi-turn, calls multiple tools as needed
+     - "document_search": Single-turn only — one quick search, no follow-up
+     - "document_analysis": Single-turn only — one analysis pass, no follow-up
    - model: Model to use (default: "alfred-ft5")
 
    Returns: Dict with thread_id, turn_id, messages (use _extract_answer() to get text)
@@ -1255,23 +1353,14 @@ AVAILABLE API METHODS (v3 Agent API):
    answer = paradigm_client._extract_answer(result)
    ```
 
-   Example - Force document search:
+   Example - Force a tool (single-turn only — use sparingly):
    ```python
+   # Only when you need exactly one specific tool call and nothing else
    result = await paradigm_client.agent_query(
-       query="Find all mentions of pricing",
-       file_ids=[123, 456],
-       force_tool="document_search"
-   )
-   ```
-
-   Example - Force document analysis (NO POLLING NEEDED in v3!):
-   ```python
-   result = await paradigm_client.agent_query(
-       query="Provide comprehensive summary",
+       query="Find the invoice total",
        file_ids=[123],
-       force_tool="document_analysis"
+       force_tool="document_search"  # Single-turn — agent cannot follow up
    )
-   answer = paradigm_client._extract_answer(result)
    ```
 
 📄 HELPER METHOD:
@@ -1288,7 +1377,7 @@ AVAILABLE API METHODS (v3 Agent API):
 ⚠️ KEY DIFFERENCES FROM v2:
 - NO POLLING NEEDED! v3 returns results directly (even for document_analysis)
 - Use _extract_answer() to get text from response
-- Use force_tool parameter to control agent behavior
+- Prefer NOT using force_tool — multi-turn agent reasoning is more effective for complex queries
 - file_ids (not document_ids) - use integer file IDs directly
 
 ⚠️ ALWAYS apply Query Formulation Best Practices to the query parameter.
@@ -1417,8 +1506,7 @@ NOTE: With v3, document_analysis is now fast (no polling!) so you CAN paralleliz
 # Use agent_query to get document content, then multiple parallel queries
 content_result = await paradigm_client.agent_query(
     query="Get document content",
-    file_ids=[doc_id],
-    force_tool="document_search"
+    file_ids=[doc_id]
 )
 doc_text = paradigm_client._extract_answer(content_result)
 

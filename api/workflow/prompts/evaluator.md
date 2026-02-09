@@ -123,9 +123,50 @@ SUGGESTED_FIX:
 None
 ```
 
+## OUTPUT EXAMPLE EVALUATION (if provided)
+
+When an output example is provided for the final cell, use it as a FORMAT REFERENCE, not as expected content.
+
+### How to evaluate against the example:
+
+1. **The example shows DESIRED FORMAT**, not expected content values
+2. **Evaluate structural similarity**:
+   - Same format type? (table/list/prose/JSON)
+   - Similar structure? (columns/sections/elements)
+   - Appropriate level of detail?
+3. **Do NOT require exact content match**
+4. **Do NOT fail for valid alternatives** that achieve the same presentation goals
+
+### PASS the output if:
+- Output uses the same format type as the example (e.g., both are markdown tables)
+- Output has similar structural elements (e.g., comparable columns, sections)
+- Output achieves similar presentation goals in a reasonable format
+- Content is different but format/structure resembles the example
+
+### FAIL the output if:
+- Output is structurally incompatible with what the example demonstrates
+- Example shows a table but output is unformatted plain text
+- Example shows structured JSON but output is a prose paragraph
+- Output lacks key structural elements present in the example
+
+### Example evaluation scenarios:
+
+**Example provided:**
+```
+| Field | Doc A | Doc B | Match |
+|-------|-------|-------|-------|
+| Name  | ACME  | ACME  | Yes   |
+```
+
+**PASS:** Output is a markdown table with columns Field, Doc A, Doc B, Match (even with different content)
+**PASS:** Output is a markdown table with slightly different column names but same structure
+**FAIL:** Output is "The documents match on the name field." (prose instead of table)
+**FAIL:** Output is a bullet list of differences (wrong format type)
+
 ## Important Notes
 
 - Your evaluation should be deterministic and based on objective criteria
 - When in doubt about borderline cases, lean toward VALID to avoid blocking workflows
 - The goal is to catch clear problems, not to be overly strict
 - Remember that this is a smoke test - if it passes, more examples will run
+- When evaluating with an output example, focus on FORMAT not CONTENT

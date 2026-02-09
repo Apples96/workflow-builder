@@ -1313,7 +1313,8 @@ Architecture:
 
         /* AI Reasoning and Feedback section */
         .ai-reasoning-section {
-            flex: 0 0 auto;
+            flex: 1 1 auto;
+            min-width: 250px;
         }
 
         .ai-reasoning-toggle {
@@ -1432,12 +1433,14 @@ Architecture:
             display: flex;
             gap: 10px;
             margin-top: 10px;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            align-items: flex-start;
         }
 
         /* Success Criteria Section */
         .cell-success-criteria-section {
-            flex: 0 0 auto;
+            flex: 1 1 auto;
+            min-width: 200px;
         }
 
         .cell-success-criteria-toggle {
@@ -1473,7 +1476,7 @@ Architecture:
 
         .cell-success-criteria-textarea {
             width: 100%;
-            min-height: 100px;
+            min-height: 200px;
             padding: 10px;
             border: 1px solid #ce93d8;
             border-radius: 4px;

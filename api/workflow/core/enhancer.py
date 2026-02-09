@@ -21,7 +21,7 @@ Architecture:
 """
 
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from ...clients import create_anthropic_client
 from ...config import settings
@@ -120,22 +120,36 @@ QUESTIONS AND LIMITATIONS: [List any unclear points or missing information]
 
 Enhance this workflow description:"""
 
-    async def enhance_workflow_description(self, raw_description: str) -> Dict[str, Any]:
+    async def enhance_workflow_description(
+        self,
+        raw_description: str,
+        output_example: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Enhance a raw workflow description using Claude AI to create a more detailed,
         actionable workflow specification with proper tool usage and clear steps.
-        
+
         Args:
             raw_description: User's initial natural language workflow description
-            
+            output_example: Optional example of desired output format to guide enhancement
+
         Returns:
             Dict containing enhanced description, questions, and warnings
-            
+
         Raises:
             Exception: If enhancement fails due to API or processing errors
         """
         try:
-            user_message = f"Raw workflow description: {raw_description}"
+            # Build user message with optional output example
+            user_message = "Raw workflow description: {}".format(raw_description)
+
+            # Include output example if provided to guide step descriptions
+            if output_example:
+                user_message += "\n\n## USER-PROVIDED OUTPUT EXAMPLE\n"
+                user_message += "The user has provided the following example of their desired output format. "
+                user_message += "Use this to understand the FORMAT, STRUCTURE, and LEVEL OF DETAIL expected:\n\n"
+                user_message += "```\n{}\n```\n\n".format(output_example)
+                user_message += "Incorporate insights from this example into your step descriptions, especially for the final step."
             
             logger.info(f"🔄 Enhancing workflow description: {raw_description[:100]}...")
             

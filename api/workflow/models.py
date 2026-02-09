@@ -385,6 +385,7 @@ class WorkflowPlan:
         description: Original user description
         cells: List of WorkflowCell definitions
         shared_context_schema: Variable name to type description mapping
+        output_example: Optional example of desired output format for final cell evaluation
         status: Current plan status
         current_cell_index: Index of cell currently being processed
         created_at: Timestamp of creation
@@ -396,6 +397,9 @@ class WorkflowPlan:
     # Planning output
     cells: List[WorkflowCell] = field(default_factory=list)
     shared_context_schema: Dict[str, str] = field(default_factory=dict)
+
+    # Optional output example for steering final cell format
+    output_example: Optional[str] = None
 
     # Status tracking
     status: str = "created"  # created, planning, ready, executing, completed, failed
@@ -411,6 +415,7 @@ class WorkflowPlan:
             "description": self.description,
             "cells": [cell.to_dict() for cell in self.cells],
             "shared_context_schema": self.shared_context_schema,
+            "output_example": self.output_example,
             "status": self.status,
             "current_cell_index": self.current_cell_index,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -424,6 +429,7 @@ class WorkflowPlan:
             workflow_id=data.get("workflow_id", ""),
             description=data.get("description", ""),
             shared_context_schema=data.get("shared_context_schema", {}),
+            output_example=data.get("output_example"),
             status=data.get("status", "created"),
             current_cell_index=data.get("current_cell_index", 0),
         )

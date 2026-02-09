@@ -49,6 +49,10 @@ class WorkflowCreateRequest(BaseModel):
 
     Used when users want to create a workflow from a natural language description.
     The system will generate executable code based on the description and context.
+
+    The optional output_example field allows users to provide an example of the
+    desired output format to steer workflow generation toward specific formats
+    (e.g., markdown tables, JSON structures, bullet lists).
     """
     description: str = Field(
         ...,
@@ -58,6 +62,10 @@ class WorkflowCreateRequest(BaseModel):
     )
     name: Optional[str] = Field(None, description="Optional name for the workflow")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context for code generation")
+    output_example: Optional[str] = Field(
+        None,
+        description="Optional example of the desired output format to guide workflow generation"
+    )
 
 class WorkflowExecuteRequest(BaseModel):
     """
@@ -164,11 +172,18 @@ class WorkflowWithFilesRequest(BaseModel):
 class WorkflowDescriptionEnhanceRequest(BaseModel):
     """
     Request model for enhancing workflow descriptions.
-    
+
     Takes a raw natural language description and uses AI to enhance it
     into a more detailed and actionable workflow specification.
+
+    The optional output_example field allows users to provide an example of the
+    desired output format to guide the enhancement process.
     """
     description: str = Field(..., description="Raw natural language workflow description")
+    output_example: Optional[str] = Field(
+        None,
+        description="Optional example of the desired output format to guide enhancement"
+    )
 
 class WorkflowDescriptionEnhanceResponse(BaseModel):
     """

@@ -110,7 +110,8 @@ class CellOutputEvaluator:
         cell: WorkflowCell,
         smoke_test_output: ExampleOutput,
         workflow_description: str,
-        cell_code: str
+        cell_code: str,
+        output_example: Optional[str] = None
     ) -> EvaluationResult:
         """
         Evaluate the output from a smoke test (first example) execution.
@@ -123,6 +124,7 @@ class CellOutputEvaluator:
             smoke_test_output: Output from the smoke test example
             workflow_description: Original workflow description for context
             cell_code: The generated code for the cell
+            output_example: Optional example of desired output format (only for final cell)
 
         Returns:
             EvaluationResult: Evaluation result with validity and feedback
@@ -132,7 +134,6 @@ class CellOutputEvaluator:
         # Load the evaluation prompt
         system_prompt = load_evaluator_prompt()
         if not system_prompt:
-            # Use a default prompt if file not found
             system_prompt = self._get_default_system_prompt()
 
         # Build the user message for smoke test evaluation
@@ -140,7 +141,8 @@ class CellOutputEvaluator:
             cell=cell,
             smoke_test_output=smoke_test_output,
             workflow_description=workflow_description,
-            cell_code=cell_code
+            cell_code=cell_code,
+            output_example=output_example
         )
 
         try:
@@ -153,7 +155,6 @@ class CellOutputEvaluator:
                 timeout=settings.anthropic_timeout
             )
 
-            # Parse the evaluation response
             raw_response = response.content[0].text
             logger.info("Received evaluation response ({} chars)".format(len(raw_response)))
 
@@ -161,6 +162,73 @@ class CellOutputEvaluator:
 
         except Exception as e:
             logger.error("Evaluation failed: {}".format(str(e)))
+            # Return a "pass" result on evaluation error to avoid blocking
+            return EvaluationResult(
+                is_valid=True,
+                feedback="Evaluation skipped due to error: {}".format(str(e)),
+                issues=[]
+            )
+
+    async def evaluate_all_examples_output(
+        self,
+        cell: WorkflowCell,
+        example_outputs: List[ExampleOutput],
+        workflow_description: str,
+        cell_code: str,
+        output_example: Optional[str] = None
+    ) -> EvaluationResult:
+        """
+        Evaluate outputs from ALL examples together for pattern-based evaluation.
+
+        This method evaluates all example outputs at once, allowing Claude to
+        identify patterns across multiple examples (e.g., consistent failures,
+        edge cases, or systematic issues).
+
+        Args:
+            cell: The cell definition with expected inputs/outputs
+            example_outputs: List of outputs from all example executions
+            workflow_description: Original workflow description for context
+            cell_code: The generated code for the cell
+            output_example: Optional example of desired output format (only for final cell)
+
+        Returns:
+            EvaluationResult: Evaluation result with validity and feedback
+        """
+        logger.info("Evaluating {} examples output for cell '{}'".format(
+            len(example_outputs), cell.name
+        ))
+
+        # Load the evaluation prompt
+        system_prompt = load_evaluator_prompt()
+        if not system_prompt:
+            system_prompt = self._get_default_system_prompt()
+
+        # Build the user message for all-examples evaluation
+        user_message = self._build_all_examples_message(
+            cell=cell,
+            example_outputs=example_outputs,
+            workflow_description=workflow_description,
+            cell_code=cell_code,
+            output_example=output_example
+        )
+
+        try:
+            # Call Claude to evaluate all outputs together
+            response = self.anthropic_client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=4000,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+                timeout=settings.anthropic_timeout
+            )
+
+            raw_response = response.content[0].text
+            logger.info("Received all-examples evaluation response ({} chars)".format(len(raw_response)))
+
+            return self._parse_evaluation_response(raw_response)
+
+        except Exception as e:
+            logger.error("All-examples evaluation failed: {}".format(str(e)))
             # Return a "pass" result on evaluation error to avoid blocking
             return EvaluationResult(
                 is_valid=True,
@@ -223,7 +291,8 @@ SUGGESTED_FIX:
         cell: WorkflowCell,
         smoke_test_output: ExampleOutput,
         workflow_description: str,
-        cell_code: str
+        cell_code: str,
+        output_example: Optional[str] = None
     ) -> str:
         """
         Build the user message for smoke test evaluation.
@@ -233,6 +302,7 @@ SUGGESTED_FIX:
             smoke_test_output: Output from the smoke test
             workflow_description: Workflow description for context
             cell_code: The generated cell code
+            output_example: Optional example of desired output format (only for final cell)
 
         Returns:
             str: Formatted evaluation request message
@@ -297,6 +367,168 @@ CELL-SPECIFIC SUCCESS CRITERIA:
 
 Use these criteria IN ADDITION to the general guidelines when evaluating. The output should meet these specific requirements.""".format(
                 criteria=cell.success_criteria
+            )
+
+        # Append output example for final cell evaluation if provided
+        if output_example:
+            message += """
+
+OUTPUT FORMAT EXAMPLE (FINAL CELL):
+The user provided this example of their desired output FORMAT:
+```
+{example}
+```
+
+IMPORTANT: This is a FORMAT reference, not expected content.
+- Evaluate if the output uses a SIMILAR FORMAT (table/list/JSON/etc.)
+- Check for SIMILAR STRUCTURE (columns, sections, elements)
+- Do NOT require exact content match
+- PASS if format/structure resembles the example
+- FAIL only if format is structurally incompatible (e.g., prose when table expected)""".format(
+                example=output_example
+            )
+
+        return message
+
+    def _build_all_examples_message(
+        self,
+        cell: WorkflowCell,
+        example_outputs: List[ExampleOutput],
+        workflow_description: str,
+        cell_code: str,
+        output_example: Optional[str] = None
+    ) -> str:
+        """
+        Build the user message for evaluating ALL examples together.
+
+        This method creates a prompt that includes outputs from all examples,
+        allowing Claude to identify patterns across multiple executions.
+
+        Args:
+            cell: The cell definition
+            example_outputs: List of outputs from all examples
+            workflow_description: Workflow description for context
+            cell_code: The generated cell code
+            output_example: Optional example of desired output format (only for final cell)
+
+        Returns:
+            str: Formatted evaluation request message with all examples
+        """
+        # Build the examples section with truncation for long outputs
+        examples_text = ""
+        max_output_length = 1500  # Per-example output limit
+        max_total_length = 8000  # Total examples section limit
+
+        for idx, example in enumerate(example_outputs, 1):
+            variables_display = self._format_variables_for_display(example.formatted_variables)
+
+            # Truncate individual output text if too long
+            output_text = example.output_text or "(no printed output)"
+            if len(output_text) > max_output_length:
+                output_text = output_text[:max_output_length] + "... (truncated)"
+
+            # Truncate variables display if too long
+            if len(variables_display) > max_output_length:
+                variables_display = variables_display[:max_output_length] + "... (truncated)"
+
+            example_section = """
+EXAMPLE {idx}:
+- User Input: {user_input}
+- Printed Output (CELL_OUTPUT messages):
+{output_text}
+- Output Variables:
+{variables}
+""".format(
+                idx=idx,
+                user_input=example.user_input[:500] if example.user_input else "(empty)",
+                output_text=output_text,
+                variables=variables_display
+            )
+
+            # Check if adding this example would exceed total limit
+            if len(examples_text) + len(example_section) > max_total_length:
+                examples_text += "\n... ({} more examples truncated due to length)\n".format(
+                    len(example_outputs) - idx + 1
+                )
+                break
+
+            examples_text += example_section
+
+        # Build the complete message
+        message = """Please evaluate the outputs from ALL {num_examples} example executions of this cell:
+
+WORKFLOW CONTEXT:
+{workflow_description}
+
+CELL INFORMATION:
+- Name: {cell_name}
+- Description: {cell_description}
+- Expected Inputs: {inputs}
+- Expected Outputs: {outputs}
+- Paradigm Tools Used: {tools}
+
+GENERATED CELL CODE:
+```python
+{cell_code}
+```
+
+=== ALL EXAMPLE OUTPUTS ({num_examples} examples) ===
+{examples_text}
+=== END OF EXAMPLES ===
+
+EVALUATION INSTRUCTIONS:
+Please evaluate ALL outputs together and look for PATTERNS across examples:
+1. Are all outputs well-formed (correct types, properly structured)?
+2. Do outputs match what the cell is supposed to produce?
+3. Are there any consistent issues across multiple examples?
+4. Are there edge cases that fail while others succeed?
+5. If some outputs are empty, is that reasonable given those specific inputs?
+
+IMPORTANT: Consider patterns across ALL examples - a single failing example among many successes
+may indicate an edge case bug. Multiple failures with similar issues indicate a systematic problem.
+
+Provide your evaluation in the specified format (VALID, FEEDBACK, ISSUES, SUGGESTED_FIX).
+In your feedback, reference specific examples when noting issues (e.g., "Example 2 and 4 both show...").""".format(
+            num_examples=len(example_outputs),
+            workflow_description=workflow_description,
+            cell_name=cell.name,
+            cell_description=cell.description,
+            inputs=", ".join(cell.inputs_required) if cell.inputs_required else "none",
+            outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none",
+            tools=", ".join(cell.paradigm_tools_used) if cell.paradigm_tools_used else "none",
+            cell_code=cell_code[:3000] if len(cell_code) > 3000 else cell_code,
+            examples_text=examples_text
+        )
+
+        # Append cell-specific success criteria if present
+        if cell.success_criteria:
+            message += """
+
+CELL-SPECIFIC SUCCESS CRITERIA:
+{criteria}
+
+Use these criteria IN ADDITION to the general guidelines when evaluating all examples.
+The output from each example should meet these specific requirements.""".format(
+                criteria=cell.success_criteria
+            )
+
+        # Append output example for final cell evaluation if provided
+        if output_example:
+            message += """
+
+OUTPUT FORMAT EXAMPLE (FINAL CELL):
+The user provided this example of their desired output FORMAT:
+```
+{example}
+```
+
+IMPORTANT: This is a FORMAT reference, not expected content.
+- Evaluate if ALL outputs use a SIMILAR FORMAT (table/list/JSON/etc.)
+- Check for SIMILAR STRUCTURE (columns, sections, elements)
+- Do NOT require exact content match
+- PASS if format/structure resembles the example across all examples
+- FAIL only if format is structurally incompatible (e.g., prose when table expected)""".format(
+                example=output_example
             )
 
         return message

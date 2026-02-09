@@ -70,7 +70,7 @@ class Settings:
         self.anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
         self.anthropic_timeout: float = float(os.getenv("ANTHROPIC_TIMEOUT", "120"))
         self.anthropic_max_tokens_cell: int = int(os.getenv("ANTHROPIC_MAX_TOKENS_CELL", "16000"))
-        self.anthropic_max_tokens_plan: int = int(os.getenv("ANTHROPIC_MAX_TOKENS_PLAN", "8000"))
+        self.anthropic_max_tokens_plan: int = int(os.getenv("ANTHROPIC_MAX_TOKENS_PLAN", "16000"))
         
     def validate(self) -> None:
         """

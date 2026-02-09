@@ -138,14 +138,9 @@ async def execute(
             logger.info(f"[{execution_id}] Waiting for files to be indexed...")
             await asyncio.sleep(10)  # Wait 10 seconds for indexing
 
-        # Set global variable for workflow to access
-        import builtins
-        if file_ids:
-            builtins.attached_file_ids = file_ids
-
-        # Execute workflow
+        # Execute workflow with file IDs passed directly
         logger.info(f"[{execution_id}] Executing workflow...")
-        result = await execute_workflow(user_input)
+        result = await execute_workflow(user_input, file_ids if file_ids else None)
 
         execution_time = round(time.time() - start_time, 2)
         logger.info(f"[{execution_id}] Workflow completed in {execution_time}s")
