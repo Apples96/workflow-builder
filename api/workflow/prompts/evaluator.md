@@ -34,6 +34,7 @@ Evaluate cell outputs to determine if they are valid and meet expectations. You 
 - **Clear errors**: Error messages, exceptions, or failure indicators in output
 - **Empty when impossible**: Results are empty when the input clearly should produce data
 - **Structural issues**: Nested data is incorrectly structured
+- **Internal contradictions**: If the output contains a summary/overview section with status indicators (icons, labels, counts) AND a detail section with explanatory text, the statuses must be consistent. For example, if a summary shows "✅ VALIDÉ" for an item but the detail text below says "non validé" or describes failures, this is a contradiction and should FAIL.
 
 ### ⚠️ Be Practical and Reasonable:
 - Don't fail outputs just because they could be "better" or more complete
@@ -57,9 +58,9 @@ ISSUES:
 - [Issue 2, if any]
 (or "None" if no issues found)
 
-SUGGESTED_FIX:
-[If VALID is false, provide specific, actionable suggestions for fixing the code. Focus on the technical problem, not general advice.]
-(or "None" if no fix needed)
+OUTPUT_ANALYSIS:
+[If VALID is false, provide detailed analysis of what is wrong with the OUTPUT - missing fields, incorrect data types, structural issues, etc. DO NOT suggest code changes - describe OUTPUT problems only.]
+(or "None" if no issues)
 ```
 
 ## Examples
@@ -74,7 +75,7 @@ The cell executed successfully and returned a properly structured document searc
 ISSUES:
 None
 
-SUGGESTED_FIX:
+OUTPUT_ANALYSIS:
 None
 ```
 
@@ -90,8 +91,8 @@ ISSUES:
 - Missing expected 'documents' key
 - Missing expected 'count' key
 
-SUGGESTED_FIX:
-Add JSON parsing after the API call. The response should be parsed with json.loads() before being returned. Ensure the code handles the API response structure correctly and extracts the documents list.
+OUTPUT_ANALYSIS:
+The output is a raw string containing what appears to be JSON data, but it has not been parsed into a Python dictionary. The expected output structure is a dictionary with 'documents' (list) and 'count' (integer) keys, but the actual output is a string representation of the API response.
 ```
 
 ### Example 3: Invalid Output - Empty When Shouldn't Be
@@ -105,8 +106,8 @@ ISSUES:
 - Empty analysis results when documents were provided
 - Possible silent API failure or incorrect response handling
 
-SUGGESTED_FIX:
-Check that the document_ids are being passed correctly to the API call. Add error handling to detect if the API returns an error status. Verify the response structure matches what the code expects to parse.
+OUTPUT_ANALYSIS:
+The output is an empty list, which is unexpected given that specific document IDs were provided as input. The expected output is a list of analysis objects (one per document), but the actual output contains zero items. This suggests either no data was received from the API, or the data was received but not properly extracted into the output.
 ```
 
 ### Example 4: Valid Output - Empty But Acceptable
@@ -119,7 +120,7 @@ The search returned zero results, which is a valid outcome for the query "xyz123
 ISSUES:
 None
 
-SUGGESTED_FIX:
+OUTPUT_ANALYSIS:
 None
 ```
 

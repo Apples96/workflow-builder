@@ -15,6 +15,7 @@ The generated package can be deployed independently by clients.
 
 import os
 import io
+import re
 import zipfile
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -49,8 +50,9 @@ class WorkflowPackageGenerator:
             workflow_code: The Python code of the workflow (execute_workflow function)
             ui_config: UI configuration (files, text input requirements, etc.)
         """
-        self.workflow_name = workflow_name
-        self.workflow_description = workflow_description
+        # Sanitize name: collapse whitespace to single space, remove control characters
+        self.workflow_name = re.sub(r'\s+', ' ', workflow_name).strip()[:80]
+        self.workflow_description = re.sub(r'[\r\n]+', ' ', workflow_description).strip()
         self.workflow_code = workflow_code
         self.ui_config = ui_config
         self.templates_dir = Path(__file__).parent.parent / "templates" / "workflow_runner"
@@ -147,8 +149,8 @@ class WorkflowPackageGenerator:
         with open(compose_path, 'r', encoding='utf-8') as f:
             compose_yml = f.read()
 
-        # Create container name from workflow name
-        container_name = self.workflow_name.lower().replace(' ', '-')
+        # Create container name from workflow name (sanitize for YAML/Docker compatibility)
+        container_name = re.sub(r'[^a-z0-9]+', '-', self.workflow_name.lower()).strip('-')[:50]
         compose_yml = compose_yml.replace('{{CONTAINER_NAME}}', f'workflow-{container_name}')
 
         zip_file.writestr('docker-compose.yml', compose_yml)

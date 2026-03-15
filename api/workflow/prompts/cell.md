@@ -206,6 +206,41 @@ answer = paradigm_client.extract_answer(result)
 | Raw text extraction | `get_file_chunks()` |
 | After file upload | `wait_for_embedding()` |
 
+### QUERIES MUST INCLUDE ALL INFORMATION FROM THE CELL INSTRUCTIONS
+
+When writing `agent_query()` calls, the query string must include **all relevant information from the cell's description and instructions** — do not summarize or omit details. The cell description contains specific section names, field labels, keywords, and formatting instructions that were carefully chosen. All of this context must be passed through to the API query.
+
+If the cell instructions say to search in "Section B - Objet du marché public" for the "intitulé de la consultation", then the query must include those exact terms — not a shortened version like "find the title".
+
+### 🚨 CRITICAL: PRESERVE EXACT QUERY STRINGS FROM THE PLANNER
+
+When the cell description includes a query string, you MUST use that EXACT string in your generated code. The planner has carefully formulated these queries with full context from the workflow requirements - your job is to translate them into Python syntax, NOT to reinterpret or rephrase them.
+
+**What this means:**
+
+If the cell description says:
+```
+2. Call agent_query with query 'Extract the 14-digit SIRET number from Zone A (Acheteur section), distinguishing it from the APE code'
+```
+
+You MUST generate code with that EXACT query string:
+```python
+result = await paradigm_client.agent_query(
+    query="Extract the 14-digit SIRET number from Zone A (Acheteur section), distinguishing it from the APE code",
+    file_ids=[file_id]
+)
+```
+
+**DO NOT:**
+- ❌ Paraphrase: "Get the SIRET from Zone A"
+- ❌ Simplify: "Extract SIRET number"
+- ❌ Reformulate: "Find the company identifier"
+- ❌ Add your interpretation: "Extract the SIRET, which is a 14-digit number"
+
+**Your role is TRANSLATION, not INTERPRETATION.** Copy the query string verbatim from the cell description into your Python code.
+
+**Exception:** If the cell description provides implementation guidance but NOT an exact query (e.g., "Query the document for buyer information"), then you may formulate an appropriate query. But if a specific query string is provided, use it exactly.
+
 ### CRITICAL: Using document_mapping to Access Specific Documents
 
 **NEVER call `agent_query()` without `file_ids` when you need to search a SPECIFIC document.**
@@ -698,3 +733,23 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 18. **CRITICAL**: NEVER `import paradigm_client` or `from paradigm_client import ...` — ParadigmClient is pre-injected. Just use it directly.
 19. **CRITICAL**: ALWAYS include `from typing import Optional, List, Dict, Any` in your imports, even when fixing or regenerating code.
 20. **CRITICAL**: For report/aggregation cells that compile results from previous cells into a structured report, build the report using **pure Python string formatting** — iterate over context dicts, extract statuses/details/verbatims, and assemble sections programmatically. Do NOT call `agent_query()` to summarize or rephrase — the data is already structured. The longer the report, the more important this rule is: an LLM call would truncate, lose precision, or hallucinate details. See Example 5.
+21. **CRITICAL**: When the cell produces tabular, comparative, or statistical data (invoice comparisons, validation results, aggregations), return structured JSON instead of plain text so the frontend can render tables and charts. Use this structure:
+```python
+import json
+result_data = {
+    "summary": "Human-readable text summary",
+    "visualization": {
+        "type": "table",  # or "bar_chart", "pie_chart", "line_chart"
+        "title": "Chart/Table Title",
+        "data": [
+            {"label": "Item A", "value": 100, "status": "valid"},
+            {"label": "Item B", "value": 75, "status": "warning"}
+        ],
+        "columns": ["label", "value", "status"]  # For tables
+    },
+    "details": "Full markdown report with all details..."
+}
+return json.dumps(result_data, ensure_ascii=False)
+```
+Supported visualization types: `table`, `bar_chart`, `pie_chart`, `line_chart`.
+⚠️ Return `json.dumps(result_data, ensure_ascii=False)` (JSON string), NOT the dict directly — returning a dict breaks the frontend.

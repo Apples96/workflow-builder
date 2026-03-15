@@ -175,10 +175,21 @@
         }
 
         .results-content {
-            color: #555;
+            color: #333;
             line-height: 1.6;
-            white-space: pre-wrap;
             font-size: 14px;
+        }
+
+        .results-content h1, .results-content h2, .results-content h3, .results-content h4 {
+            color: #222;
+        }
+
+        .results-content strong {
+            color: #111;
+        }
+
+        .results-content ul {
+            list-style-type: disc;
         }
 
         .loading {
@@ -307,6 +318,78 @@
         const API_BASE = 'http://localhost:8000';
         let currentExecutionData = null;
         let jsPDFLoaded = false;
+
+        // Basic markdown to HTML renderer for displaying workflow results
+        function renderMarkdown(text) {
+            if (!text) return '';
+            // Escape HTML to prevent XSS
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            // Process line by line
+            const lines = html.split('\n');
+            let result = [];
+            let inList = false;
+            for (let line of lines) {
+                const trimmed = line.trim();
+                // Horizontal rules
+                if (trimmed.match(/^-{3,}$/)) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push('<hr style="border:none;border-top:1px solid #ddd;margin:12px 0;">');
+                    continue;
+                }
+                // Headers
+                if (trimmed.startsWith('#### ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h4 style="margin:10px 0 4px;font-size:14px;">${applyInline(trimmed.slice(5))}</h4>`);
+                    continue;
+                }
+                if (trimmed.startsWith('### ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h3 style="margin:12px 0 6px;font-size:15px;">${applyInline(trimmed.slice(4))}</h3>`);
+                    continue;
+                }
+                if (trimmed.startsWith('## ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h2 style="margin:16px 0 8px;font-size:17px;">${applyInline(trimmed.slice(3))}</h2>`);
+                    continue;
+                }
+                if (trimmed.startsWith('# ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h1 style="margin:18px 0 10px;font-size:20px;">${applyInline(trimmed.slice(2))}</h1>`);
+                    continue;
+                }
+                // Bullet points
+                if (trimmed.match(/^[-*•]\s/)) {
+                    if (!inList) { result.push('<ul style="margin:4px 0;padding-left:20px;">'); inList = true; }
+                    result.push(`<li style="margin:2px 0;">${applyInline(trimmed.replace(/^[-*•]\s+/, ''))}</li>`);
+                    continue;
+                }
+                // Indented sub-bullets
+                if (line.match(/^\s{2,}[-*•]\s/)) {
+                    if (!inList) { result.push('<ul style="margin:4px 0;padding-left:20px;">'); inList = true; }
+                    result.push(`<li style="margin:2px 0;margin-left:15px;">${applyInline(trimmed.replace(/^[-*•]\s+/, ''))}</li>`);
+                    continue;
+                }
+                if (inList) { result.push('</ul>'); inList = false; }
+                // Empty lines
+                if (trimmed === '') {
+                    result.push('<br>');
+                    continue;
+                }
+                // Regular text
+                result.push(`<p style="margin:3px 0;line-height:1.5;">${applyInline(trimmed)}</p>`);
+            }
+            if (inList) result.push('</ul>');
+            return result.join('\n');
+        }
+        // Apply inline markdown formatting (bold, italic)
+        function applyInline(text) {
+            return text
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>');
+        }
 
         // Wait for jsPDF to load
         window.addEventListener('load', function() {
@@ -498,9 +581,9 @@
                     console.log('No structured visualization data found');
                 }
 
-                // Display results
+                // Display results with basic markdown rendering
                 resultsContainer.classList.add('success');
-                resultsContent.textContent = resultData || 'Exécution terminée avec succès';
+                resultsContent.innerHTML = renderMarkdown(resultData || 'Exécution terminée avec succès');
 
                 // Display execution info
                 executionInfo.style.display = 'flex';

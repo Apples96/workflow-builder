@@ -21,7 +21,7 @@ Architecture:
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from ...clients import create_anthropic_client
 from ...config import settings
@@ -38,16 +38,6 @@ def load_enhancement_prompt() -> str:
         str: The enhancement prompt content, or empty string if not found
     """
     return PromptLoader.load_optional("enhancer")
-
-
-def load_parallelization_prompt() -> str:
-    """
-    Load the parallelization analysis prompt from markdown file.
-
-    Returns:
-        str: The parallelization prompt content, or empty string if not found
-    """
-    return PromptLoader.load_optional("parallelization")
 
 
 class WorkflowEnhancer:
@@ -167,19 +157,20 @@ Enhance this workflow description:"""
                 result_text = raw_description
             
             logger.info(f"✅ Enhanced workflow description ({len(result_text)} chars)")
-            
-            # Parse plain text response
-            # Note: Questions and warnings are now embedded in the enhanced steps
 
-            # Automatically analyze for parallelization and restructure into layers
-            logger.info("🔄 Analyzing enhanced description for parallelization...")
-            parallelized_result = await self._analyze_parallelization(result_text)
+            # Parse parallelization info directly from the layer-structured output
+            parallelization_info = self._parse_parallelization_info(result_text)
+            logger.info(f"✅ Parallelization: {parallelization_info['total_layers']} layers, {parallelization_info['parallel_steps_count']} parallel steps")
+
+            # Extract questions and warnings from the enhanced description
+            extracted = self._extract_questions_and_warnings(result_text)
+            logger.info(f"✅ Extracted {len(extracted['questions'])} question(s) and {len(extracted['warnings'])} warning(s)")
 
             return {
-                "enhanced_description": parallelized_result["layer_structured_description"],
-                "questions": [],  # Questions are embedded in QUESTIONS AND LIMITATIONS sections
-                "warnings": [],   # Warnings are embedded in QUESTIONS AND LIMITATIONS sections
-                "parallelization_info": parallelized_result.get("parallelization_info", {})
+                "enhanced_description": result_text,
+                "questions": extracted["questions"],
+                "warnings": extracted["warnings"],
+                "parallelization_info": parallelization_info
             }
 
         except Exception as e:
@@ -187,76 +178,67 @@ Enhance this workflow description:"""
             logger.error(f"❌ {error_msg}")
             raise Exception(error_msg)
 
-    async def _analyze_parallelization(self, enhanced_description: str) -> Dict[str, Any]:
+    def _extract_questions_and_warnings(self, result_text: str) -> Dict[str, list]:
         """
-        Analyze enhanced workflow description for parallelization opportunities.
-
-        This method takes the sequentially-enhanced workflow description and
-        restructures it into execution layers where:
-        - Steps in the same layer can run in parallel
-        - Layer N+1 only starts after all cells in layer N complete
-        - Data dependencies are respected (a step that needs output from another
-          must be in a later layer)
+        Extract questions and warnings from "QUESTIONS AND LIMITATIONS:" sections
+        in the enhanced description text.
 
         Args:
-            enhanced_description: The enhanced step-by-step workflow description
+            result_text: The LLM response with enhanced description
 
         Returns:
-            Dict containing:
-                - layer_structured_description: Description restructured with layers
-                - parallelization_info: Metadata about the parallelization
+            Dict with "questions" and "warnings" lists
         """
-        parallelization_prompt = self._get_parallelization_prompt()
+        import re
+
+        questions = []
+        warnings = []
 
         try:
-            response = self.anthropic_client.messages.create(
-                model=settings.anthropic_model,
-                max_tokens=12000,
-                system=parallelization_prompt,
-                messages=[{"role": "user", "content": "ENHANCED WORKFLOW DESCRIPTION:\n{}".format(enhanced_description)}]
+            # Pattern to find "QUESTIONS AND/ET LIMITATIONS:" sections
+            # Supports both English and French headers
+            # Captures content until next step header, layer header, separator, or end
+            pattern = (
+                r'QUESTIONS\s+(?:AND|ET)\s+LIMITATIONS:\s*\n?'
+                r'(.*?)'
+                r'(?=\n\s*(?:STEP|ÉTAPE|LAYER|COUCHE|---|PARALLELIZATION|SYNTHÈSE|QUESTIONS\s+(?:AND|ET)\s+LIMITATIONS:)|\Z)'
             )
+            matches = re.findall(pattern, result_text, re.IGNORECASE | re.DOTALL)
 
-            result_text = response.content[0].text.strip()
+            for match in matches:
+                content = match.strip()
 
-            if not result_text:
-                logger.warning("⚠️ Empty parallelization result, using original description")
-                return {
-                    "layer_structured_description": enhanced_description,
-                    "parallelization_info": {"layers": 1, "parallel_steps": False}
-                }
+                # Skip empty content or "None" entries
+                if not content:
+                    continue
 
-            # Parse the parallelization info from the response
-            parallelization_info = self._parse_parallelization_info(result_text)
+                # Check if this is a "None" entry (case-insensitive, multiple languages)
+                none_patterns = [r'^\s*none\.?\s*$', r'^\s*aucune?\.?\s*$']
+                is_none = any(re.match(pat, content, re.IGNORECASE) for pat in none_patterns)
+                if is_none:
+                    continue
 
-            logger.info(f"✅ Parallelization analysis complete: {parallelization_info['total_layers']} layers, {parallelization_info['parallel_steps_count']} parallel steps")
+                # Check if this section contains an ambiguity warning
+                if "AMBIGUITY DETECTED" in content.upper() or "⚠️" in content:
+                    warnings.append(content)
 
-            return {
-                "layer_structured_description": result_text,
-                "parallelization_info": parallelization_info
-            }
+                # Extract numbered questions (format: "1. Question here")
+                numbered_questions = re.findall(r'^\s*\d+\.\s*(.+)$', content, re.MULTILINE)
+
+                if numbered_questions:
+                    questions.extend([q.strip() for q in numbered_questions if q.strip()])
+                elif content and not any(re.match(pat, content, re.IGNORECASE) for pat in none_patterns):
+                    if content not in warnings:
+                        if "AMBIGUITY DETECTED" not in content.upper() and "⚠️" not in content:
+                            questions.append(content)
 
         except Exception as e:
-            logger.error(f"❌ Parallelization analysis failed: {str(e)}")
-            # Return original description if parallelization fails
-            return {
-                "layer_structured_description": enhanced_description,
-                "parallelization_info": {"layers": 1, "parallel_steps": False, "error": str(e)}
-            }
+            logger.warning(f"Failed to extract questions and warnings: {e}")
 
-    def _get_parallelization_prompt(self) -> str:
-        """
-        Get the system prompt for parallelization analysis.
-
-        Loads the prompt from prompts/parallelization.md for consistency
-        with other prompts in the system.
-
-        Returns:
-            str: System prompt for the parallelization LLM call
-
-        Raises:
-            FileNotFoundError: If the parallelization prompt cannot be loaded
-        """
-        return PromptLoader.load("parallelization")
+        return {
+            "questions": questions,
+            "warnings": warnings
+        }
 
     def _parse_parallelization_info(self, result_text: str) -> Dict[str, Any]:
         """

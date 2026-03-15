@@ -154,8 +154,11 @@ class ParadigmClient:
         else:
             self.chat_setting_id = 160  # Default value
 
-        # v3 Agent API endpoint
-        self.v3_agent_endpoint = "/api/v3/threads/turns"
+        # v3 Agent API endpoint path
+        if HAS_SETTINGS and settings:
+            self.v3_agent_endpoint = settings.lighton_v3_agent_endpoint
+        else:
+            self.v3_agent_endpoint = "/api/v3/threads/turns"
 
         self._session: Optional[aiohttp.ClientSession] = None
         logger.info(f"✅ ParadigmClient initialized: {base_url}")
@@ -205,9 +208,9 @@ class ParadigmClient:
         workspace_ids: Optional[List[int]] = None,
         private_scope: bool = True,
         company_scope: bool = False,
-        model: str = "alfred-ft5",
+        model: Optional[str] = None,
         chat_setting_id: Optional[int] = None,
-        timeout: int = 300,
+        timeout: Optional[int] = None,
         max_retries: int = 3
     ) -> Dict[str, Any]:
         """
@@ -235,6 +238,12 @@ class ParadigmClient:
         Raises:
             Exception: If API call fails or returns an error
         """
+        # Resolve defaults from config or hardcoded fallbacks
+        if model is None:
+            model = settings.paradigm_model if HAS_SETTINGS and settings else "alfred-ft5"
+        if timeout is None:
+            timeout = settings.paradigm_timeout if HAS_SETTINGS and settings else 300
+
         # Use retry wrapper if available
         if HAS_RETRY and max_retries > 0:
             return await call_with_retry(
@@ -275,7 +284,7 @@ class ParadigmClient:
         company_scope: bool = False,
         model: str = "alfred-ft5",
         chat_setting_id: Optional[int] = None,
-        timeout: int = 300
+        timeout: int = 300,
     ) -> Dict[str, Any]:
         """
         Internal implementation of agent_query without retry wrapper.
@@ -472,10 +481,6 @@ class ParadigmClient:
         except Exception as e:
             logger.error(f"❌ Get file error: {str(e)}")
             raise
-
-    async def get_file_info(self, file_id: int, include_content: bool = False) -> Dict[str, Any]:
-        """Alias for get_file() for backward compatibility."""
-        return await self.get_file(file_id, include_content)
 
     async def get_file_chunks(self, file_id: int) -> Dict[str, Any]:
         """
@@ -845,158 +850,13 @@ class ParadigmClient:
             raise
 
 
-# ============================================================================
-# MODULE-LEVEL FUNCTIONS (for backward compatibility)
-# ============================================================================
-
-# Create a default client instance using settings
-_default_client: Optional[ParadigmClient] = None
-
-
-def _get_default_client() -> ParadigmClient:
-    """Get or create the default client instance."""
-    global _default_client
-    if _default_client is None:
-        _default_client = ParadigmClient()
-    return _default_client
-
-
-async def agent_query(
-    query: str,
-    file_ids: Optional[List[int]] = None,
-    force_tool: Optional[str] = None,
-    workspace_ids: Optional[List[int]] = None,
-    private_scope: bool = True,
-    company_scope: bool = False,
-    model: str = "alfred-ft5",
-    chat_setting_id: Optional[int] = None,
-    timeout: int = 300
-) -> Dict[str, Any]:
-    """Module-level function for agent_query. See ParadigmClient.agent_query for docs."""
-    return await _get_default_client().agent_query(
-        query=query, file_ids=file_ids, force_tool=force_tool,
-        workspace_ids=workspace_ids, private_scope=private_scope,
-        company_scope=company_scope, model=model,
-        chat_setting_id=chat_setting_id, timeout=timeout
-    )
-
-
-async def paradigm_upload_file(
-    file_content: bytes,
-    filename: str,
-    wait_for_embedding: bool = False,
-    max_wait_time: int = 300,
-    poll_interval: int = 3
-) -> Dict[str, Any]:
-    """Module-level function for file upload. See ParadigmClient.upload_file for docs."""
-    return await _get_default_client().upload_file(
-        file_content=file_content, filename=filename,
-        wait_for_embedding=wait_for_embedding,
-        max_wait_time=max_wait_time, poll_interval=poll_interval
-    )
-
-
-async def paradigm_get_file(
-    file_id: int,
-    include_content: bool = False,
-    session: Optional[aiohttp.ClientSession] = None  # Ignored, kept for compat
-) -> Dict[str, Any]:
-    """Module-level function for get_file. See ParadigmClient.get_file for docs."""
-    return await _get_default_client().get_file(file_id, include_content)
-
-
-async def paradigm_get_file_info(file_id: int, include_content: bool = False) -> Dict[str, Any]:
-    """Alias for paradigm_get_file for backward compatibility."""
-    return await paradigm_get_file(file_id, include_content)
-
-
-async def paradigm_get_file_chunks(
-    file_id: int,
-    session: Optional[aiohttp.ClientSession] = None  # Ignored, kept for compat
-) -> Dict[str, Any]:
-    """Module-level function for get_file_chunks. See ParadigmClient.get_file_chunks for docs."""
-    return await _get_default_client().get_file_chunks(file_id)
-
-
-async def paradigm_delete_file(file_id: int) -> bool:
-    """Module-level function for delete_file. See ParadigmClient.delete_file for docs."""
-    return await _get_default_client().delete_file(file_id)
-
-
-async def paradigm_filter_chunks(
-    query: str,
-    chunk_ids: List[str],
-    n: Optional[int] = None,
-    model: Optional[str] = None,
-    session: Optional[aiohttp.ClientSession] = None  # Ignored, kept for compat
-) -> Dict[str, Any]:
-    """Module-level function for filter_chunks. See ParadigmClient.filter_chunks for docs."""
-    return await _get_default_client().filter_chunks(query, chunk_ids, n, model)
-
-
-async def paradigm_query(
-    query: str,
-    collection: Optional[str] = None,
-    n: Optional[int] = None,
-    session: Optional[aiohttp.ClientSession] = None  # Ignored, kept for compat
-) -> Dict[str, Any]:
-    """Module-level function for query. See ParadigmClient.query for docs."""
-    return await _get_default_client().query(query, collection, n)
-
-
-async def paradigm_wait_for_embedding(
-    file_id: int,
-    max_wait_time: int = 300,
-    poll_interval: int = 2,
-    initial_delay: int = 3,
-    session: Optional[aiohttp.ClientSession] = None  # Ignored, kept for compat
-) -> Dict[str, Any]:
-    """Module-level function for wait_for_embedding. See ParadigmClient.wait_for_embedding for docs."""
-    return await _get_default_client().wait_for_embedding(
-        file_id, max_wait_time, poll_interval, initial_delay
-    )
-
-
-async def paradigm_document_search(
-    query: str,
-    file_ids: Optional[List[int]] = None,
-    **kwargs
-) -> Dict[str, Any]:
-    """Module-level function for document_search. See ParadigmClient.document_search for docs."""
-    return await _get_default_client().document_search(query, file_ids, **kwargs)
-
-
-async def paradigm_search_with_vision_fallback(
-    query: str,
-    file_ids: Optional[List[int]] = None,
-    **kwargs
-) -> Dict[str, Any]:
-    """Module-level function for search_with_vision_fallback."""
-    return await _get_default_client().search_with_vision_fallback(query, file_ids, **kwargs)
-
-
-# Global instance for backward compatibility
+# Global instance used by main.py and other modules
 paradigm_client = ParadigmClient() if HAS_SETTINGS else None
 
 
 # Module exports
 __all__ = [
-    # Main class
     'ParadigmClient',
-    # Global instance
     'paradigm_client',
-    # Helper functions
     '_extract_v3_answer',
-    # Module-level functions (backward compat)
-    'agent_query',
-    'paradigm_upload_file',
-    'paradigm_get_file',
-    'paradigm_get_file_info',
-    'paradigm_get_file_chunks',
-    'paradigm_delete_file',
-    'paradigm_filter_chunks',
-    'paradigm_query',
-    'paradigm_wait_for_embedding',
-    'paradigm_document_search',
-    'paradigm_search_with_vision_fallback',
 ]

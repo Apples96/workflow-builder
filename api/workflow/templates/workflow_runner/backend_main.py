@@ -142,6 +142,28 @@ async def execute(
         logger.info(f"[{execution_id}] Executing workflow...")
         result = await execute_workflow(user_input, file_ids if file_ids else None)
 
+        # Extract meaningful result from workflow output
+        if isinstance(result, dict):
+            # Look for the final output key (last cell's result)
+            # Common keys: final_result, report, summary, output, result
+            import json
+            final_keys = ['final_result', 'report', 'final_report', 'summary', 'output', 'result', 'analysis']
+            extracted = None
+            for key in final_keys:
+                if key in result and result[key]:
+                    extracted = result[key]
+                    break
+            if extracted is None:
+                # Fallback: use the last non-trivial string value in the dict
+                for key in reversed(list(result.keys())):
+                    val = result[key]
+                    if isinstance(val, str) and len(val) > 50:
+                        extracted = val
+                        break
+            result = extracted if extracted else json.dumps(result, indent=2, ensure_ascii=False, default=str)
+        if not isinstance(result, str):
+            result = str(result)
+
         execution_time = round(time.time() - start_time, 2)
         logger.info(f"[{execution_id}] Workflow completed in {execution_time}s")
 

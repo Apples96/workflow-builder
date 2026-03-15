@@ -58,12 +58,12 @@ class EvaluationResult:
         is_valid: Whether the output is correct/sensible
         feedback: Detailed feedback explaining issues (if any)
         issues: List of specific issues found
-        suggested_fix: Optional suggestion for how to fix the code
+        output_analysis: Analysis of what's wrong with the OUTPUT (not code suggestions)
     """
     is_valid: bool
     feedback: str
     issues: List[str]
-    suggested_fix: Optional[str] = None
+    output_analysis: Optional[str] = None
 
 
 def load_evaluator_prompt() -> str:
@@ -282,9 +282,9 @@ ISSUES:
 - [Issue 2, if any]
 (or "None" if no issues)
 
-SUGGESTED_FIX:
-[If VALID is false, provide specific suggestions for fixing the code]
-(or "None" if no fix needed)"""
+OUTPUT_ANALYSIS:
+[If VALID is false, provide detailed analysis of what is wrong with the OUTPUT]
+(or "None" if no issues)"""
 
     def _build_smoke_test_message(
         self,
@@ -569,7 +569,7 @@ IMPORTANT: This is a FORMAT reference, not expected content.
         is_valid = True
         feedback = ""
         issues = []
-        suggested_fix = None
+        output_analysis = None
 
         try:
             # Parse VALID field
@@ -582,7 +582,7 @@ IMPORTANT: This is a FORMAT reference, not expected content.
                 feedback_start = response.find("FEEDBACK:") + len("FEEDBACK:")
                 feedback_end = response.find("ISSUES:")
                 if feedback_end == -1:
-                    feedback_end = response.find("SUGGESTED_FIX:")
+                    feedback_end = response.find("OUTPUT_ANALYSIS:")
                 if feedback_end == -1:
                     feedback_end = len(response)
                 feedback = response[feedback_start:feedback_end].strip()
@@ -590,7 +590,7 @@ IMPORTANT: This is a FORMAT reference, not expected content.
             # Parse ISSUES field
             if "ISSUES:" in response:
                 issues_start = response.find("ISSUES:") + len("ISSUES:")
-                issues_end = response.find("SUGGESTED_FIX:")
+                issues_end = response.find("OUTPUT_ANALYSIS:")
                 if issues_end == -1:
                     issues_end = len(response)
                 issues_text = response[issues_start:issues_end].strip()
@@ -604,12 +604,12 @@ IMPORTANT: This is a FORMAT reference, not expected content.
                             if issue and issue.lower() != "none":
                                 issues.append(issue)
 
-            # Parse SUGGESTED_FIX field
-            if "SUGGESTED_FIX:" in response:
-                fix_start = response.find("SUGGESTED_FIX:") + len("SUGGESTED_FIX:")
-                suggested_fix = response[fix_start:].strip()
-                if suggested_fix.lower() == "none":
-                    suggested_fix = None
+            # Parse OUTPUT_ANALYSIS field
+            if "OUTPUT_ANALYSIS:" in response:
+                analysis_start = response.find("OUTPUT_ANALYSIS:") + len("OUTPUT_ANALYSIS:")
+                output_analysis = response[analysis_start:].strip()
+                if output_analysis.lower() == "none":
+                    output_analysis = None
 
         except Exception as e:
             logger.warning("Error parsing evaluation response: {}".format(e))
@@ -621,7 +621,7 @@ IMPORTANT: This is a FORMAT reference, not expected content.
             is_valid=is_valid,
             feedback=feedback,
             issues=issues,
-            suggested_fix=suggested_fix
+            output_analysis=output_analysis
         )
 
 

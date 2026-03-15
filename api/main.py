@@ -29,6 +29,7 @@ and provides comprehensive API documentation via FastAPI's automatic OpenAPI int
 import logging
 import asyncio
 import json
+import re
 import time
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -38,16 +39,12 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 import uvicorn
 
 from .config import settings
-from .pdf_generator import pdf_generator
 from .models import (
     WorkflowCreateRequest,
     WorkflowExecuteRequest,
-    WorkflowResponse,
-    WorkflowExecutionResponse,
     ErrorResponse,
     FileUploadResponse,
     FileInfoResponse,
-    WorkflowWithFilesRequest,
     WorkflowDescriptionEnhanceRequest,
     WorkflowDescriptionEnhanceResponse,
     CellBasedWorkflowResponse,
@@ -60,13 +57,12 @@ from .models import (
     ExecuteWithEvaluationRequest,
     SuccessCriteriaRequest,
 )
-from .workflow.core.generator import workflow_generator
 from .workflow.core.enhancer import WorkflowEnhancer
 from .workflow.core.executor import workflow_executor
 from .workflow.models import Workflow, WorkflowExecution, ExecutionStatus, WorkflowPlan, WorkflowCell, CellStatus
 from .workflow.cell.planner import WorkflowPlanner
 from .workflow.cell.executor import CellExecutor
-from .api_clients import paradigm_client  # Updated import
+from .paradigm_client import paradigm_client
 
 # Configure logging based on debug settings
 logging.basicConfig(level=logging.INFO if settings.debug else logging.WARNING)
@@ -276,7 +272,8 @@ async def enhance_workflow_description(request: WorkflowDescriptionEnhanceReques
         logger.info("Enhancing workflow description: {}...".format(request.description[:100]))
 
         # Enhance the description using the enhancer directly
-        enhancer = WorkflowEnhancer(workflow_generator.anthropic_client)
+        from .clients import create_anthropic_client
+        enhancer = WorkflowEnhancer(create_anthropic_client())
         result = await enhancer.enhance_workflow_description(
             request.description,
             output_example=request.output_example
@@ -296,338 +293,6 @@ async def enhance_workflow_description(request: WorkflowDescriptionEnhanceReques
             status_code=500,
             detail="Failed to enhance workflow description: {}".format(str(e))
         )
-
-@api_router.post("/workflows", response_model=WorkflowResponse, tags=["Workflows"])
-async def create_workflow(request: WorkflowCreateRequest):
-    """
-    Create a new workflow from a natural language description.
-    
-    This endpoint uses AI to generate executable Python code from a natural
-    language workflow description. The generated code integrates with both
-    Anthropic and LightOn Paradigm APIs for document processing and analysis.
-    
-    Args:
-        request: Workflow creation request containing description, optional name, and context
-        
-    Returns:
-        WorkflowResponse: Complete workflow details including generated code
-        
-    Raises:
-        HTTPException: 503 if API keys are missing, 500 if workflow generation fails
-        
-    Example:
-        POST /workflows
-        {
-            \"description\": \"Search documents about AI, then analyze findings\",
-            \"name\": \"AI Research Workflow\"
-        }
-    """
-    # Validate required API keys
-    validate_anthropic_api_key()
-    
-    try:
-        logger.info(f"Creating workflow: {request.description[:100]}...")
-        
-        # Generate the workflow
-        workflow = await workflow_generator.generate_workflow(
-            description=request.description,
-            name=request.name,
-            context=request.context
-        )
-        
-        # Store the workflow in the executor
-        workflow_executor.store_workflow(workflow)
-        
-        logger.info(f"Workflow created successfully: {workflow.id}")
-        
-        return WorkflowResponse(
-            id=workflow.id,
-            name=workflow.name,
-            description=workflow.description,
-            status=workflow.status,
-            generated_code=workflow.generated_code,
-            created_at=workflow.created_at,
-            updated_at=workflow.updated_at,
-            error=workflow.error
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to create workflow: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create workflow: {str(e)}"
-        )
-
-@api_router.get("/workflows/{workflow_id}", response_model=WorkflowResponse, tags=["Workflows"])
-async def get_workflow(workflow_id: str):
-    """
-    Retrieve details of a specific workflow by ID.
-    
-    Returns complete workflow information including generated code,
-    current status, and metadata. Used to check workflow status
-    and retrieve generated code for inspection.
-    
-    Args:
-        workflow_id: Unique identifier of the workflow to retrieve
-        
-    Returns:
-        WorkflowResponse: Complete workflow details
-        
-    Raises:
-        HTTPException: 404 if workflow not found, 500 for other errors
-    """
-    try:
-        workflow = workflow_executor.get_workflow(workflow_id)
-        if not workflow:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Workflow {workflow_id} not found"
-            )
-        
-        return WorkflowResponse(
-            id=workflow.id,
-            name=workflow.name,
-            description=workflow.description,
-            status=workflow.status,
-            generated_code=workflow.generated_code,
-            created_at=workflow.created_at,
-            updated_at=workflow.updated_at,
-            error=workflow.error
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get workflow {workflow_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get workflow: {str(e)}"
-        )
-
-@api_router.post("/workflows/{workflow_id}/execute", response_model=WorkflowExecutionResponse, tags=["Execution"])
-async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest):
-    """
-    Execute a workflow with user input and optional file attachments.
-
-    Runs the generated workflow code with the provided user input.
-    Supports file attachments that can be processed within the workflow.
-    Execution is performed in a secure, isolated environment with timeout protection.
-
-    Args:
-        workflow_id: ID of the workflow to execute
-        request: Execution request with user input and optional file IDs
-
-    Returns:
-        WorkflowExecutionResponse: Execution results with status and timing
-
-    Raises:
-        HTTPException: 400 for validation errors, 500 for execution failures
-
-    Note:
-        Execution timeout is configured via settings.max_execution_time (default: 5 minutes)
-    """
-    try:
-        logger.info(f"Executing workflow {workflow_id} with input: {request.user_input[:100]}...")
-
-        # If files are attached, verify they are fully indexed before executing
-        if request.attached_file_ids:
-            logger.info(f"🔍 Verifying {len(request.attached_file_ids)} attached files are ready for analysis...")
-            validate_lighton_api_key()
-
-            max_wait_time = 60  # Maximum 60 seconds wait
-            poll_interval = 3  # Check every 3 seconds
-            elapsed_time = 0
-
-            while elapsed_time < max_wait_time:
-                all_ready = True
-                files_status = []
-
-                for file_id in request.attached_file_ids:
-                    try:
-                        file_info = await paradigm_client.get_file_info(file_id)
-                        status = file_info.get("status", "unknown")
-                        files_status.append(f"File {file_id}: {status}")
-
-                        # Check if file is ready (status should be "embedded" or similar)
-                        if status.lower() not in ["completed", "complete", "indexed", "ready", "success", "embedded"]:
-                            all_ready = False
-                            logger.info(f"⏳ File {file_id} not ready yet (status: {status})")
-                    except Exception as e:
-                        logger.error(f"❌ Failed to check file {file_id} status: {str(e)}")
-                        all_ready = False
-
-                if all_ready:
-                    logger.info(f"✅ All {len(request.attached_file_ids)} files are ready for analysis!")
-                    break
-
-                # Wait before next check
-                await asyncio.sleep(poll_interval)
-                elapsed_time += poll_interval
-                logger.info(f"⏳ Waiting for files to be indexed... ({elapsed_time}s / {max_wait_time}s)")
-
-            if not all_ready:
-                logger.warning(f"⚠️ Files not fully indexed after {max_wait_time}s, proceeding anyway...")
-                logger.warning(f"📋 Files status: {', '.join(files_status)}")
-
-        # Execute the workflow synchronously with progress tracking
-        execution = await workflow_executor.execute_workflow(workflow_id, request.user_input, request.attached_file_ids)
-
-        logger.info(f"Workflow execution completed: {execution.id} (status: {execution.status})")
-
-        return WorkflowExecutionResponse(
-            workflow_id=execution.workflow_id,
-            execution_id=execution.id,
-            result=execution.result,
-            status=execution.status.value,
-            execution_time=execution.execution_time,
-            error=execution.error,
-            created_at=execution.created_at
-        )
-
-    except ValueError as e:
-        logger.error(f"Validation error: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.error(f"Failed to execute workflow {workflow_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to execute workflow: {str(e)}"
-        )
-
-@api_router.get("/workflows/{workflow_id}/executions/{execution_id}", response_model=WorkflowExecutionResponse, tags=["Execution"])
-async def get_execution(workflow_id: str, execution_id: str):
-    """
-    Retrieve details of a specific workflow execution.
-    
-    Returns execution results, status, timing information, and any errors
-    that occurred during execution. Used for monitoring and debugging
-    workflow executions.
-    
-    Args:
-        workflow_id: ID of the parent workflow
-        execution_id: Unique identifier of the execution to retrieve
-        
-    Returns:
-        WorkflowExecutionResponse: Complete execution details
-        
-    Raises:
-        HTTPException: 404 if execution not found, 400 if execution doesn't belong to workflow
-    """
-    try:
-        execution = workflow_executor.get_execution(execution_id)
-        if not execution:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Execution {execution_id} not found"
-            )
-        
-        if execution.workflow_id != workflow_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Execution {execution_id} does not belong to workflow {workflow_id}"
-            )
-        
-        return WorkflowExecutionResponse(
-            workflow_id=execution.workflow_id,
-            execution_id=execution.id,
-            result=execution.result,
-            status=execution.status.value,
-            execution_time=execution.execution_time,
-            error=execution.error,
-            created_at=execution.created_at
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get execution {execution_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get execution: {str(e)}"
-        )
-
-@api_router.get("/workflows/{workflow_id}/executions/{execution_id}/progress", tags=["Execution"])
-async def stream_execution_progress(workflow_id: str, execution_id: str):
-    """
-    Stream real-time progress updates for a workflow execution using Server-Sent Events.
-    
-    Provides real-time progress updates during workflow execution, enabling
-    frontend applications to display live progress indicators, step-by-step
-    execution status, and error information as they occur.
-    
-    Args:
-        workflow_id: ID of the parent workflow  
-        execution_id: Unique identifier of the execution to monitor
-        
-    Returns:
-        StreamingResponse: Server-Sent Events stream with progress updates
-        
-    Event Format:
-        data: {"type": "step_start|step_complete|step_error", "step_id": "...", "step_name": "...", "details": "...", "timestamp": "..."}
-        
-    Raises:
-        HTTPException: 404 if execution not found, 400 if execution doesn't belong to workflow
-    """
-    try:
-        # Verify execution exists and belongs to workflow
-        execution = workflow_executor.get_execution(execution_id)
-        if not execution:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Execution {execution_id} not found"
-            )
-        
-        if execution.workflow_id != workflow_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Execution {execution_id} does not belong to workflow {workflow_id}"
-            )
-
-        async def generate_progress_events():
-            """Generate Server-Sent Events for progress updates"""
-            logger.info(f"📡 SSE: Starting progress stream for execution {execution_id}")
-            
-            # Send all available progress updates immediately
-            progress_updates = workflow_executor.get_progress_updates(execution_id)
-            
-            if progress_updates:
-                logger.info(f"📡 SSE: Found {len(progress_updates)} progress updates")
-                for update in progress_updates:
-                    yield f"data: {json.dumps(update)}\n\n"
-                    logger.info(f"📡 SSE: Sent progress update - {update.get('step_name', 'Unknown')}")
-            else:
-                logger.info("📡 SSE: No progress updates found")
-            
-            # Send final execution status
-            final_status = {
-                "type": "execution_complete",
-                "status": execution.status.value,
-                "execution_time": execution.execution_time,
-                "error": execution.error,
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
-            }
-            yield f"data: {json.dumps(final_status)}\n\n"
-            logger.info(f"📡 SSE: Sent final status - {execution.status.value}")
-            
-            # Clean up progress queue
-            workflow_executor.clear_progress_updates(execution_id)
-
-        return StreamingResponse(
-            generate_progress_events(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Cache-Control"
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error streaming progress: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================
 # Cell-Based Workflow Endpoints
@@ -671,9 +336,21 @@ async def create_cell_based_workflow(request: WorkflowCreateRequest):
         if request.output_example:
             workflow_context["output_example"] = request.output_example
 
+        # Auto-generate a name from the description if none provided
+        workflow_name = request.name
+        if not workflow_name:
+            # Take the first sentence or first 60 chars, whichever is shorter
+            desc = request.description.strip()
+            for sep in ['.', '\n', '!']:
+                first_sentence = desc.split(sep)[0].strip()
+                if len(first_sentence) < len(desc):
+                    desc = first_sentence
+                    break
+            workflow_name = desc[:60].rstrip(' .,;:!-')
+
         # Create workflow object
         workflow = Workflow(
-            name=request.name,
+            name=workflow_name,
             description=request.description,
             status="ready",
             context=workflow_context
@@ -1759,142 +1436,6 @@ async def update_cell_success_criteria(workflow_id: str, cell_id: str, request: 
         )
 
 
-@api_router.get("/workflows/{workflow_id}/executions/{execution_id}/ai-tools", tags=["Execution"])
-async def get_execution_ai_tools(workflow_id: str, execution_id: str):
-    """
-    Get AI tool execution details for a workflow execution.
-    
-    Returns detailed information about all AI tool calls made during workflow execution,
-    including input parameters, queries, and outputs for transparency and debugging.
-    
-    Args:
-        workflow_id: ID of the parent workflow
-        execution_id: Unique identifier of the execution
-        
-    Returns:
-        List of AI tool execution details with inputs and outputs
-        
-    Raises:
-        HTTPException: 404 if execution not found, 400 if execution doesn't belong to workflow
-    """
-    try:
-        # Verify execution exists and belongs to workflow
-        execution = workflow_executor.get_execution(execution_id)
-        if not execution:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Execution {execution_id} not found"
-            )
-        
-        if execution.workflow_id != workflow_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Execution {execution_id} does not belong to workflow {workflow_id}"
-            )
-
-        # Get AI tool execution details
-        ai_tool_executions = workflow_executor.get_ai_tool_executions(execution_id)
-        
-        logger.info(f"📊 Retrieved {len(ai_tool_executions)} AI tool executions for execution {execution_id}")
-        
-        return ai_tool_executions
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get AI tool executions for execution {execution_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get AI tool executions: {str(e)}"
-        )
-
-@api_router.get("/workflows/{workflow_id}/executions/{execution_id}/pdf", tags=["Execution"])
-async def get_execution_pdf(workflow_id: str, execution_id: str):
-    """
-    Generate and download a PDF report for a workflow execution.
-
-    Creates a professional PDF document containing the workflow execution
-    results, status, timing information, and metadata. The PDF is suitable
-    for sharing with clients and includes no vendor branding.
-
-    Args:
-        workflow_id: ID of the parent workflow
-        execution_id: Unique identifier of the execution
-
-    Returns:
-        StreamingResponse: PDF file download with application/pdf content type
-
-    Raises:
-        HTTPException: 404 if workflow or execution not found,
-                      400 if execution doesn't belong to workflow,
-                      500 if PDF generation fails
-
-    Example:
-        GET /api/workflows/abc123/executions/def456/pdf
-
-        Downloads a file named: workflow_execution_report_abc123_def456.pdf
-    """
-    try:
-        # Get workflow details
-        workflow = workflow_executor.get_workflow(workflow_id)
-        if not workflow:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Workflow {workflow_id} not found"
-            )
-
-        # Get execution details
-        execution = workflow_executor.get_execution(execution_id)
-        if not execution:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Execution {execution_id} not found"
-            )
-
-        # Verify execution belongs to workflow
-        if execution.workflow_id != workflow_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Execution {execution_id} does not belong to workflow {workflow_id}"
-            )
-
-        logger.info(f"Generating PDF report for workflow {workflow_id}, execution {execution_id}")
-
-        # Generate PDF
-        pdf_buffer = pdf_generator.generate_report(
-            workflow_name=workflow.name or "Unnamed Workflow",
-            workflow_description=workflow.description,
-            execution_result=execution.result or "No result available",
-            execution_status=execution.status.value,
-            execution_time=execution.execution_time,
-            execution_date=execution.created_at,
-            workflow_id=workflow_id,
-            execution_id=execution_id
-        )
-
-        # Create filename
-        filename = f"workflow_execution_report_{workflow_id}_{execution_id}.pdf"
-
-        logger.info(f"PDF report generated successfully: {filename}")
-
-        # Return PDF as streaming response
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}"
-            }
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to generate PDF for execution {execution_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate PDF report: {str(e)}"
-        )
-
 # File upload and management endpoints
 
 @api_router.post("/files/upload", response_model=FileUploadResponse, tags=["Files"])
@@ -1971,7 +1512,7 @@ async def get_file_info(file_id: int, include_content: bool = False):
     validate_lighton_api_key()
     
     try:
-        result = await paradigm_client.get_file_info(file_id, include_content)
+        result = await paradigm_client.get_file(file_id, include_content)
         return FileInfoResponse(**result)
         
     except Exception as e:
@@ -2015,67 +1556,31 @@ async def delete_file(file_id: int):
             detail=f"Failed to delete file: {str(e)}"
         )
 
-@api_router.post("/workflows-with-files", response_model=WorkflowResponse, tags=["Workflows"])
-async def create_workflow_with_files(request: WorkflowWithFilesRequest):
+@api_router.get("/files/{file_id}/chunks", tags=["Files"])
+async def get_file_chunks(file_id: int):
     """
-    Create a workflow that has access to specific uploaded files.
-    
-    Generates workflow code that can process and analyze the specified
-    uploaded files. The file IDs are embedded in the workflow context
-    so the generated code can reference them directly.
-    
+    Get text chunks from an uploaded file for output example extraction.
+
+    Retrieves the parsed text chunks of a previously uploaded file,
+    useful for extracting text content from PDFs and documents.
+
     Args:
-        request: Workflow creation request with file IDs to attach
-        
+        file_id: ID of the file to get chunks from
+
     Returns:
-        WorkflowResponse: Complete workflow details with file access capabilities
-        
-    Raises:
-        HTTPException: 503 if API keys are missing, 500 if workflow generation fails
-        
-    Note:
-        Generated workflow will have access to global 'attached_file_ids' variable
+        dict: File chunks and metadata from Paradigm
     """
-    # Validate required API keys
-    validate_anthropic_api_key()
-    
+    validate_lighton_api_key()
+
     try:
-        logger.info(f"Creating workflow with files: {request.uploaded_file_ids}")
-        
-        # Add file IDs to context
-        context = request.context or {}
-        if request.uploaded_file_ids:
-            context["uploaded_file_ids"] = request.uploaded_file_ids
-            context["use_uploaded_files"] = True
-        
-        # Generate the workflow
-        workflow = await workflow_generator.generate_workflow(
-            description=request.description,
-            name=request.name,
-            context=context
-        )
-        
-        # Store the workflow in the executor
-        workflow_executor.store_workflow(workflow)
-        
-        logger.info(f"Workflow with files created successfully: {workflow.id}")
-        
-        return WorkflowResponse(
-            id=workflow.id,
-            name=workflow.name,
-            description=workflow.description,
-            status=workflow.status,
-            generated_code=workflow.generated_code,
-            created_at=workflow.created_at,
-            updated_at=workflow.updated_at,
-            error=workflow.error
-        )
-        
+        result = await paradigm_client.get_file_chunks(file_id)
+        return result
+
     except Exception as e:
-        logger.error(f"Failed to create workflow with files: {str(e)}")
+        logger.error(f"Failed to get file chunks for {file_id}: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create workflow with files: {str(e)}"
+            detail=f"Failed to get file chunks: {str(e)}"
         )
 
 
@@ -2188,8 +1693,9 @@ async def generate_workflow_package(workflow_id: str):
 
         zip_buffer = package_generator.generate_zip()
 
-        # Create filename
-        workflow_name_slug = (workflow.name or "workflow").lower().replace(' ', '-')
+        # Create filename - sanitize to only allow safe characters in HTTP headers
+        raw_name = workflow.name or "workflow"
+        workflow_name_slug = re.sub(r'[^a-z0-9]+', '-', raw_name.lower()).strip('-')[:50]
         filename = f"workflow-{workflow_name_slug}-{workflow_id[:8]}.zip"
 
         logger.info(f"Package generated successfully: {filename}")
@@ -2314,7 +1820,8 @@ async def generate_mcp_package(workflow_id: str):
         zip_buffer = mcp_generator.generate_zip()
 
         # Create filename
-        workflow_name_slug = (workflow.name or "workflow").lower().replace(' ', '-').replace('_', '-')
+        raw_name = workflow.name or "workflow"
+        workflow_name_slug = re.sub(r'[^a-z0-9]+', '-', raw_name.lower()).strip('-')[:50]
         filename = "mcp-{}-{}.zip".format(workflow_name_slug, workflow_id[:8])
 
         logger.info("MCP package generated successfully: {}".format(filename))

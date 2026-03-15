@@ -160,12 +160,13 @@ class WorkflowPlanner:
             else:
                 logger.info("No STEP X.Y pattern found in description, using Claude's layer assignments")
 
-            # Call Claude to generate the plan
+            # Call Claude to generate the plan (use extended timeout for complex workflows)
             response = self.anthropic_client.messages.create(
                 model=settings.anthropic_model,
                 max_tokens=settings.anthropic_max_tokens_plan,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_message}]
+                messages=[{"role": "user", "content": user_message}],
+                timeout=max(settings.anthropic_timeout, 300)
             )
 
             # Parse the response, checking for truncation

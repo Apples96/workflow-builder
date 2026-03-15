@@ -89,9 +89,9 @@ class CellExecutor:
 
     def __init__(self):
         """Initialize the cell executor."""
-        self.max_cell_execution_time = 300  # 5 minutes per cell
-        self.max_retry_attempts = 5  # Maximum retries for failed cells (execution errors)
-        self.max_evaluation_retries = 5  # Maximum retries for evaluation failures
+        self.max_cell_execution_time = settings.max_cell_execution_time
+        self.max_retry_attempts = settings.max_retry_attempts
+        self.max_evaluation_retries = settings.max_evaluation_retries
         self.cell_generator = CellCodeGenerator()
         self.cell_evaluator = CellOutputEvaluator()
 
@@ -131,6 +131,41 @@ class CellExecutor:
                 formatted[key] = str(value)
 
         return formatted
+
+    def _summarize_dict_structure(self, d: dict, depth: int = 0, max_depth: int = 3) -> str:
+        """
+        Recursively summarize the key structure of a dict so the LLM knows
+        what keys exist and what types/previews they hold.
+
+        Args:
+            d: The dictionary to summarize
+            depth: Current recursion depth
+            max_depth: Maximum depth to recurse into
+
+        Returns:
+            str: Human-readable summary of the dict structure
+        """
+        if depth >= max_depth:
+            return "{...}"
+        parts = []
+        indent = "  " * (depth + 1)
+        for k, v in d.items():
+            if isinstance(v, dict):
+                nested = self._summarize_dict_structure(v, depth + 1, max_depth)
+                parts.append("{}{} (dict): {}".format(indent, k, nested))
+            elif isinstance(v, list):
+                if v and isinstance(v[0], dict):
+                    parts.append("{}{} (list of {} dicts)".format(indent, k, len(v)))
+                else:
+                    parts.append("{}{} (list, {} items)".format(indent, k, len(v)))
+            elif isinstance(v, str):
+                preview = v[:120]
+                if len(v) > 120:
+                    preview += "..."
+                parts.append("{}{} (str): {}".format(indent, k, preview))
+            else:
+                parts.append("{}{}: {}".format(indent, k, str(v)[:80]))
+        return "{{{}}}".format("\n" + "\n".join(parts) + "\n" + "  " * depth) if parts else "{}"
 
     def _load_cell_generation_guidance(self) -> str:
         """
@@ -179,6 +214,9 @@ class CellExecutor:
         each output variable to the return snippet, so downstream cells know
         the actual data format being produced.
 
+        Uses brace-counting to correctly capture nested dicts in the return
+        statement (e.g. return {"key": {"nested": "value"}}).
+
         Args:
             code: Generated Python code for a cell
             outputs_produced: List of variable names the cell outputs
@@ -186,15 +224,40 @@ class CellExecutor:
         Returns:
             Dict mapping variable names to the return statement snippet
         """
-        # Find return {...} statement (may span multiple lines)
-        match = re.search(r'return\s*\{[^}]+\}', code, re.DOTALL)
-        if match:
-            return_stmt = match.group(0)
-            hints = {}
-            for var_name in outputs_produced:
-                if var_name in return_stmt:
-                    hints[var_name] = return_stmt
-            return hints
+        # Find the start of a return { statement
+        match = re.search(r'return\s*\{', code)
+        if not match:
+            return {}
+
+        # Use brace-counting to find the matching closing brace
+        start = match.start()
+        brace_start = match.end() - 1  # position of the opening {
+        depth = 0
+        i = brace_start
+        while i < len(code):
+            ch = code[i]
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    # Found the matching closing brace
+                    return_stmt = code[start:i + 1]
+                    hints = {}
+                    for var_name in outputs_produced:
+                        if var_name in return_stmt:
+                            hints[var_name] = return_stmt
+                    return hints
+            elif ch in ('"', "'"):
+                # Skip over string literals to avoid counting braces inside strings
+                quote = ch
+                i += 1
+                while i < len(code) and code[i] != quote:
+                    if code[i] == '\\':
+                        i += 1  # skip escaped character
+                    i += 1
+            i += 1
+
         return {}
 
     async def fix_cell_code(
@@ -204,7 +267,9 @@ class CellExecutor:
         error_message: str,
         execution_context: Dict[str, Any],
         workflow_description: str,
-        attempt_number: int
+        attempt_number: int,
+        output_example: Optional[str] = None,
+        is_final_cell: bool = False
     ) -> str:
         """
         Use Claude to fix failed cell code.
@@ -216,6 +281,8 @@ class CellExecutor:
             execution_context: Current workflow context
             workflow_description: Overall workflow description
             attempt_number: Which retry attempt this is
+            output_example: Optional example of desired output format (only for final cell)
+            is_final_cell: Whether this is the final cell in the workflow
 
         Returns:
             str: Fixed Python code
@@ -224,28 +291,46 @@ class CellExecutor:
             cell.name, attempt_number, self.max_retry_attempts
         ))
 
-        # Load cell generation guidance
-        generation_guidance = self._load_cell_generation_guidance()
+        # Load FULL cell generation prompt (same as original generator)
+        from ..prompts.loader import PromptLoader
+        full_cell_prompt = PromptLoader.load("cell")
 
-        if generation_guidance:
-            logger.info("Loaded {} chars of generation guidance for fix".format(len(generation_guidance)))
-        else:
-            logger.warning("No generation guidance loaded - fix may not be optimal")
+        logger.info("Loaded {} chars of full cell prompt for fix".format(len(full_cell_prompt)))
 
-        # Build context information
+        # Build context information — show full structure for dicts/lists so
+        # report/aggregation cells know what keys are available to format.
         context_summary = []
         for key, value in execution_context.items():
-            if key not in ["LIGHTON_API_KEY", "PARADIGM_API_KEY"]:
-                value_str = str(value)[:100]  # Truncate long values
-                context_summary.append("  - {}: {}".format(key, value_str))
+            if key in ["LIGHTON_API_KEY", "PARADIGM_API_KEY"]:
+                continue
+            if isinstance(value, dict):
+                # Show the full key structure (with nested keys) instead of truncating
+                value_str = self._summarize_dict_structure(value)
+                context_summary.append("  - {} (dict): {}".format(key, value_str))
+            elif isinstance(value, list):
+                # Show list length and first item type/preview
+                if value:
+                    first_item = str(value[0])[:80]
+                    value_str = "list of {} items, first: {}".format(len(value), first_item)
+                else:
+                    value_str = "empty list"
+                context_summary.append("  - {} (list): {}".format(key, value_str))
+            elif isinstance(value, str):
+                # Show full string up to 500 chars for report cells that need the text
+                value_str = value[:500]
+                if len(value) > 500:
+                    value_str += "... ({} chars total)".format(len(value))
+                context_summary.append("  - {} (str): {}".format(key, value_str))
+            else:
+                context_summary.append("  - {}: {}".format(key, str(value)[:200]))
 
         context_info = "\n".join(context_summary) if context_summary else "  (none yet)"
 
         # Create the fix prompt with all necessary guidance
         fix_prompt = """You are debugging Python code that failed during execution. Fix the code to make it work correctly.
 
-CRITICAL CODING GUIDELINES (MUST FOLLOW):
-{generation_guidance}
+FULL CELL GENERATION PROMPT (ALL GUIDELINES):
+{full_cell_prompt}
 
 WORKFLOW CONTEXT:
 {workflow_description}
@@ -255,7 +340,43 @@ CELL INFORMATION:
 - Cell Description: {cell_description}
 - Step Number: {step_number}
 - Expected Inputs: {inputs}
-- Expected Outputs: {outputs}
+- Expected Outputs: {outputs}""".format(
+            full_cell_prompt=full_cell_prompt,
+            workflow_description=workflow_description,
+            cell_name=cell.name,
+            cell_description=cell.description,
+            step_number=cell.step_number,
+            inputs=", ".join(cell.inputs_required) if cell.inputs_required else "none",
+            outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none"
+        )
+
+        # Add cell-specific success criteria if present
+        if cell.success_criteria:
+            fix_prompt += """
+
+CELL-SPECIFIC SUCCESS CRITERIA:
+{criteria}
+
+Your fixed code MUST produce output that meets these specific requirements.""".format(
+                criteria=cell.success_criteria
+            )
+
+        # Add output example for final cell if provided
+        if output_example and is_final_cell:
+            fix_prompt += """
+
+OUTPUT FORMAT EXAMPLE (FINAL CELL):
+The user expects output in this FORMAT:
+```
+{example}
+```
+
+Your fixed code should produce output with similar format/structure.""".format(
+                example=output_example
+            )
+
+        # Continue with the rest of the prompt
+        fix_prompt += """
 
 CURRENT EXECUTION CONTEXT (available variables):
 {context_info}
@@ -269,7 +390,7 @@ ERROR MESSAGE:
 {error_message}
 
 DEBUGGING INSTRUCTIONS:
-1. First, check the CRITICAL CODING GUIDELINES above - especially model robustness rules
+1. First, check the FULL CELL GENERATION PROMPT above - especially critical guidelines and model robustness rules
 2. Analyze the error carefully - what went wrong?
 3. If the error is about model not found or invalid model:
    - NEVER use model versions like "alfred-40b-1123", "llama-3.1-70b", etc.
@@ -284,13 +405,6 @@ DEBUGGING INSTRUCTIONS:
 Generate ONLY the corrected Python code - no markdown, no explanations.
 The code must be complete and executable.
 """.format(
-            generation_guidance=generation_guidance,
-            workflow_description=workflow_description,
-            cell_name=cell.name,
-            cell_description=cell.description,
-            step_number=cell.step_number,
-            inputs=", ".join(cell.inputs_required) if cell.inputs_required else "none",
-            outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none",
             context_info=context_info,
             failed_code=failed_code,
             error_message=error_message
@@ -413,7 +527,8 @@ EXAMPLE {idx}: {status}
         evaluation_result: EvaluationResult,
         all_example_results: List[Dict[str, Any]],
         workflow_description: str,
-        attempt_number: int
+        attempt_number: int,
+        output_example: Optional[str] = None
     ) -> str:
         """
         Use Claude to fix cell code based on evaluation feedback.
@@ -429,6 +544,7 @@ EXAMPLE {idx}: {status}
             all_example_results: List of all example execution results
             workflow_description: Overall workflow description
             attempt_number: Which evaluation retry attempt this is
+            output_example: Optional example of desired output format (only for final cell)
 
         Returns:
             str: Fixed Python code
@@ -437,8 +553,9 @@ EXAMPLE {idx}: {status}
             cell.name, attempt_number, self.max_evaluation_retries
         ))
 
-        # Load cell generation guidance
-        generation_guidance = self._load_cell_generation_guidance()
+        # Load FULL cell generation prompt (same as original generator)
+        from ..prompts.loader import PromptLoader
+        full_cell_prompt = PromptLoader.load("cell")
 
         # Build all examples section to show patterns across results
         examples_section = self._build_examples_section_for_fix(all_example_results)
@@ -450,8 +567,8 @@ EXAMPLE {idx}: {status}
         fix_prompt = """You are fixing Python code that executed successfully but produced INCORRECT or INVALID output.
 The code runs without errors, but the output doesn't meet expectations based on evaluation.
 
-CRITICAL CODING GUIDELINES (MUST FOLLOW):
-{generation_guidance}
+FULL CELL GENERATION PROMPT (ALL GUIDELINES):
+{full_cell_prompt}
 
 WORKFLOW CONTEXT:
 {workflow_description}
@@ -461,7 +578,43 @@ CELL INFORMATION:
 - Cell Description: {cell_description}
 - Step Number: {step_number}
 - Expected Inputs: {inputs}
-- Expected Outputs: {outputs}
+- Expected Outputs: {outputs}""".format(
+            full_cell_prompt=full_cell_prompt,
+            workflow_description=workflow_description,
+            cell_name=cell.name,
+            cell_description=cell.description,
+            step_number=cell.step_number,
+            inputs=", ".join(cell.inputs_required) if cell.inputs_required else "none",
+            outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none"
+        )
+
+        # Add cell-specific success criteria if present
+        if cell.success_criteria:
+            fix_prompt += """
+
+CELL-SPECIFIC SUCCESS CRITERIA:
+{criteria}
+
+Your fixed code MUST produce output that meets these specific requirements.""".format(
+                criteria=cell.success_criteria
+            )
+
+        # Add output example for final cell if provided
+        if output_example:
+            fix_prompt += """
+
+OUTPUT FORMAT EXAMPLE (FINAL CELL):
+The user expects output in this FORMAT:
+```
+{example}
+```
+
+Your fixed code should produce output with similar format/structure.""".format(
+                example=output_example
+            )
+
+        # Continue with the rest of the prompt
+        fix_prompt += """
 
 CURRENT CODE (executes but produces wrong output):
 ```python
@@ -478,8 +631,10 @@ EVALUATION FEEDBACK:
 SPECIFIC ISSUES FOUND:
 {issues}
 
-SUGGESTED FIX FROM EVALUATOR:
-{suggested_fix}
+OUTPUT ANALYSIS FROM EVALUATOR:
+{output_analysis}
+
+The evaluator identified these OUTPUT problems. Your job is to fix the CODE to produce correct OUTPUT.
 
 FIX INSTRUCTIONS:
 1. The code RUNS without errors, but produces incorrect/invalid OUTPUT
@@ -497,19 +652,12 @@ FIX INSTRUCTIONS:
 Generate ONLY the corrected Python code - no markdown, no explanations.
 The code must be complete and executable.
 """.format(
-            generation_guidance=generation_guidance,
-            workflow_description=workflow_description,
-            cell_name=cell.name,
-            cell_description=cell.description,
-            step_number=cell.step_number,
-            inputs=", ".join(cell.inputs_required) if cell.inputs_required else "none",
-            outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none",
             current_code=current_code,
             num_examples=len(all_example_results),
             examples_section=examples_section,
             feedback=evaluation_result.feedback,
             issues=issues_text,
-            suggested_fix=evaluation_result.suggested_fix or "No specific fix suggested"
+            output_analysis=evaluation_result.output_analysis or "No specific analysis provided"
         )
 
         # Call Claude to fix the code
@@ -651,7 +799,9 @@ CRITICAL RULES:
                                 error_message=last_error,
                                 execution_context=execution_context,
                                 workflow_description=workflow_description,
-                                attempt_number=attempt
+                                attempt_number=attempt,
+                                output_example=plan.output_example if hasattr(plan, 'output_example') else None,
+                                is_final_cell=(cell.step_number == total_cells)
                             )
                         else:
                             # First attempt - generate normally with producer hints
@@ -1492,7 +1642,9 @@ CRITICAL RULES:
                     error_message=str(e),
                     execution_context=smoke_test_context,
                     workflow_description=workflow_description,
-                    attempt_number=evaluation_attempt + 1
+                    attempt_number=evaluation_attempt + 1,
+                    output_example=plan.output_example if hasattr(plan, 'output_example') else None,
+                    is_final_cell=(cell.step_number == len(plan.cells))
                 )
                 cell.mark_ready(cell_code, cell.code_description)
 
@@ -1574,7 +1726,7 @@ CRITICAL RULES:
                         "cell_name": cell.name,
                         "display_step": cell.get_display_step(),
                         "feedback": evaluation_result.feedback,
-                        "suggested_fix": evaluation_result.suggested_fix,
+                        "output_analysis": evaluation_result.output_analysis,
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
@@ -1594,7 +1746,8 @@ CRITICAL RULES:
                         evaluation_result=evaluation_result,
                         all_example_results=single_example_result,
                         workflow_description=workflow_description,
-                        attempt_number=evaluation_attempt + 1
+                        attempt_number=evaluation_attempt + 1,
+                        output_example=plan.output_example if hasattr(plan, 'output_example') and cell.step_number == len(plan.cells) else None
                     )
                     cell.mark_ready(cell_code, cell.code_description)
 
@@ -1954,7 +2107,9 @@ CRITICAL RULES:
                     error_message=execution_error,
                     execution_context=example_contexts[0],
                     workflow_description=workflow_description,
-                    attempt_number=evaluation_attempt + 1
+                    attempt_number=evaluation_attempt + 1,
+                    output_example=plan.output_example if hasattr(plan, 'output_example') else None,
+                    is_final_cell=(cell.step_number == len(plan.cells))
                 )
                 cell.mark_ready(cell_code, cell.code_description)
 
@@ -2049,7 +2204,7 @@ CRITICAL RULES:
                         "cell_name": cell.name,
                         "display_step": cell.get_display_step(),
                         "feedback": evaluation_result.feedback,
-                        "suggested_fix": evaluation_result.suggested_fix,
+                        "output_analysis": evaluation_result.output_analysis,
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
@@ -2060,7 +2215,8 @@ CRITICAL RULES:
                         evaluation_result=evaluation_result,
                         all_example_results=example_results,
                         workflow_description=workflow_description,
-                        attempt_number=evaluation_attempt + 1
+                        attempt_number=evaluation_attempt + 1,
+                        output_example=plan.output_example if hasattr(plan, 'output_example') and cell.step_number == len(plan.cells) else None
                     )
                     cell.mark_ready(cell_code, cell.code_description)
 
@@ -2103,429 +2259,6 @@ CRITICAL RULES:
             "cell": cell,
             "success": True,
             "example_outputs": example_outputs
-        }
-
-    async def _execute_workflow_with_evaluation_sequential(
-        self,
-        plan: WorkflowPlan,
-        examples: List[Dict[str, Any]],
-        workflow_description: str = ""
-    ) -> AsyncGenerator[Dict[str, Any], None]:
-        """
-        DEPRECATED: Sequential execution for backward compatibility.
-
-        Execute workflow cell by cell without layer parallelization.
-        This is the old implementation kept for reference.
-        Use execute_workflow_with_evaluation instead.
-        """
-        if not examples:
-            yield {
-                "type": "error",
-                "error": "No examples provided for execution",
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            return
-
-        total_cells = len(plan.cells)
-        total_examples = len(examples)
-
-        logger.info("Starting SEQUENTIAL execution with evaluation: {} cells, {} examples".format(
-            total_cells, total_examples
-        ))
-
-        yield {
-            "type": "workflow_start",
-            "total_cells": total_cells,
-            "total_examples": total_examples,
-            "evaluation_enabled": True,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-
-        # Track execution contexts per example (each example has its own context flow)
-        example_contexts: List[Dict[str, Any]] = []
-        for i, example in enumerate(examples):
-            example_contexts.append({
-                "user_input": example.get("user_input", ""),
-                "attached_file_ids": example.get("attached_file_ids", [])
-            })
-
-        completed_cells = 0
-
-        # Execute each cell in order (OLD SEQUENTIAL METHOD)
-        for cell in plan.cells:
-            cell_code = None
-            evaluation_attempt = 0
-            cell_passed_evaluation = False
-
-            # === Phase 1: Generate initial code ===
-            cell.mark_generating()
-
-            yield {
-                "type": "cell_generating",
-                "cell_id": cell.id,
-                "cell_name": cell.name,
-                "step_number": cell.step_number,
-                "description": cell.description,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-
-            try:
-                code = await self.cell_generator.generate_cell_code(
-                    cell=cell,
-                    available_context=plan.shared_context_schema,
-                    workflow_description=workflow_description
-                )
-                cell_code = code
-                cell.mark_ready(code, cell.description)
-
-                yield {
-                    "type": "cell_ready",
-                    "cell_id": cell.id,
-                    "cell_name": cell.name,
-                    "code_preview": code[:300] + "..." if len(code) > 300 else code,
-                    "full_code": code,
-                    "code_description": cell.description,
-                    "success_criteria": cell.success_criteria,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            except Exception as e:
-                logger.error("Failed to generate code for cell '{}': {}".format(cell.name, str(e)))
-                cell.mark_failed(str(e))
-                yield {
-                    "type": "cell_failed",
-                    "cell_id": cell.id,
-                    "cell_name": cell.name,
-                    "error": "Code generation failed: {}".format(str(e)),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                yield {
-                    "type": "workflow_failed",
-                    "error": "Cell '{}' code generation failed".format(cell.name),
-                    "completed_cells": completed_cells,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                return
-
-            # === Phase 2: Smoke test + evaluation loop ===
-            while evaluation_attempt < self.max_evaluation_retries and not cell_passed_evaluation:
-                evaluation_attempt += 1
-
-                # Execute smoke test (first example)
-                smoke_test_context = example_contexts[0].copy()
-
-                yield {
-                    "type": "cell_executing",
-                    "cell_id": cell.id,
-                    "cell_name": cell.name,
-                    "step_number": cell.step_number,
-                    "is_smoke_test": True,
-                    "evaluation_attempt": evaluation_attempt,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-
-                try:
-                    start_time = time.time()
-                    smoke_test_result = await self._execute_cell_with_retry(
-                        cell=cell,
-                        code=cell_code,
-                        context=smoke_test_context,
-                        workflow_description=workflow_description
-                    )
-                    execution_time = time.time() - start_time
-
-                    # Prepare output for evaluation
-                    output_variables = smoke_test_result.get("variables", {})
-                    formatted_outputs = self._format_output_variables(output_variables)
-
-                    smoke_test_output = ExampleOutput(
-                        example_id="smoke_test",
-                        user_input=smoke_test_context.get("user_input", ""),
-                        output_text=smoke_test_result.get("output", ""),
-                        output_variables=output_variables,
-                        formatted_variables=formatted_outputs
-                    )
-
-                    # Emit smoke test completed
-                    yield {
-                        "type": "cell_smoke_test_completed",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "output": smoke_test_result.get("output", ""),
-                        "variables": list(output_variables.keys()),
-                        "variable_values": formatted_outputs,
-                        "execution_time": execution_time,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-
-                except Exception as e:
-                    # Smoke test execution failed (runtime error)
-                    logger.warning("Smoke test execution failed for cell '{}': {}".format(
-                        cell.name, str(e)
-                    ))
-
-                    if evaluation_attempt >= self.max_evaluation_retries:
-                        cell.mark_failed(str(e))
-                        yield {
-                            "type": "cell_failed",
-                            "cell_id": cell.id,
-                            "cell_name": cell.name,
-                            "error": str(e),
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                        yield {
-                            "type": "workflow_failed",
-                            "error": "Cell '{}' failed after {} attempts".format(
-                                cell.name, evaluation_attempt
-                            ),
-                            "completed_cells": completed_cells,
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                        return
-
-                    # Try to fix with existing fix_cell_code method
-                    yield {
-                        "type": "cell_retrying",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "attempt": evaluation_attempt + 1,
-                        "max_attempts": self.max_evaluation_retries,
-                        "previous_error": str(e),
-                        "reason": "execution_error",
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-
-                    cell_code = await self.fix_cell_code(
-                        cell=cell,
-                        failed_code=cell_code,
-                        error_message=str(e),
-                        execution_context=smoke_test_context,
-                        workflow_description=workflow_description,
-                        attempt_number=evaluation_attempt + 1
-                    )
-                    cell.mark_ready(cell_code, cell.code_description)
-
-                    yield {
-                        "type": "cell_code_fixed",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "full_code": cell_code,
-                        "fix_reason": "execution_error",
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                    continue
-
-                # === Phase 3: Evaluate smoke test output ===
-                yield {
-                    "type": "cell_evaluating",
-                    "cell_id": cell.id,
-                    "cell_name": cell.name,
-                    "evaluation_attempt": evaluation_attempt,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-
-                # Determine if this is the final cell (produces final_result)
-                # Only pass output_example to evaluator for final cell
-                is_final_cell = "final_result" in cell.outputs_produced
-                cell_output_example = plan.output_example if is_final_cell else None
-
-                evaluation_result = await self.cell_evaluator.evaluate_smoke_test_output(
-                    cell=cell,
-                    smoke_test_output=smoke_test_output,
-                    workflow_description=workflow_description,
-                    cell_code=cell_code,
-                    output_example=cell_output_example
-                )
-
-                if evaluation_result.is_valid:
-                    cell_passed_evaluation = True
-
-                    yield {
-                        "type": "cell_evaluation_passed",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "feedback": evaluation_result.feedback,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                else:
-                    logger.warning("Evaluation failed for cell '{}': {}".format(
-                        cell.name, evaluation_result.feedback
-                    ))
-
-                    yield {
-                        "type": "cell_evaluation_failed",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "feedback": evaluation_result.feedback,
-                        "issues": evaluation_result.issues,
-                        "evaluation_attempt": evaluation_attempt,
-                        "max_attempts": self.max_evaluation_retries,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-
-                    if evaluation_attempt >= self.max_evaluation_retries:
-                        # Max retries reached, proceed anyway
-                        logger.warning("Max evaluation retries reached for cell '{}', proceeding anyway".format(
-                            cell.name
-                        ))
-
-                        yield {
-                            "type": "cell_evaluation_max_retries",
-                            "cell_id": cell.id,
-                            "cell_name": cell.name,
-                            "message": "Max evaluation retries reached, proceeding with current code",
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                        cell_passed_evaluation = True  # Force proceed
-                    else:
-                        # Fix code based on evaluation feedback
-                        yield {
-                            "type": "cell_fixing_from_evaluation",
-                            "cell_id": cell.id,
-                            "cell_name": cell.name,
-                            "feedback": evaluation_result.feedback,
-                            "suggested_fix": evaluation_result.suggested_fix,
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-
-                        # Wrap single smoke test result in list for fix method
-                        single_example_result = [{
-                            "user_input": smoke_test_context.get("user_input", ""),
-                            "output": smoke_test_result.get("output", "") if smoke_test_result else "",
-                            "variables": smoke_test_result.get("variables", {}) if smoke_test_result else {},
-                            "formatted_variables": self._format_output_variables(
-                                smoke_test_result.get("variables", {}) if smoke_test_result else {}
-                            ),
-                            "success": True
-                        }]
-                        cell_code = await self.fix_cell_code_from_evaluation(
-                            cell=cell,
-                            current_code=cell_code,
-                            evaluation_result=evaluation_result,
-                            all_example_results=single_example_result,
-                            workflow_description=workflow_description,
-                            attempt_number=evaluation_attempt + 1
-                        )
-                        cell.mark_ready(cell_code, cell.code_description)
-
-                        yield {
-                            "type": "cell_code_fixed",
-                            "cell_id": cell.id,
-                            "cell_name": cell.name,
-                            "full_code": cell_code,
-                            "fix_reason": "evaluation_feedback",
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-
-            # === Phase 4: Execute remaining examples ===
-            # First, update context for first example with smoke test results
-            if smoke_test_result:
-                example_contexts[0].update(smoke_test_result.get("variables", {}))
-
-            # Store first example output
-            first_example_output = {
-                "output": smoke_test_result.get("output", "") if smoke_test_result else "",
-                "variables": list(smoke_test_result.get("variables", {}).keys()) if smoke_test_result else [],
-                "variable_values": self._format_output_variables(
-                    smoke_test_result.get("variables", {})
-                ) if smoke_test_result else {}
-            }
-
-            yield {
-                "type": "cell_example_completed",
-                "cell_id": cell.id,
-                "cell_name": cell.name,
-                "example_index": 0,
-                "example_id": examples[0].get("id", "example_0"),
-                "output": first_example_output["output"],
-                "variables": first_example_output["variables"],
-                "variable_values": first_example_output["variable_values"],
-                "timestamp": datetime.utcnow().isoformat()
-            }
-
-            # Execute remaining examples (2, 3, ...)
-            for example_idx in range(1, total_examples):
-                example = examples[example_idx]
-                example_context = example_contexts[example_idx]
-
-                yield {
-                    "type": "cell_executing",
-                    "cell_id": cell.id,
-                    "cell_name": cell.name,
-                    "step_number": cell.step_number,
-                    "is_smoke_test": False,
-                    "example_index": example_idx,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-
-                try:
-                    start_time = time.time()
-                    example_result = await self._execute_cell_with_retry(
-                        cell=cell,
-                        code=cell_code,
-                        context=example_context,
-                        workflow_description=workflow_description
-                    )
-                    execution_time = time.time() - start_time
-
-                    # Update context for this example
-                    example_contexts[example_idx].update(example_result.get("variables", {}))
-
-                    output_variables = example_result.get("variables", {})
-                    formatted_outputs = self._format_output_variables(output_variables)
-
-                    yield {
-                        "type": "cell_example_completed",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "example_index": example_idx,
-                        "example_id": example.get("id", "example_{}".format(example_idx)),
-                        "output": example_result.get("output", ""),
-                        "variables": list(output_variables.keys()),
-                        "variable_values": formatted_outputs,
-                        "execution_time": execution_time,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-
-                except Exception as e:
-                    # Example execution failed - log but continue
-                    logger.warning("Example {} execution failed for cell '{}': {}".format(
-                        example_idx, cell.name, str(e)
-                    ))
-
-                    yield {
-                        "type": "cell_example_failed",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "example_index": example_idx,
-                        "example_id": example.get("id", "example_{}".format(example_idx)),
-                        "error": str(e),
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-
-            # === Cell completed for all examples ===
-            cell.mark_completed(
-                output="Completed for {} examples".format(total_examples),
-                variables={},
-                execution_time=0
-            )
-            completed_cells += 1
-
-            yield {
-                "type": "cell_completed",
-                "cell_id": cell.id,
-                "cell_name": cell.name,
-                "step_number": cell.step_number,
-                "total_examples": total_examples,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-
-        # All cells completed
-        yield {
-            "type": "workflow_completed",
-            "total_cells": total_cells,
-            "completed_cells": completed_cells,
-            "total_examples": total_examples,
-            "timestamp": datetime.utcnow().isoformat()
         }
 
     async def _execute_cell_with_retry(
@@ -2589,7 +2322,9 @@ CRITICAL RULES:
                     error_message=error_msg,
                     execution_context=context,
                     workflow_description=workflow_description,
-                    attempt_number=attempt + 2
+                    attempt_number=attempt + 2,
+                    output_example=None,
+                    is_final_cell=False
                 )
 
         raise Exception("Cell execution failed after {} attempts: {}".format(
@@ -2711,7 +2446,9 @@ CRITICAL RULES:
                         error_message=last_error,
                         execution_context=execution_context,
                         workflow_description=workflow_description,
-                        attempt_number=attempt
+                        attempt_number=attempt,
+                        output_example=cell_output_example,
+                        is_final_cell=is_final_cell
                     )
                     cell.mark_ready(cell_code, cell.code_description)
 
@@ -2849,7 +2586,7 @@ CRITICAL RULES:
                                 "cell_name": cell.name,
                                 "display_step": cell.get_display_step(),
                                 "feedback": evaluation_result.feedback,
-                                "suggested_fix": evaluation_result.suggested_fix,
+                                "output_analysis": evaluation_result.output_analysis,
                                 "timestamp": datetime.utcnow().isoformat()
                             })
 
@@ -2867,7 +2604,8 @@ CRITICAL RULES:
                                 evaluation_result=evaluation_result,
                                 all_example_results=single_example_result,
                                 workflow_description=workflow_description,
-                                attempt_number=evaluation_attempt + 1
+                                attempt_number=evaluation_attempt + 1,
+                                output_example=cell_output_example
                             )
                             cell.mark_ready(cell_code, cell.code_description)
 

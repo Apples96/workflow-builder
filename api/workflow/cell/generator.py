@@ -202,8 +202,8 @@ REQUIRED OUTPUTS (must be in returned dict):
 {outputs}
 
 Generate complete, self-contained Python code that:
-1. Defines the ParadigmClient class with only the methods needed
-2. Defines `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]`
+1. Defines `async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]`
+2. Does NOT define ParadigmClient (it is pre-injected, just instantiate it)
 3. Accesses inputs via context["variable_name"]
 4. Returns a dict with all required outputs
 5. Uses .format() for string interpolation (NOT f-strings)

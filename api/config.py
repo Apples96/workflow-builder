@@ -1,21 +1,8 @@
 """
 Application Configuration Settings
 
-This module defines the configuration settings for the workflow automation system.
-It loads environment variables and provides default values for all configurable parameters.
-
-Environment Variables:
-    ANTHROPIC_API_KEY: API key for Anthropic Claude AI service
-    LIGHTON_API_KEY: API key for LightOn Paradigm service
-    DEBUG: Enable debug mode (true/false)
-    HOST: Server host address (default: 0.0.0.0)
-    PORT: Server port number (default: 8000)
-
-Features:
-    - Environment variable loading via python-dotenv
-    - Configuration validation
-    - Default values for all settings
-    - LightOn Paradigm API endpoint configuration
+Loads environment variables from .env and provides defaults for all
+configurable parameters (API keys, server settings, LLM config).
 """
 
 import os
@@ -51,20 +38,18 @@ class Settings:
         self.is_vercel: bool = os.getenv("VERCEL", "").lower() in ["1", "true"]
         
         # LightOn Paradigm API settings
-        # v2 endpoints for file operations (upload, get, delete, chunks)
         self.lighton_base_url: str = "https://paradigm.lighton.ai"
-        self.lighton_docsearch_endpoint: str = "/api/v2/chat/document-search"
-
-        # v3 Agent API endpoint for unified threads/turns interface
         self.lighton_v3_base_url: str = "https://paradigm.lighton.ai"
         self.lighton_v3_agent_endpoint: str = "/api/v3/threads/turns"
-
-        # v3 Agent API requires chat_setting_id (user's agent configuration)
         self.lighton_chat_setting_id: int = int(os.getenv("LIGHTON_CHAT_SETTING_ID", "160"))
-        
+        self.paradigm_model: str = os.getenv("PARADIGM_MODEL", "alfred-ft5")
+        self.paradigm_timeout: int = int(os.getenv("PARADIGM_TIMEOUT", "300"))
+
         # Workflow execution settings
         self.max_execution_time: int = 1800  # 20 minutes maximum execution time
-        self.max_workflow_steps: int = 50   # Maximum number of workflow steps
+        self.max_cell_execution_time: int = int(os.getenv("MAX_CELL_EXECUTION_TIME", "300"))
+        self.max_retry_attempts: int = int(os.getenv("MAX_RETRY_ATTEMPTS", "5"))
+        self.max_evaluation_retries: int = int(os.getenv("MAX_EVALUATION_RETRIES", "5"))
 
         # LLM Configuration (Anthropic)
         self.anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")

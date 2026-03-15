@@ -61,8 +61,7 @@ class PromptLoader:
 
         Args:
             prompt_name: Name of the prompt file (without .md extension).
-                        Supported names: enhancer, planner, cell, evaluator,
-                        parallelization
+                        Supported names: enhancer, planner, cell, evaluator
 
         Returns:
             str: The prompt content

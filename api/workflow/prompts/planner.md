@@ -32,6 +32,46 @@ LAYER 3:
 
 **DO NOT flatten the layers into sequential steps!** The layer structure is intentional for parallel execution.
 
+## 🚨 CRITICAL: STRICTLY FOLLOW THE ENHANCED DESCRIPTION STRUCTURE
+
+You are receiving a CAREFULLY CRAFTED enhanced description that has already:
+- Identified the optimal layer structure for parallelization
+- Determined the right granularity for each step
+- Specified exact operations and dependencies
+
+**YOUR JOB IS TO TRANSLATE, NOT REDESIGN:**
+
+1. **PRESERVE THE EXACT STEP STRUCTURE:**
+   - If the enhanced description has 3 steps in Layer 2, you create 3 cells in layer 2
+   - DO NOT split a step into multiple cells (one step = one cell)
+   - DO NOT combine multiple steps into one cell (each step = separate cell)
+   - DO NOT reorder steps within a layer
+   - DO NOT move steps between layers
+
+2. **PRESERVE THE EXACT STEP DESCRIPTIONS:**
+   - Use the enhanced description's wording as the foundation for cell descriptions
+   - DO NOT paraphrase or simplify the operations described
+   - DO NOT add operations not mentioned in the enhanced description
+   - DO NOT omit details from the enhanced description
+
+3. **ONLY ADD TECHNICAL DETAILS:**
+   - Your additions should be IMPLEMENTATION details (which tool to call, how to access variables)
+   - DO NOT change WHAT is being done, only add HOW to do it technically
+   - Example: "Extract buyer info" → "1. Get DC4 file ID from document_mapping['DC4']\n2. Call agent_query with query 'Extract buyer info'..."
+
+4. **WHEN IN DOUBT:**
+   - If a step seems too broad or too specific, KEEP IT AS IS - the enhancer made that choice deliberately
+   - If you're unsure about the operation, ask in a comment rather than reinterpreting
+   - The enhanced description is the SOURCE OF TRUTH
+
+**WRONG EXAMPLE (Redesigning):**
+Enhanced: "STEP 2.1: Extract all buyer and seller information"
+Planner creates TWO cells: "Extract buyer info" + "Extract seller info" ❌
+
+**CORRECT EXAMPLE (Translating):**
+Enhanced: "STEP 2.1: Extract all buyer and seller information"
+Planner creates ONE cell with description: "1. Get file ID from context\n2. Call agent_query with query 'Extract all buyer and seller information'..." ✅
+
 ## OUTPUT FORMAT
 
 You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no additional text.
@@ -58,9 +98,8 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
    - Every `[` must have a matching `]`
    - Every `"` must have a matching `"`
 
-5. **Keep descriptions concise** (under 200 characters per description)
-   - Long descriptions increase the risk of formatting errors
-   - Be specific but brief
+5. **Keep descriptions clear and with no informatin loss** 
+   - Be specific and include all essentiel information and details from the enhanced description
 
 **If your JSON is invalid, the workflow will fail immediately.**
 
@@ -72,7 +111,7 @@ You MUST respond with ONLY a valid JSON object. No markdown, no explanations, no
             "layer": 1,
             "sublayer_index": 1,
             "name": "Short Name (2-4 words)",
-            "description": "Detailed description of what this step does",
+            "description": "Numbered step-by-step recipe. E.g.: 1. Call agent_query with query '...' on file_ids=[context['var']]\\n2. Extract answer from response\\n3. Store as output_var (str)",
             "depends_on": [],
             "inputs_required": ["list", "of", "variable_names"],
             "outputs_produced": ["list", "of", "variable_names"],
@@ -155,61 +194,23 @@ For each cell, include a mix of:
 - All cells in a layer implicitly depend on ALL cells from the previous layer completing (execution order).
 - `depends_on` tracks which SPECIFIC cells provide the data this cell needs (data flow).
 
-## AVAILABLE PARADIGM TOOLS (v3 Agent API)
+## PARADIGM TOOL NAMES (for paradigm_tools_used field)
 
-When planning steps, use these tool names in `paradigm_tools_used`:
+Use these tool names in the `paradigm_tools_used` array. The cell code generator has full API documentation — you just need to specify WHICH tools each cell uses.
 
-### 🚨 CRITICAL: Tool Selection Guide (v3 API)
-
-**Use `agent_query` — let the agent choose tools by default (RECOMMENDED):**
-- Default (no force_tool): Agent reasons in multi-turn mode — can call multiple tools, search then analyze, and follow up. Best for most queries, especially multi-field extraction.
-- force_tool="document_search": Single-turn only — one quick search, no follow-up. Use sparingly for simple single-field lookups.
-- force_tool="document_analysis": Single-turn only — one analysis pass. Use sparingly when you specifically need the analysis tool and nothing else.
-- **Note:** Paradigm recommends NOT forcing a tool — automatic routing ensures the optimal tool is used.
-
-**Use `get_file_chunks` for RAW TEXT extraction:**
-- Getting literal text content without AI interpretation
-- Extracting first/last words, specific paragraphs, exact quotes
-- Examples: "Get the first 10 words", "Extract all email addresses"
-
-**Use `wait_for_embedding` after file uploads:**
-- ALWAYS include this step after uploading files
-- Files must be indexed before using in agent queries
-- Required before any operations on new files
-
-### Tool Descriptions (v3 Agent API)
-
-1. **agent_query** - Unified v3 Agent API query
-   - Use when: All document queries
-   - Inputs: query, file_ids, optional force_tool
-   - Outputs: v3 response with thread_id, turn_id, messages
-   - Default (no force_tool): Multi-turn agent reasoning — recommended for most queries
-   - force_tool options (single-turn only, use sparingly): "document_search" (fast), "document_analysis" (comprehensive)
-
-2. **wait_for_embedding** - Wait for file to be indexed (v2 API)
-   - Use when: After uploading files, before using them
-   - Inputs: file_id
-   - Outputs: file metadata when ready
-   - **CRITICAL**: Always wait for embedding before agent queries
-
-3. **get_file_chunks** - Get raw text chunks from documents (v2 API)
-   - Use when: Extracting literal text, exact content, verbatim quotes
-   - Inputs: file_id
-   - Outputs: chunks array with raw text and positions
-   - **KEY**: Returns ACTUAL document text, not AI-generated answers
-
-4. **upload_file** - Upload a file to Paradigm (v2 API)
-   - Use when: User wants to add new documents
-   - Inputs: file content
-   - Outputs: file_id, file metadata
-
-**NOTE**: v3 Agent API uses unified agent_query(). Prefer NOT using force_tool — multi-turn agent reasoning is more effective for complex queries. No polling needed for document_analysis in v3!
+- `agent_query` — AI document queries. Recommended default (multi-turn reasoning, no force_tool). Use for extraction, analysis, comparison, search.
+- `get_file_chunks` — Raw text extraction. Use when you need literal text content, not AI interpretation (e.g., first words, exact quotes).
+- `wait_for_embedding` — Wait for file indexing. ALWAYS include after file uploads, before any queries on those files.
+- `upload_file` — Upload new files to Paradigm.
 
 ## PLANNING RULES
 
-1. **Each step should do ONE logical thing**
-   - Bad: "Search documents and analyze them" (two things)
-   - Good: "Search for relevant documents" then "Analyze found documents"
+1. **Follow the step structure from the enhanced description (DO NOT redesign)**
+   - Each STEP in the enhanced description maps to ONE cell in your plan
+   - DO NOT split a step into multiple cells, even if it seems to do multiple things
+   - DO NOT combine multiple steps into one cell
+   - The enhancer has already determined the optimal step granularity
+   - Your job is to translate the step into a numbered technical recipe, NOT to redesign it
 
 2. **Respect layer structure from input**
    - Parse the LAYER X / STEP X.Y format from the enhanced description
@@ -224,9 +225,10 @@ When planning steps, use these tool names in `paradigm_tools_used`:
    - This is the human-readable output shown to the user
    - Always include this in the last step's outputs
 
-5. **Keep steps granular for visibility**
+5. **Follow the granularity from the enhanced description**
+   - The enhancer has already determined the optimal step granularity
    - Each step's output will be displayed to the user as it completes
-   - More granular = better user experience (they see progress)
+   - DO NOT split steps to make them "more granular" - trust the enhancer's choices
 
 6. **PARALLELIZATION RULES (CRITICAL)**
    - Steps in the SAME layer run in PARALLEL
@@ -235,6 +237,27 @@ When planning steps, use these tool names in `paradigm_tools_used`:
      - If Step 3.1 needs output from Step 2.1, add "2.1" to depends_on
      - If Step 3.1 needs outputs from ALL of Layer 2, add "2.1", "2.2", "2.3" to depends_on
    - Merge/aggregate steps typically depend on all parallel steps from the previous layer
+
+7. **Cell descriptions MUST be numbered step-by-step recipes**
+   - Each description is a numbered recipe (1., 2., 3., ...) that tells the code generator EXACTLY what to do, in what order
+   - Each sub-step specifies: which tool to call, what input/query to use, and what to do with the result
+   - Include variable access patterns (e.g., `context["document_mapping"]["DC4"]`)
+   - Include error handling hints where relevant (e.g., "if field is empty, retry with a targeted query")
+   - Use `\\n` to separate steps inside JSON string values
+
+   **❌ BAD (prose — too vague for code generation):**
+   ```
+   "description": "Extract buyer information from the DC4 document Zone A section"
+   ```
+   The code generator doesn't know: which tool to call, what query string to use, how to access the file ID, or what to do with the result.
+
+   **✅ GOOD (numbered recipe — unambiguous for code generation):**
+   ```
+   "description": "1. Get DC4 file ID: dc4_id = context['document_mapping']['DC4']\\n2. Call agent_query with query 'Extract the full buyer name, address, and SIRET number from Zone A (buyer identification section)' on file_ids=[dc4_id]\\n3. Extract the answer string from the response\\n4. If the answer is empty or missing fields, retry with a more targeted query: 'What is the buyer company name in Zone A?'\\n5. Store the extracted text as dc4_buyer_info (str)"
+   ```
+   Every sub-step is concrete: the code generator knows the tool, the query, the variable names, and the fallback strategy.
+
+   The cell description IS the specification. It should contain everything the code generator needs to produce correct, specific code — no guessing required.
 
 ## COMMON PATTERNS
 
@@ -245,7 +268,7 @@ When planning steps, use these tool names in `paradigm_tools_used`:
         {
             "step_number": 1,
             "name": "Document Search",
-            "description": "Search Paradigm for documents matching the user query",
+            "description": "1. Call agent_query with the user_input query using default tool routing\\n2. Extract the answer and document references from the response\\n3. Collect document IDs into a list\\n4. Store as search_results (dict) and document_ids (List[int])",
             "inputs_required": ["user_input"],
             "outputs_produced": ["search_results", "document_ids"],
             "paradigm_tools_used": ["agent_query"]
@@ -253,7 +276,7 @@ When planning steps, use these tool names in `paradigm_tools_used`:
         {
             "step_number": 2,
             "name": "Document Analysis",
-            "description": "Analyze the found documents in detail",
+            "description": "1. Read document_ids and user_input from context\\n2. Call agent_query with query based on user_input on file_ids=document_ids for detailed analysis\\n3. Extract the analysis answer from the response\\n4. Store as analysis_results (dict) and final_result (str)",
             "inputs_required": ["document_ids", "user_input"],
             "outputs_produced": ["analysis_results", "final_result"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
@@ -269,7 +292,7 @@ When planning steps, use these tool names in `paradigm_tools_used`:
         {
             "step_number": 1,
             "name": "File Analysis",
-            "description": "Analyze the attached files based on user query",
+            "description": "1. Read attached_file_ids and user_input from context\\n2. Call agent_query with query based on user_input on file_ids=attached_file_ids for detailed analysis\\n3. Extract the analysis answer from the response\\n4. Store as analysis_results (dict)",
             "inputs_required": ["user_input", "attached_file_ids"],
             "outputs_produced": ["analysis_results"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
@@ -277,7 +300,7 @@ When planning steps, use these tool names in `paradigm_tools_used`:
         {
             "step_number": 2,
             "name": "Summary Generation",
-            "description": "Generate a formatted summary of the analysis",
+            "description": "1. Read analysis_results from context\\n2. Call agent_query with query 'Generate a formatted summary of these analysis results: {analysis_results}'\\n3. Format the response for display\\n4. Store as final_result (str)",
             "inputs_required": ["analysis_results"],
             "outputs_produced": ["final_result"],
             "paradigm_tools_used": ["agent_query"]
@@ -298,7 +321,7 @@ This pattern shows how to structure PARALLEL execution:
             "layer": 1,
             "sublayer_index": 1,
             "name": "Topic A Search",
-            "description": "Search for documents about Topic A",
+            "description": "1. Call agent_query with query 'Find all information about Topic A' using default tool routing (no force_tool)\\n2. Extract the answer string from the response\\n3. Store as topic_a_results (str)",
             "depends_on": [],
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_a_results"],
@@ -310,7 +333,7 @@ This pattern shows how to structure PARALLEL execution:
             "layer": 1,
             "sublayer_index": 2,
             "name": "Topic B Search",
-            "description": "Search for documents about Topic B",
+            "description": "1. Call agent_query with query 'Find all information about Topic B' using default tool routing (no force_tool)\\n2. Extract the answer string from the response\\n3. Store as topic_b_results (str)",
             "depends_on": [],
             "inputs_required": ["user_input"],
             "outputs_produced": ["topic_b_results"],
@@ -322,7 +345,7 @@ This pattern shows how to structure PARALLEL execution:
             "layer": 2,
             "sublayer_index": 1,
             "name": "Results Synthesis",
-            "description": "Combine and synthesize findings from both searches",
+            "description": "1. Read topic_a_results and topic_b_results from context\\n2. Call agent_query with query 'Synthesize these findings into a coherent summary: Topic A: {topic_a_results}, Topic B: {topic_b_results}. Address the original question: {user_input}'\\n3. Extract the answer and store as final_result (str)",
             "depends_on": ["1.1", "1.2"],
             "inputs_required": ["topic_a_results", "topic_b_results"],
             "outputs_produced": ["final_result"],
@@ -351,7 +374,7 @@ This pattern shows how to structure PARALLEL execution:
         {
             "step_number": 1,
             "name": "Document Association",
-            "description": "Map uploaded documents to their types based on upload order or content. Create document_mapping dict.",
+            "description": "1. Read attached_file_ids from context\\n2. For each file_id, call agent_query with query 'What type of document is this? Is it a DC4, Avis, or other?' on file_ids=[file_id]\\n3. Build document_mapping dict: {'DC4': file_id_1, 'Avis': file_id_2}\\n4. If a document type cannot be identified, flag it in validation_status\\n5. Store document_mapping (Dict[str, int]) and validation_status (dict)",
             "inputs_required": ["attached_file_ids"],
             "outputs_produced": ["document_mapping", "validation_status"],
             "paradigm_tools_used": ["agent_query"]
@@ -359,7 +382,7 @@ This pattern shows how to structure PARALLEL execution:
         {
             "step_number": 2,
             "name": "Extract DC4 Info",
-            "description": "Extract information from DC4 document using document_mapping to get its file ID",
+            "description": "1. Get DC4 file ID: dc4_id = context['document_mapping']['DC4']\\n2. Call agent_query with query 'Extract all key information: parties, dates, amounts, terms, and conditions' on file_ids=[dc4_id]\\n3. Extract the answer string from the response\\n4. Store as dc4_info (dict with extracted fields)",
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["dc4_info"],
             "paradigm_tools_used": ["agent_query"]
@@ -367,7 +390,7 @@ This pattern shows how to structure PARALLEL execution:
         {
             "step_number": 3,
             "name": "Extract Avis Info",
-            "description": "Extract information from Avis document using document_mapping to get its file ID",
+            "description": "1. Get Avis file ID: avis_id = context['document_mapping']['Avis']\\n2. Call agent_query with query 'Extract all key information: parties, dates, amounts, terms, and conditions' on file_ids=[avis_id]\\n3. Extract the answer string from the response\\n4. Store as avis_info (dict with extracted fields)",
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["avis_info"],
             "paradigm_tools_used": ["agent_query"]
@@ -375,7 +398,7 @@ This pattern shows how to structure PARALLEL execution:
         {
             "step_number": 4,
             "name": "Compare Documents",
-            "description": "Compare extracted information from DC4 and Avis",
+            "description": "1. Read dc4_info and avis_info from context\\n2. Call agent_query with query 'Compare the following DC4 data: {dc4_info} with Avis data: {avis_info}. Identify matches, discrepancies, and missing fields'\\n3. Build comparison_results dict with keys: matches, discrepancies, details (str summary)\\n4. Format final_result as a human-readable comparison report (str)",
             "inputs_required": ["dc4_info", "avis_info"],
             "outputs_produced": ["comparison_results", "final_result"],
             "paradigm_tools_used": ["agent_query"]
@@ -471,7 +494,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 1,
             "name": "Climate Search",
-            "description": "Search Paradigm documents for information about climate change based on user query",
+            "description": "1. Call agent_query with query from user_input (climate change topic) using default tool routing\\n2. Extract the answer string from the response\\n3. Format the answer for display and store as search_results (dict) and final_result (str)",
             "inputs_required": ["user_input"],
             "outputs_produced": ["search_results", "final_result"],
             "paradigm_tools_used": ["agent_query"]
@@ -496,7 +519,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 1,
             "name": "Sales Document Search",
-            "description": "Search for documents containing quarterly sales data",
+            "description": "1. Call agent_query with query 'Find all documents containing quarterly sales data and revenue figures' using default tool routing\\n2. Extract the answer and document references from the response\\n3. Collect document IDs from the response into a list\\n4. Store as search_results (dict) and document_ids (List[int])",
             "inputs_required": ["user_input"],
             "outputs_produced": ["search_results", "document_ids"],
             "paradigm_tools_used": ["agent_query"]
@@ -504,7 +527,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 2,
             "name": "Trend Analysis",
-            "description": "Perform detailed analysis of sales trends across the found documents",
+            "description": "1. Read document_ids from context\\n2. Call agent_query with query 'Analyze quarterly sales trends, growth rates, and patterns across these documents' on file_ids=document_ids\\n3. Extract the analysis answer from the response\\n4. Store as analysis_results (dict with findings)",
             "inputs_required": ["document_ids"],
             "outputs_produced": ["analysis_results"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
@@ -512,7 +535,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 3,
             "name": "Report Generation",
-            "description": "Generate a comprehensive sales trend report",
+            "description": "1. Read analysis_results and search_results from context\\n2. Call agent_query with query 'Generate a comprehensive sales trend report from: Analysis: {analysis_results}, Search findings: {search_results}. Include key metrics, trends, and recommendations'\\n3. Format the response as a structured report\\n4. Store as final_result (str)",
             "inputs_required": ["analysis_results", "search_results"],
             "outputs_produced": ["final_result"],
             "paradigm_tools_used": ["agent_query"]
@@ -539,7 +562,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 1,
             "name": "Contract Analysis",
-            "description": "Analyze attached contract files to extract key terms, dates, and obligations",
+            "description": "1. Read attached_file_ids from context\\n2. For each file_id, call agent_query with query 'Extract all key contract terms: parties, effective dates, expiration dates, payment terms, obligations, and termination clauses' on file_ids=[file_id]\\n3. Collect extracted terms from each contract into a structured dict\\n4. Store as extraction_results (dict with per-contract findings)",
             "inputs_required": ["user_input", "attached_file_ids"],
             "outputs_produced": ["extraction_results"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
@@ -547,7 +570,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 2,
             "name": "Terms Summary",
-            "description": "Compile extracted terms into a structured summary",
+            "description": "1. Read extraction_results from context\\n2. Call agent_query with query 'Compile these contract extractions into a structured summary organized by: parties, key dates, financial terms, obligations, and notable clauses: {extraction_results}'\\n3. Format the response as a readable summary\\n4. Store as final_result (str)",
             "inputs_required": ["extraction_results"],
             "outputs_produced": ["final_result"],
             "paradigm_tools_used": ["agent_query"]
@@ -573,7 +596,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 1,
             "name": "Wait for Indexing",
-            "description": "Wait for all uploaded files to be indexed and ready",
+            "description": "1. Read attached_file_ids from context\\n2. For each file_id in attached_file_ids, call wait_for_embedding(file_id)\\n3. Collect all successfully indexed file IDs\\n4. Store as indexed_file_ids (List[int])",
             "inputs_required": ["attached_file_ids"],
             "outputs_produced": ["indexed_file_ids"],
             "paradigm_tools_used": ["wait_for_embedding"]
@@ -581,7 +604,7 @@ answer = client._extract_answer(result)
         {
             "step_number": 2,
             "name": "Extract First Words",
-            "description": "Get raw text chunks from each document and extract the first 10 words",
+            "description": "1. Read indexed_file_ids from context\\n2. For each file_id, call get_file_chunks(file_id) to retrieve raw text\\n3. From the first chunk of each file, split the text by whitespace and take the first 10 words\\n4. Collect results into a list of strings (one per file)\\n5. Format as a readable output and store as first_words_per_file (List[str]) and final_result (str)",
             "inputs_required": ["indexed_file_ids"],
             "outputs_produced": ["first_words_per_file", "final_result"],
             "paradigm_tools_used": ["get_file_chunks"]
@@ -643,7 +666,7 @@ LAYER 3:
             "layer": 1,
             "sublayer_index": 1,
             "name": "Initialize Documents",
-            "description": "Initialize document mapping and wait for indexing",
+            "description": "1. Read attached_file_ids from context\\n2. For each file_id, call wait_for_embedding(file_id) to ensure indexing is complete\\n3. For each file_id, call agent_query with query 'What type of document is this?' on file_ids=[file_id] to identify document type\\n4. Build document_mapping dict: {'Document A': file_id_1, 'Document B': file_id_2}\\n5. Store document_mapping (Dict[str, int])",
             "depends_on": [],
             "inputs_required": ["attached_file_ids"],
             "outputs_produced": ["document_mapping"],
@@ -654,7 +677,7 @@ LAYER 3:
             "layer": 2,
             "sublayer_index": 1,
             "name": "Extract Document A",
-            "description": "Extract information from Document A using document_mapping",
+            "description": "1. Get Document A file ID: doc_a_id = context['document_mapping']['Document A']\\n2. Call agent_query with query 'Extract all key information, fields, and data from this document' on file_ids=[doc_a_id]\\n3. Extract the answer string from the response\\n4. Store as doc_a_info (str)",
             "depends_on": ["1.1"],
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["doc_a_info"],
@@ -665,7 +688,7 @@ LAYER 3:
             "layer": 2,
             "sublayer_index": 2,
             "name": "Extract Document B",
-            "description": "Extract information from Document B using document_mapping",
+            "description": "1. Get Document B file ID: doc_b_id = context['document_mapping']['Document B']\\n2. Call agent_query with query 'Extract all key information, fields, and data from this document' on file_ids=[doc_b_id]\\n3. Extract the answer string from the response\\n4. Store as doc_b_info (str)",
             "depends_on": ["1.1"],
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["doc_b_info"],
@@ -676,7 +699,7 @@ LAYER 3:
             "layer": 3,
             "sublayer_index": 1,
             "name": "Compare and Report",
-            "description": "Compare extractions from both documents and generate final report",
+            "description": "1. Read doc_a_info and doc_b_info from context\\n2. Call agent_query with query 'Compare Document A: {doc_a_info} with Document B: {doc_b_info}. List matching fields, discrepancies, and missing data'\\n3. Format the comparison into a human-readable report\\n4. Store as final_result (str)",
             "depends_on": ["2.1", "2.2"],
             "inputs_required": ["doc_a_info", "doc_b_info"],
             "outputs_produced": ["final_result"],

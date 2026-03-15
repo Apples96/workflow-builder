@@ -376,6 +376,38 @@ class TestWorkflowEnhancement:
             assert len(data["enhanced_description"]) > len("analyser factures")
             assert "facture" in data["enhanced_description"].lower()
 
+    @pytest.mark.asyncio
+    @pytest.mark.workflow
+    async def test_enhance_description_extracts_questions(self, api_headers):
+        """Test that questions/warnings are extracted from enhanced description"""
+        if not ANTHROPIC_API_KEY:
+            pytest.skip("ANTHROPIC_API_KEY non définie")
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            # Use ambiguous description likely to trigger questions
+            payload = {
+                "description": "Extract the reference number and date from the document and compare amounts"
+            }
+
+            response = await client.post(
+                f"{API_BASE_URL}/api/workflows/enhance-description",
+                headers=api_headers,
+                json=payload
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Verify structure
+            assert "enhanced_description" in data
+            assert "questions" in data
+            assert "warnings" in data
+
+            # Check that arrays are populated (should extract from QUESTIONS AND LIMITATIONS sections)
+            # Note: May be empty if Claude doesn't detect ambiguity, but should not error
+            assert isinstance(data["questions"], list)
+            assert isinstance(data["warnings"], list)
+
 
 class TestWorkflowErrorHandling:
     """Tests de gestion d'erreurs"""

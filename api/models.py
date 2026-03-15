@@ -7,8 +7,7 @@ It includes models for workflows, executions, file operations, and error handlin
 Key Models:
     - WorkflowCreateRequest: For creating new workflows
     - WorkflowExecuteRequest: For executing workflows with user input
-    - WorkflowResponse: Standard workflow response format
-    - WorkflowExecutionResponse: Execution result format
+    - CellBasedWorkflowResponse: Cell-based workflow response format
     - File-related models: For file upload/management operations
     - Error models: Standard error response format
 
@@ -23,25 +22,6 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
-
-class WorkflowStatus(str, Enum):
-    """
-    Enumeration of possible workflow status values.
-    
-    States:
-        CREATED: Workflow has been created but code generation hasn't started
-        GENERATING: AI is currently generating code for the workflow
-        READY: Code generation complete, workflow ready for execution
-        EXECUTING: Workflow is currently being executed
-        COMPLETED: Workflow execution completed successfully
-        FAILED: Workflow creation or execution failed
-    """
-    CREATED = "created"
-    GENERATING = "generating"
-    READY = "ready"
-    EXECUTING = "executing"
-    COMPLETED = "completed"
-    FAILED = "failed"
 
 class WorkflowCreateRequest(BaseModel):
     """
@@ -86,37 +66,6 @@ class WorkflowExecuteRequest(BaseModel):
         max_length=20
     )
 
-class WorkflowResponse(BaseModel):
-    """
-    Standard response model for workflow operations.
-    
-    Contains all workflow metadata including generated code, status, and timing.
-    Used for both creation and retrieval endpoints.
-    """
-    id: str = Field(..., description="Unique workflow identifier")
-    name: Optional[str] = Field(None, description="Workflow name")
-    description: str = Field(..., description="Workflow description")
-    status: WorkflowStatus = Field(..., description="Current workflow status")
-    generated_code: Optional[str] = Field(None, description="Generated Python code")
-    created_at: datetime = Field(..., description="Creation timestamp")
-    updated_at: datetime = Field(..., description="Last update timestamp")
-    error: Optional[str] = Field(None, description="Error message if failed")
-
-class WorkflowExecutionResponse(BaseModel):
-    """
-    Response model for workflow execution operations.
-    
-    Contains execution results, status, timing, and any errors that occurred.
-    Tracks individual execution instances of workflows.
-    """
-    workflow_id: str = Field(..., description="Workflow identifier")
-    execution_id: str = Field(..., description="Unique execution identifier")
-    result: Optional[str] = Field(None, description="Execution result")
-    status: str = Field(..., description="Execution status")
-    execution_time: Optional[float] = Field(None, description="Execution time in seconds")
-    error: Optional[str] = Field(None, description="Error message if failed")
-    created_at: datetime = Field(..., description="Execution start timestamp")
-
 class ErrorResponse(BaseModel):
     """
     Standard error response model.
@@ -156,18 +105,6 @@ class FileInfoResponse(BaseModel):
     created_at: int = Field(..., description="Creation timestamp")
     purpose: str = Field(..., description="File purpose")
     content: Optional[str] = Field(None, description="File content if requested")
-
-class WorkflowWithFilesRequest(BaseModel):
-    """
-    Request model for creating workflows that use uploaded files.
-    
-    Extends basic workflow creation with file attachment capabilities.
-    The generated workflow will have access to the specified uploaded files.
-    """
-    description: str = Field(..., description="Natural language description of the workflow")
-    name: Optional[str] = Field(None, description="Optional name for the workflow")
-    context: Optional[Dict[str, Any]] = Field(None, description="Additional context for code generation")
-    uploaded_file_ids: Optional[List[int]] = Field(None, description="List of uploaded file IDs to use in workflow")
 
 class WorkflowDescriptionEnhanceRequest(BaseModel):
     """
@@ -290,27 +227,6 @@ class CellBasedWorkflowResponse(BaseModel):
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
     error: Optional[str] = Field(None, description="Error message if failed")
-
-
-class CellExecutionEvent(BaseModel):
-    """
-    Model for cell execution events streamed via SSE.
-
-    Used to communicate real-time progress during cell-based
-    workflow execution.
-    """
-    type: str = Field(..., description="Event type: workflow_start, cell_generating, cell_ready, cell_executing, cell_completed, cell_failed, workflow_completed, workflow_failed")
-    cell_id: Optional[str] = Field(None, description="Cell identifier (if applicable)")
-    cell_name: Optional[str] = Field(None, description="Cell name (if applicable)")
-    step_number: Optional[int] = Field(None, description="Step number (if applicable)")
-    total_cells: Optional[int] = Field(None, description="Total cells (for workflow_start)")
-    output: Optional[str] = Field(None, description="Cell output (for cell_completed)")
-    variables: Optional[List[str]] = Field(None, description="Variable names produced (for cell_completed)")
-    execution_time: Optional[float] = Field(None, description="Execution time in seconds")
-    error: Optional[str] = Field(None, description="Error message (for failures)")
-    final_result: Optional[str] = Field(None, description="Final result (for workflow_completed)")
-    completed_cells: Optional[int] = Field(None, description="Number of completed cells (for workflow_failed)")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp")
 
 
 class CellBasedExecuteRequest(BaseModel):

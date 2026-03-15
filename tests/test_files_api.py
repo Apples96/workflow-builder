@@ -376,7 +376,7 @@ class TestFileDelete:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             # D'abord uploader un fichier
-            test_content = b"Fichier à supprimer"
+            test_content = b"Fichier a supprimer"
             files = {
                 "file": ("to_delete.txt", test_content, "text/plain")
             }

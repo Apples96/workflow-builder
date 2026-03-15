@@ -11,6 +11,19 @@ import anthropic
 from typing import Dict, Any
 from ...config import settings
 
+# Use async client to avoid blocking the event loop during long API calls
+_async_client = None
+
+def _get_async_client():
+    """Get or create the async Anthropic client (lazy singleton)."""
+    global _async_client
+    if _async_client is None:
+        _async_client = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key,
+            timeout=settings.anthropic_timeout
+        )
+    return _async_client
+
 
 async def analyze_workflow_for_ui(workflow_code: str, workflow_name: str, workflow_description: str) -> Dict[str, Any]:
     """
@@ -31,8 +44,6 @@ async def analyze_workflow_for_ui(workflow_code: str, workflow_name: str, workfl
         - requires_files: bool
         - files: List[Dict] (optional)
     """
-
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     analysis_prompt = f"""Analyze this Python workflow code and extract the user interface requirements.
 
@@ -125,8 +136,9 @@ Output format (JSON only, no markdown):
 Return ONLY valid JSON, no markdown code blocks."""
 
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        client = _get_async_client()
+        response = await client.messages.create(
+            model=settings.anthropic_model,
             max_tokens=2000,
             messages=[
                 {
@@ -178,8 +190,6 @@ async def generate_simple_description(workflow_description: str, workflow_name: 
     Returns:
         A short, simple description in French (1-3 lines maximum)
     """
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     prompt = f"""Tu es un assistant qui crée des descriptions courtes et simples pour des workflows.
 
 Workflow: {workflow_name if workflow_name else "Sans nom"}
@@ -205,8 +215,9 @@ NE PAS inclure:
 Réponds UNIQUEMENT avec la description courte, sans introduction ni explication."""
 
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        client = _get_async_client()
+        response = await client.messages.create(
+            model=settings.anthropic_model,
             max_tokens=200,
             messages=[
                 {
