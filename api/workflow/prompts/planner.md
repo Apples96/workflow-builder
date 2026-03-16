@@ -268,17 +268,17 @@ Use these tool names in the `paradigm_tools_used` array. The cell code generator
         {
             "step_number": 1,
             "name": "Document Search",
-            "description": "1. Call agent_query with the user_input query using default tool routing\\n2. Extract the answer and document references from the response\\n3. Collect document IDs into a list\\n4. Store as search_results (dict) and document_ids (List[int])",
+            "description": "1. Call agent_query with the user_input query using default tool routing\\n2. Extract the answer string and document references from the response\\n3. Collect document IDs into a list\\n4. Store as search_answer (str) and document_ids (List[int])",
             "inputs_required": ["user_input"],
-            "outputs_produced": ["search_results", "document_ids"],
+            "outputs_produced": ["search_answer", "document_ids"],
             "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 2,
             "name": "Document Analysis",
-            "description": "1. Read document_ids and user_input from context\\n2. Call agent_query with query based on user_input on file_ids=document_ids for detailed analysis\\n3. Extract the analysis answer from the response\\n4. Store as analysis_results (dict) and final_result (str)",
+            "description": "1. Read document_ids and user_input from context\\n2. Call agent_query with query based on user_input on file_ids=document_ids for detailed analysis\\n3. Extract the analysis answer string from the response\\n4. Store as analysis_text (str) and final_result (str)",
             "inputs_required": ["document_ids", "user_input"],
-            "outputs_produced": ["analysis_results", "final_result"],
+            "outputs_produced": ["analysis_text", "final_result"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
         }
     ]
@@ -292,16 +292,16 @@ Use these tool names in the `paradigm_tools_used` array. The cell code generator
         {
             "step_number": 1,
             "name": "File Analysis",
-            "description": "1. Read attached_file_ids and user_input from context\\n2. Call agent_query with query based on user_input on file_ids=attached_file_ids for detailed analysis\\n3. Extract the analysis answer from the response\\n4. Store as analysis_results (dict)",
+            "description": "1. Read attached_file_ids and user_input from context\\n2. Call agent_query with query based on user_input on file_ids=attached_file_ids for detailed analysis\\n3. Extract the analysis answer string from the response\\n4. Store as analysis_text (str)",
             "inputs_required": ["user_input", "attached_file_ids"],
-            "outputs_produced": ["analysis_results"],
+            "outputs_produced": ["analysis_text"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
         },
         {
             "step_number": 2,
             "name": "Summary Generation",
-            "description": "1. Read analysis_results from context\\n2. Call agent_query with query 'Generate a formatted summary of these analysis results: {analysis_results}'\\n3. Format the response for display\\n4. Store as final_result (str)",
-            "inputs_required": ["analysis_results"],
+            "description": "1. Read analysis_text from context (a string)\\n2. Call agent_query with query 'Generate a formatted summary of these analysis results: {analysis_text}'\\n3. Format the response for display\\n4. Store as final_result (str)",
+            "inputs_required": ["analysis_text"],
             "outputs_produced": ["final_result"],
             "paradigm_tools_used": ["agent_query"]
         }
@@ -382,7 +382,7 @@ This pattern shows how to structure PARALLEL execution:
         {
             "step_number": 2,
             "name": "Extract DC4 Info",
-            "description": "1. Get DC4 file ID: dc4_id = context['document_mapping']['DC4']\\n2. Call agent_query with query 'Extract all key information: parties, dates, amounts, terms, and conditions' on file_ids=[dc4_id]\\n3. Extract the answer string from the response\\n4. Store as dc4_info (dict with extracted fields)",
+            "description": "1. Get DC4 file ID: dc4_id = context['document_mapping']['DC4']\\n2. Call agent_query with query 'Extract all key information: parties, dates, amounts, terms, and conditions' on file_ids=[dc4_id]\\n3. Extract the answer string from the response\\n4. Store as dc4_info (str - the extracted text)",
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["dc4_info"],
             "paradigm_tools_used": ["agent_query"]
@@ -390,7 +390,7 @@ This pattern shows how to structure PARALLEL execution:
         {
             "step_number": 3,
             "name": "Extract Avis Info",
-            "description": "1. Get Avis file ID: avis_id = context['document_mapping']['Avis']\\n2. Call agent_query with query 'Extract all key information: parties, dates, amounts, terms, and conditions' on file_ids=[avis_id]\\n3. Extract the answer string from the response\\n4. Store as avis_info (dict with extracted fields)",
+            "description": "1. Get Avis file ID: avis_id = context['document_mapping']['Avis']\\n2. Call agent_query with query 'Extract all key information: parties, dates, amounts, terms, and conditions' on file_ids=[avis_id]\\n3. Extract the answer string from the response\\n4. Store as avis_info (str - the extracted text)",
             "inputs_required": ["document_mapping"],
             "outputs_produced": ["avis_info"],
             "paradigm_tools_used": ["agent_query"]
@@ -398,19 +398,20 @@ This pattern shows how to structure PARALLEL execution:
         {
             "step_number": 4,
             "name": "Compare Documents",
-            "description": "1. Read dc4_info and avis_info from context\\n2. Call agent_query with query 'Compare the following DC4 data: {dc4_info} with Avis data: {avis_info}. Identify matches, discrepancies, and missing fields'\\n3. Build comparison_results dict with keys: matches, discrepancies, details (str summary)\\n4. Format final_result as a human-readable comparison report (str)",
+            "description": "1. Read dc4_info and avis_info from context (both are strings)\\n2. Call agent_query with query 'Compare the following DC4 data: {dc4_info} with Avis data: {avis_info}. Identify matches, discrepancies, and missing fields'\\n3. Store comparison_status (str - summary of what matched/differed) and comparison_details (str - full comparison with verbatims)\\n4. Format final_result as a human-readable comparison report (str)",
             "inputs_required": ["dc4_info", "avis_info"],
-            "outputs_produced": ["comparison_results", "final_result"],
+            "outputs_produced": ["comparison_status", "comparison_details", "final_result"],
             "paradigm_tools_used": ["agent_query"]
         }
     ],
     "shared_context_schema": {
         "attached_file_ids": "List[int] - Paradigm file IDs of uploaded documents in upload order",
         "document_mapping": "Dict[str, int] - Maps document type names to file IDs. Example: {\"DC4\": 150079, \"Avis\": 150080}. Access with document_mapping[\"DC4\"] to get file ID.",
-        "validation_status": "dict - Status of document mapping with any missing documents",
-        "dc4_info": "dict - Extracted information from DC4 document",
-        "avis_info": "dict - Extracted information from Avis document",
-        "comparison_results": "dict - Results of comparing DC4 and Avis",
+        "validation_status": "str - Status of document mapping: which documents were found and which are missing",
+        "dc4_info": "str - Extracted text with key information from DC4 document (parties, dates, amounts, terms)",
+        "avis_info": "str - Extracted text with key information from Avis document (parties, dates, amounts, terms)",
+        "comparison_status": "str - Summary of comparison results (e.g. '3 matches, 1 discrepancy, 1 missing field')",
+        "comparison_details": "str - Full comparison text with verbatims from both documents and match/mismatch details",
         "final_result": "str - Human-readable comparison report"
     }
 }
@@ -423,30 +424,44 @@ This pattern shows how to structure PARALLEL execution:
 
 ## CONTEXT SCHEMA GUIDELINES
 
-### CRITICAL: Prefer Simple Output Types
+### 🚨 CRITICAL: One Variable Per Piece of Information (Flat Variables First)
 
-When planning cell outputs, follow these rules:
+**Core principle:** If a downstream cell needs to read a piece of information, that piece of information MUST be its own context variable — typically a string. Do NOT bundle multiple results into a single dict variable.
 
-1. **Extraction cells that return text from Paradigm API should output STRINGS, not dicts**
-   - GOOD: "dc4_buyer_info": "str - Raw extracted text of buyer identification from DC4 section A"
-   - BAD: "dc4_buyer_info": "dict - Extracted buyer info from DC4"
+**Why:** Each cell is generated independently by Claude. When a producer cell outputs a dict, the consumer cell must guess the exact key names, nesting structure, and value types. Strings have ZERO structural ambiguity — there are no keys to guess wrong, no nesting to navigate, no type mismatches. This is critical for long workflows where a final cell aggregates results from many previous cells.
 
-2. **Only use dict outputs when the consumer cell needs multiple named fields**
-   - GOOD for comparison results: "buyer_comparison_results": "Dict with keys: control_1 (str), control_2 (str), details (str), comparison_details (List[Dict])"
-   - BAD for raw text: "dc4_buyer_info": "dict - Contains extracted info"
+**When to use strings (default):** Any extracted text, status, comparison result, details, verbatim, calculation result, or human-readable output.
 
-3. **For every dict output, you MUST specify the exact keys and their types in shared_context_schema**
+**When to use dicts:** ONLY for lookup structures where the consumer needs key-based access (e.g., `document_mapping` to look up file IDs by document type). NOT for bundling multiple results together.
 
-4. **Use separate variables for data vs metadata when both are needed**
-   - "dc4_buyer_text": "str - Raw extracted buyer identification text"
-   - "dc4_buyer_metadata": "Dict with keys: source_document (str), document_id (int), extraction_method (str)"
+**When to use lists:** ONLY when the consumer needs to iterate over a variable-length collection of items.
 
-5. **Dict variables consumed by a report/summary cell MUST include a top-level `"details"` string key**
-   - When a comparison or analysis cell outputs a dict that will later be read by a report or aggregation cell, the schema MUST require a top-level `"details"` key containing a human-readable text summary of the result.
-   - This ensures the report cell can always do `variable.get("details")` to get displayable text, regardless of how many nested sub-dicts exist.
-   - GOOD: `"buyer_comparison": "Dict with keys: controle_1 (str), controle_2 (str), details (str) - details is a human-readable summary of all controls"`
-   - BAD: `"buyer_comparison": "Dict with keys: controle_1 (dict), controle_2 (dict)"` (no top-level details — report cell will show "Aucun détail disponible")
-   - The `"details"` value should concatenate/summarize the findings from all nested controls into one readable string.
+Follow these rules:
+
+1. **Each distinct result a downstream cell will consume = one separate string variable**
+   - If a step produces a status AND a details text, those are TWO variables
+   - If a step checks 3 things and a report needs all 3, those are 3 (or 6) variables
+   - GOOD: `"buyer_check_status"`, `"buyer_check_details"` — two simple strings
+   - BAD: `"buyer_check": "Dict with keys: status, details"` — forces consumer to guess keys
+
+2. **Extraction cells that return text from Paradigm API should output STRINGS, not dicts**
+   - GOOD: `"dc4_buyer_info": "str - Raw extracted text of buyer identification from DC4 section A"`
+   - BAD: `"dc4_buyer_info": "dict - Extracted buyer info from DC4"`
+
+3. **For multi-check steps, output one status variable and one details variable per logical group**
+   - A step that runs checks 1, 2, 3 should output: `step_X_status` (str — summary like "Check 1: validé, Check 2: non validé, Check 3: à vérifier") AND `step_X_details` (str — full human-readable report with all verbatims and comparisons)
+   - This way the report cell can read `step_X_status` for the summary table and `step_X_details` for the detailed section — both are simple strings, no dict traversal needed
+
+4. **NEVER use dicts to bundle results that a report/aggregation cell will display**
+   - BAD: `"zone_a_results": "Dict with keys: controle_1 (dict), controle_2 (dict), details (str)"`
+   - GOOD: `"zone_a_status": "str - Status summary for all controls in this zone"` + `"zone_a_details": "str - Full comparison details with verbatims for all controls in this zone"`
+
+5. **Use dicts ONLY for lookup structures**
+   - GOOD: `"document_mapping": "Dict[str, int] - Maps document type names to file IDs"`
+   - GOOD: `"report_statistics": "Dict with keys: total (int), validated (int), failed (int)"`
+   - BAD: `"verification_results": "Dict with keys: check_1 (dict), check_2 (dict)"` — use flat strings instead
+
+6. **For every dict output, you MUST specify the exact keys and their types in shared_context_schema**
 
 The `shared_context_schema` should document every variable that flows between cells.
 **Include detailed type information and usage examples**, especially for complex types like `document_mapping`.
@@ -457,9 +472,10 @@ The `shared_context_schema` should document every variable that flows between ce
         "user_input": "str - The original user query/question",
         "attached_file_ids": "List[int] - IDs of files attached by user (may be empty)",
         "document_mapping": "Dict[str, int] - Maps document type names to Paradigm file IDs. Example: {\"DC4\": 150079, \"Avis\": 150080}. Access: document_mapping[\"DC4\"] returns 150079",
-        "search_results": "dict - Raw search results with 'answer' and 'documents' keys",
+        "search_answer": "str - The extracted answer text from the document search",
         "document_ids": "List[int] - IDs of documents to analyze",
-        "analysis_results": "dict - Detailed analysis output",
+        "analysis_status": "str - Summary status of the analysis (e.g. validé / non validé)",
+        "analysis_details": "str - Full analysis text with supporting evidence and verbatims",
         "final_result": "str - Human-readable final output for the user"
     }
 }
@@ -494,15 +510,15 @@ answer = client._extract_answer(result)
         {
             "step_number": 1,
             "name": "Climate Search",
-            "description": "1. Call agent_query with query from user_input (climate change topic) using default tool routing\\n2. Extract the answer string from the response\\n3. Format the answer for display and store as search_results (dict) and final_result (str)",
+            "description": "1. Call agent_query with query from user_input (climate change topic) using default tool routing\\n2. Extract the answer string from the response\\n3. Format the answer for display and store as search_answer (str) and final_result (str)",
             "inputs_required": ["user_input"],
-            "outputs_produced": ["search_results", "final_result"],
+            "outputs_produced": ["search_answer", "final_result"],
             "paradigm_tools_used": ["agent_query"]
         }
     ],
     "shared_context_schema": {
         "user_input": "str - The user's search query about climate change",
-        "search_results": "dict - Search results with answer and document references",
+        "search_answer": "str - The extracted answer text from the document search",
         "final_result": "str - The search answer formatted for display"
     }
 }
@@ -519,33 +535,33 @@ answer = client._extract_answer(result)
         {
             "step_number": 1,
             "name": "Sales Document Search",
-            "description": "1. Call agent_query with query 'Find all documents containing quarterly sales data and revenue figures' using default tool routing\\n2. Extract the answer and document references from the response\\n3. Collect document IDs from the response into a list\\n4. Store as search_results (dict) and document_ids (List[int])",
+            "description": "1. Call agent_query with query 'Find all documents containing quarterly sales data and revenue figures' using default tool routing\\n2. Extract the answer and document references from the response\\n3. Collect document IDs from the response into a list\\n4. Store as search_answer (str) and document_ids (List[int])",
             "inputs_required": ["user_input"],
-            "outputs_produced": ["search_results", "document_ids"],
+            "outputs_produced": ["search_answer", "document_ids"],
             "paradigm_tools_used": ["agent_query"]
         },
         {
             "step_number": 2,
             "name": "Trend Analysis",
-            "description": "1. Read document_ids from context\\n2. Call agent_query with query 'Analyze quarterly sales trends, growth rates, and patterns across these documents' on file_ids=document_ids\\n3. Extract the analysis answer from the response\\n4. Store as analysis_results (dict with findings)",
+            "description": "1. Read document_ids from context\\n2. Call agent_query with query 'Analyze quarterly sales trends, growth rates, and patterns across these documents' on file_ids=document_ids\\n3. Extract the analysis answer from the response\\n4. Store as analysis_text (str - the full analysis text)",
             "inputs_required": ["document_ids"],
-            "outputs_produced": ["analysis_results"],
+            "outputs_produced": ["analysis_text"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
         },
         {
             "step_number": 3,
             "name": "Report Generation",
-            "description": "1. Read analysis_results and search_results from context\\n2. Call agent_query with query 'Generate a comprehensive sales trend report from: Analysis: {analysis_results}, Search findings: {search_results}. Include key metrics, trends, and recommendations'\\n3. Format the response as a structured report\\n4. Store as final_result (str)",
-            "inputs_required": ["analysis_results", "search_results"],
+            "description": "1. Read analysis_text and search_answer from context (both are strings)\\n2. Call agent_query with query 'Generate a comprehensive sales trend report from: Analysis: {analysis_text}, Search findings: {search_answer}. Include key metrics, trends, and recommendations'\\n3. Format the response as a structured report\\n4. Store as final_result (str)",
+            "inputs_required": ["analysis_text", "search_answer"],
             "outputs_produced": ["final_result"],
             "paradigm_tools_used": ["agent_query"]
         }
     ],
     "shared_context_schema": {
         "user_input": "str - The query about quarterly sales trends",
-        "search_results": "dict - Initial search results for sales documents",
+        "search_answer": "str - The extracted answer text from the initial sales document search",
         "document_ids": "List[int] - IDs of sales documents to analyze",
-        "analysis_results": "dict - Detailed trend analysis output",
+        "analysis_text": "str - Full trend analysis text with findings, growth rates, and patterns",
         "final_result": "str - Formatted sales trend report"
     }
 }
@@ -562,16 +578,16 @@ answer = client._extract_answer(result)
         {
             "step_number": 1,
             "name": "Contract Analysis",
-            "description": "1. Read attached_file_ids from context\\n2. For each file_id, call agent_query with query 'Extract all key contract terms: parties, effective dates, expiration dates, payment terms, obligations, and termination clauses' on file_ids=[file_id]\\n3. Collect extracted terms from each contract into a structured dict\\n4. Store as extraction_results (dict with per-contract findings)",
+            "description": "1. Read attached_file_ids from context\\n2. For each file_id, call agent_query with query 'Extract all key contract terms: parties, effective dates, expiration dates, payment terms, obligations, and termination clauses' on file_ids=[file_id]\\n3. Concatenate extracted terms from each contract into a single text\\n4. Store as extraction_text (str - all extracted terms concatenated with file separators)",
             "inputs_required": ["user_input", "attached_file_ids"],
-            "outputs_produced": ["extraction_results"],
+            "outputs_produced": ["extraction_text"],
             "paradigm_tools_used": ["analyze_documents_with_polling"]
         },
         {
             "step_number": 2,
             "name": "Terms Summary",
-            "description": "1. Read extraction_results from context\\n2. Call agent_query with query 'Compile these contract extractions into a structured summary organized by: parties, key dates, financial terms, obligations, and notable clauses: {extraction_results}'\\n3. Format the response as a readable summary\\n4. Store as final_result (str)",
-            "inputs_required": ["extraction_results"],
+            "description": "1. Read extraction_text from context (a string with all extracted terms)\\n2. Call agent_query with query 'Compile these contract extractions into a structured summary organized by: parties, key dates, financial terms, obligations, and notable clauses: {extraction_text}'\\n3. Format the response as a readable summary\\n4. Store as final_result (str)",
+            "inputs_required": ["extraction_text"],
             "outputs_produced": ["final_result"],
             "paradigm_tools_used": ["agent_query"]
         }
@@ -579,7 +595,7 @@ answer = client._extract_answer(result)
     "shared_context_schema": {
         "user_input": "str - Instructions for contract analysis",
         "attached_file_ids": "List[int] - IDs of uploaded contract files",
-        "extraction_results": "dict - Extracted key terms and data from contracts",
+        "extraction_text": "str - Extracted key terms from all contracts, concatenated with file separators",
         "final_result": "str - Formatted summary of contract terms"
     }
 }

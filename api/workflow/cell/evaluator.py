@@ -548,9 +548,6 @@ IMPORTANT: This is a FORMAT reference, not expected content.
 
         lines = []
         for name, value in variables.items():
-            # Truncate very long values
-            if len(value) > 500:
-                value = value[:500] + "... (truncated)"
             lines.append("  {}: {}".format(name, value))
 
         return "\n".join(lines)

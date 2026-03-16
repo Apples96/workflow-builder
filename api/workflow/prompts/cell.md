@@ -108,42 +108,49 @@ If it says "Dict with keys X, Y", access those specific keys. Do NOT guess key n
 ### Rule 4: Never wrap simple data in unnecessary metadata dicts
 If the plan says to output a string, output a string. Save metadata for separate output variables.
 
-### Rule 5: Dict outputs consumed by report cells MUST include a top-level "details" key
-When your cell outputs a dict (e.g., comparison results, analysis results) that a later report/summary cell will display, you MUST include a top-level `"details"` key with a human-readable string summarizing all findings. Do NOT rely on the report cell to dig into nested sub-dicts.
+### Rule 5: Output each piece of information as its own string variable (flat variables first)
+When your cell produces results that a downstream cell will read (especially a report/aggregation cell), output each distinct piece of information as a **separate string variable** — do NOT bundle them into a dict.
+
+**Why:** Downstream cells are generated independently and cannot see your code. Strings have zero structural ambiguity — no keys to guess wrong, no nesting to navigate. Dicts create fragile coupling between producer and consumer.
+
 ```python
-# GOOD — report cell can simply do result.get("details")
+# GOOD — each piece of data is its own string, trivial for the report cell to read
 return {
-    "comparison_results": {
+    "zone_a_status": "Controle 1: validé | Controle 2: à vérifier",
+    "zone_a_details": "Controle 1: NOM ACHETEUR DC4='UGAP' vs Avis='UGAP' -> identique, validé.\nControle 2: ADRESSE DC4='1 av. de Lyon' vs Avis='1 avenue de Lyon' -> correspondance non verbatim, à vérifier."
+}
+```
+
+```python
+# BAD — consumer must guess dict keys, traverse nesting, handle missing keys
+return {
+    "zone_a_results": {
         "controle_1": {"status": "OK", "details": "..."},
-        "controle_2": {"status": "NOK", "details": "..."},
-        "details": "Controle 1: OK - les informations concordent. Controle 2: NOK - ecart detecte sur le montant."
+        "controle_2": {"status": "NOK", "details": "..."}
     }
 }
 ```
 
-### Rule 6: Report/aggregation cells must handle dict values robustly
-When generating code for a report or aggregation cell that reads dict inputs and displays their content:
-1. **Always check if a value is a dict before treating it as a string.** If it is a dict, format it readably (e.g., extract its `"details"` or `"status"` keys) instead of dumping the raw repr.
-2. **If there is no top-level `"details"` key**, look inside nested sub-dicts and concatenate their `"details"` values.
-3. **Never display raw dict/repr output** — always produce human-readable text.
+**When you MUST use a dict** (e.g., `document_mapping` for lookup), always specify exact keys in the schema and keep it flat.
+
+### Rule 6: Report/aggregation cells — just read strings from context
+When generating code for a report or aggregation cell, all inputs should already be strings (status summaries, detailed text, etc.). Simply read them from context and concatenate into the report. No dict traversal needed.
+
 ```python
-# Pattern for safely extracting details from a variable that may or may not have a top-level "details"
-def extract_details(data):
+# Pattern for report cells — inputs are strings, assembly is trivial
+status = context.get("zone_a_status", "Non exécuté")
+details = context.get("zone_a_details", "Aucun détail disponible")
+report_section = "## Zone A\n**Statut:** {}\n\n{}\n".format(status, details)
+```
+
+If a variable might be a dict (legacy or fallback), convert it safely:
+```python
+def ensure_string(data):
+    """Convert any value to a displayable string."""
     if isinstance(data, str):
         return data
     if isinstance(data, dict):
-        # Prefer top-level "details" key
-        if "details" in data:
-            return data["details"]
-        # Fallback: look for "details" or "details_comparaison" or "validation_details" inside nested sub-dicts
-        parts = []
-        for key, value in data.items():
-            if isinstance(value, dict):
-                detail = value.get("details") or value.get("details_comparaison") or value.get("validation_details") or str(value)
-                parts.append("{}: {}".format(key, detail))
-            elif isinstance(value, str):
-                parts.append("{}: {}".format(key, value))
-        return "\n".join(parts) if parts else str(data)
+        return "\n".join("{}: {}".format(k, v) for k, v in data.items())
     return str(data)
 ```
 
@@ -404,13 +411,14 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     """
     Cell: Document Analysis using v3 Agent API
     Perform detailed analysis on documents - v3 returns directly, no polling needed!
+    Outputs flat strings, not dicts — easy for downstream cells to consume.
     """
     document_ids = context.get("document_ids", [])
     user_input = context.get("user_input", "Analyze these documents")
 
     if not document_ids:
         return {
-            "analysis_results": {},
+            "analysis_text": "No documents to analyze",
             "final_result": "No documents to analyze"
         }
 
@@ -428,8 +436,9 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
         answer = paradigm_client.extract_answer(result)
         print("CELL_OUTPUT: Analysis complete")
 
+        # Return flat strings — NOT the raw API response dict
         return {
-            "analysis_results": result,
+            "analysis_text": answer,
             "final_result": answer
         }
     finally:
@@ -452,36 +461,20 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     """
     Cell: Summary Generation using v3 Agent API
     Generate a formatted summary from previous results.
+    All inputs are strings — no dict traversal needed.
     """
-    analysis_results = context.get("analysis_results", {})
-    search_results = context.get("search_results", {})
+    # Inputs are flat strings from previous cells
+    analysis_text = context.get("analysis_text", "")
+    search_answer = context.get("search_answer", "")
 
     print("CELL_OUTPUT: Generating summary...")
 
-    # Combine available data
+    # Combine available data — both are already strings
     data_to_summarize = []
-    if analysis_results:
-        # Extract answer from v3 format
-        if isinstance(analysis_results, dict):
-            answer = analysis_results.get("answer", {})
-            if isinstance(answer, dict):
-                text = answer.get("final_answer", str(analysis_results))
-            else:
-                text = str(answer)
-        else:
-            text = str(analysis_results)
-        data_to_summarize.append("Analysis: {}".format(text))
-
-    if search_results:
-        if isinstance(search_results, dict):
-            answer = search_results.get("answer", {})
-            if isinstance(answer, dict):
-                text = answer.get("final_answer", str(search_results))
-            else:
-                text = str(answer)
-        else:
-            text = str(search_results)
-        data_to_summarize.append("Search findings: {}".format(text))
+    if analysis_text:
+        data_to_summarize.append("Analysis: {}".format(analysis_text))
+    if search_answer:
+        data_to_summarize.append("Search findings: {}".format(search_answer))
 
     if not data_to_summarize:
         return {"final_result": "No data available to summarize"}
@@ -489,15 +482,12 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     # ParadigmClient is pre-injected - just instantiate it
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
-        # Use v3 agent_query without force_tool for text generation (no files needed)
         prompt = "You are a helpful assistant. Create a well-formatted summary of the following:\n\n{}".format(
             "\n\n".join(data_to_summarize)
         )
 
         result = await paradigm_client.agent_query(
             query=prompt
-            # No file_ids needed for pure text generation
-            # No force_tool - let agent respond naturally
         )
 
         summary = paradigm_client.extract_answer(result)
@@ -582,6 +572,10 @@ This pattern applies whenever the cell description says "generate report", "buil
 report, the MORE important it is to use pure Python — an LLM call would lose precision,
 truncate data, or hallucinate details.
 
+**Key principle:** Because previous cells output flat string variables (status and details
+as separate strings), the report cell is trivial — just read strings and concatenate.
+No dict traversal, no key guessing, no isinstance checks.
+
 ```python
 import asyncio
 import json
@@ -592,122 +586,50 @@ from typing import Optional, List, Dict, Any
 logger = logging.getLogger(__name__)
 
 
-def extract_details(data):
-    """Safely extract human-readable details from a variable that may be a str or dict."""
+def ensure_string(data):
+    """Convert any value to a displayable string (safety fallback)."""
     if isinstance(data, str):
         return data
     if isinstance(data, dict):
-        if "details" in data:
-            return data["details"]
-        parts = []
-        for key, value in data.items():
-            if isinstance(value, dict):
-                detail = value.get("details") or value.get("details_comparaison") or str(value)
-                parts.append("{}: {}".format(key, detail))
-            elif isinstance(value, str):
-                parts.append("{}: {}".format(key, value))
-        return "\n".join(parts) if parts else str(data)
+        return "\n".join("{}: {}".format(k, v) for k, v in data.items())
     return str(data)
-
-
-def format_control(control_data, control_label):
-    """Format a single control result into a report section."""
-    if not isinstance(control_data, dict):
-        return "### {}\n- Statut: DONNÉES MANQUANTES\n- Détail: {}\n".format(
-            control_label, str(control_data)
-        )
-    statut = control_data.get("statut", control_data.get("status", "inconnu"))
-    details = control_data.get("details", control_data.get("details_comparaison", ""))
-    verbatim_dc4 = control_data.get("verbatim_dc4", "")
-    verbatim_avis = control_data.get("verbatim_avis", "")
-
-    section = "### {}\n- **Statut**: {}\n- **Détails**: {}\n".format(
-        control_label, statut.upper(), details
-    )
-    if verbatim_dc4:
-        section += "- **Verbatim DC4**: {}\n".format(verbatim_dc4)
-    if verbatim_avis:
-        section += "- **Verbatim Avis**: {}\n".format(verbatim_avis)
-    return section
 
 
 async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Cell: Compile Final Verification Report
-    Aggregate all control results from previous cells into a structured report.
+    Cell: Compile Final Report
+    Aggregate all results from previous cells into a structured report.
     NO API calls — pure Python data assembly.
+
+    All inputs are flat string variables (status + details per step).
     """
-    print("CELL_OUTPUT: Building structured verification report...")
+    print("CELL_OUTPUT: Building structured report...")
 
-    # Collect all verification results from context
-    zone_a = context.get("zone_a_verification", {})
-    zone_b = context.get("zone_b_verification", {})
-    zone_c = context.get("zone_c_verification", {})
-    zone_f = context.get("zone_f_price_verification", {})
-    zone_h = context.get("zone_h_iban_validation", {})
+    # Read flat string variables from context — each is a simple string
+    step_a_status = ensure_string(context.get("zone_a_status", "Non exécuté"))
+    step_a_details = ensure_string(context.get("zone_a_details", "Aucun détail disponible"))
+    step_b_status = ensure_string(context.get("zone_b_status", "Non exécuté"))
+    step_b_details = ensure_string(context.get("zone_b_details", "Aucun détail disponible"))
+    step_c_status = ensure_string(context.get("zone_c_status", "Non exécuté"))
+    step_c_details = ensure_string(context.get("zone_c_details", "Aucun détail disponible"))
 
-    # Build report sections from each zone's controls
-    report_sections = []
-    all_controls = []
+    # Build summary section
+    summary = "# Rapport de Vérification\n\n"
+    summary += "## Résumé\n"
+    summary += "- Zone A: {}\n".format(step_a_status)
+    summary += "- Zone B: {}\n".format(step_b_status)
+    summary += "- Zone C: {}\n".format(step_c_status)
+    summary += "\n"
 
-    # --- Zone A: Controls 1-2 ---
-    report_sections.append("## Zone A — Identification de l'acheteur")
-    for ctrl_key in ["controle_1", "controle_2"]:
-        ctrl = zone_a.get(ctrl_key, {})
-        all_controls.append(ctrl)
-        report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
+    # Build detailed sections — just paste the details strings
+    summary += "## Zone A — Détails\n{}\n\n".format(step_a_details)
+    summary += "## Zone B — Détails\n{}\n\n".format(step_b_details)
+    summary += "## Zone C — Détails\n{}\n\n".format(step_c_details)
 
-    # --- Zone B: Controls 3-4 ---
-    report_sections.append("## Zone B — Objet du marché")
-    for ctrl_key in ["controle_3", "controle_4"]:
-        ctrl = zone_b.get(ctrl_key, {})
-        all_controls.append(ctrl)
-        report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
-
-    # --- Zone C: Controls 5-8 ---
-    report_sections.append("## Zone C — Cases cochées")
-    for ctrl_key in ["controle_5", "controle_6", "controle_7", "controle_8"]:
-        ctrl = zone_c.get(ctrl_key, {})
-        if ctrl:
-            all_controls.append(ctrl)
-            report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
-
-    # --- Zone F: Control 16 ---
-    report_sections.append("## Zone F — Prix des prestations")
-    ctrl_16 = zone_f.get("controle_16", {})
-    all_controls.append(ctrl_16)
-    report_sections.append(format_control(ctrl_16, "Controle 16"))
-
-    # --- Zone H: Controls 17-18 ---
-    report_sections.append("## Zone H — Validation IBAN")
-    for ctrl_key in ["controle_17", "controle_18"]:
-        ctrl = zone_h.get(ctrl_key, {})
-        all_controls.append(ctrl)
-        report_sections.append(format_control(ctrl, ctrl_key.replace("_", " ").title()))
-
-    # Compute summary statistics
-    total = len(all_controls)
-    validated = sum(1 for c in all_controls if isinstance(c, dict) and c.get("statut", c.get("status", "")).lower() == "validé")
-    not_validated = sum(1 for c in all_controls if isinstance(c, dict) and c.get("statut", c.get("status", "")).lower() == "non validé")
-    to_check = total - validated - not_validated
-
-    summary = "# Rapport de Vérification DC4\n\n"
-    summary += "**Résultat global**: {} contrôles validés / {} total\n".format(validated, total)
-    summary += "- Validés: {}\n- Non validés: {}\n- À vérifier: {}\n\n".format(
-        validated, not_validated, to_check
-    )
-    summary += "\n\n".join(report_sections)
-
-    print("CELL_OUTPUT: Report assembled — {}/{} controls validated".format(validated, total))
+    print("CELL_OUTPUT: Report assembled")
 
     return {
-        "final_result": summary,
-        "report_statistics": {
-            "total_controls": total,
-            "validated": validated,
-            "not_validated": not_validated,
-            "to_check": to_check
-        }
+        "final_result": summary
     }
 ```
 
