@@ -87,11 +87,16 @@ class CellExecutor:
         cell_generator: Generator for cell code
     """
 
-    def __init__(self):
-        """Initialize the cell executor."""
+    def __init__(self, paradigm_api_key: str = None):
+        """Initialize the cell executor.
+
+        Args:
+            paradigm_api_key: Per-request Paradigm API key. Falls back to settings if not provided.
+        """
         self.max_cell_execution_time = settings.max_cell_execution_time
         self.max_retry_attempts = settings.max_retry_attempts
         self.max_evaluation_retries = settings.max_evaluation_retries
+        self.paradigm_api_key = paradigm_api_key or settings.lighton_api_key
         self.cell_generator = CellCodeGenerator()
         self.cell_evaluator = CellOutputEvaluator()
 
@@ -1119,14 +1124,14 @@ CRITICAL RULES:
         Returns:
             str: Code with actual keys injected
         """
-        # Replace placeholder API keys with actual values
+        # Replace placeholder API keys with actual values (uses per-request key)
         code = code.replace(
             'LIGHTON_API_KEY = os.getenv("PARADIGM_API_KEY", "your_api_key_here")',
-            'LIGHTON_API_KEY = "{}"'.format(settings.lighton_api_key)
+            'LIGHTON_API_KEY = "{}"'.format(self.paradigm_api_key)
         )
         code = code.replace(
             'LIGHTON_API_KEY = "your_api_key_here"',
-            'LIGHTON_API_KEY = "{}"'.format(settings.lighton_api_key)
+            'LIGHTON_API_KEY = "{}"'.format(self.paradigm_api_key)
         )
         code = code.replace(
             'LIGHTON_BASE_URL = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")',
@@ -1239,7 +1244,7 @@ CRITICAL RULES:
             # Pre-injected Paradigm API client and configuration
             # Cells can use ParadigmClient directly without defining it
             'ParadigmClient': ParadigmClient,
-            'LIGHTON_API_KEY': settings.lighton_api_key,
+            'LIGHTON_API_KEY': self.paradigm_api_key,
             'LIGHTON_BASE_URL': settings.lighton_base_url,
             # Helper function for parsing v3 API responses
             '_extract_v3_answer': _extract_v3_answer,

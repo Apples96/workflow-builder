@@ -33,7 +33,7 @@ import re
 import time
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 import uvicorn
@@ -62,7 +62,7 @@ from .workflow.core.executor import workflow_executor
 from .workflow.models import Workflow, WorkflowExecution, ExecutionStatus, WorkflowPlan, WorkflowCell, CellStatus
 from .workflow.cell.planner import WorkflowPlanner
 from .workflow.cell.executor import CellExecutor
-from .paradigm_client import paradigm_client
+from .paradigm_client import ParadigmClient, paradigm_client
 
 # Configure logging based on debug settings
 logging.basicConfig(level=logging.INFO if settings.debug else logging.WARNING)
@@ -129,22 +129,33 @@ def validate_anthropic_api_key():
         )
     return True
 
-def validate_lighton_api_key():
+def get_paradigm_api_key(request: Request) -> str:
     """
-    Validate that LightOn API key is available.
-    
+    Extract Paradigm API key from request header or query param (for SSE).
+
+    Users provide their own Paradigm API key via the frontend.
+    Falls back to server-side .env key for development convenience.
+
+    Args:
+        request: The incoming FastAPI request
+
     Returns:
-        bool: True if API key is available
-        
+        str: The Paradigm API key
+
     Raises:
-        HTTPException: 503 if API key is missing
+        HTTPException: 401 if no API key is found
     """
-    if not settings.lighton_api_key:
+    api_key = (
+        request.headers.get("X-Paradigm-Api-Key")
+        or request.query_params.get("api_key")
+        or settings.lighton_api_key
+    )
+    if not api_key:
         raise HTTPException(
-            status_code=503,
-            detail="LightOn API key not configured. Please set LIGHTON_API_KEY environment variable."
+            status_code=401,
+            detail="Paradigm API key required. Please enter your API key in the settings bar."
         )
-    return True
+    return api_key
 
 # Create FastAPI app with comprehensive metadata
 app = FastAPI(
@@ -429,7 +440,7 @@ async def create_cell_based_workflow(request: WorkflowCreateRequest):
 
 
 @api_router.post("/workflows/{workflow_id}/execute-stream", tags=["Cell-Based Workflows"])
-async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteRequest):
+async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteRequest, raw_request: Request):
     """
     Execute a cell-based workflow with real-time streaming of results.
 
@@ -455,7 +466,7 @@ async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteReq
         StreamingResponse: SSE stream of execution events
     """
     validate_anthropic_api_key()
-    validate_lighton_api_key()
+    api_key = get_paradigm_api_key(raw_request)
 
     async def event_generator():
         try:
@@ -487,8 +498,8 @@ async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteReq
                 len(plan.cells)
             ))
 
-            # Create cell executor
-            executor = CellExecutor()
+            # Create cell executor with per-user API key
+            executor = CellExecutor(paradigm_api_key=api_key)
 
             # Use parallel execution if workflow has parallel layers, otherwise sequential
             if is_parallel:
@@ -528,7 +539,7 @@ async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteReq
 
 
 @api_router.post("/workflows/{workflow_id}/execute-parallel", tags=["Cell-Based Workflows"])
-async def execute_workflow_parallel(workflow_id: str, request: CellBasedExecuteRequest):
+async def execute_workflow_parallel(workflow_id: str, request: CellBasedExecuteRequest, raw_request: Request):
     """
     Execute a cell-based workflow with layer-based parallelization.
 
@@ -567,7 +578,7 @@ async def execute_workflow_parallel(workflow_id: str, request: CellBasedExecuteR
         StreamingResponse: SSE stream of execution events
     """
     validate_anthropic_api_key()
-    validate_lighton_api_key()
+    api_key = get_paradigm_api_key(raw_request)
 
     async def event_generator():
         try:
@@ -599,8 +610,8 @@ async def execute_workflow_parallel(workflow_id: str, request: CellBasedExecuteR
                 len(plan.cells)
             ))
 
-            # Create cell executor and run with parallel execution
-            executor = CellExecutor()
+            # Create cell executor with per-user API key
+            executor = CellExecutor(paradigm_api_key=api_key)
 
             if is_parallel:
                 # Use parallel execution
@@ -641,7 +652,7 @@ async def execute_workflow_parallel(workflow_id: str, request: CellBasedExecuteR
 
 
 @api_router.post("/workflows/{workflow_id}/execute-with-evaluation", tags=["Cell-Based Workflows"])
-async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWithEvaluationRequest):
+async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWithEvaluationRequest, raw_request: Request):
     """
     Execute a cell-based workflow with LLM-as-judge evaluation.
 
@@ -678,7 +689,7 @@ async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWit
         StreamingResponse: SSE stream of execution events
     """
     validate_anthropic_api_key()
-    validate_lighton_api_key()
+    api_key = get_paradigm_api_key(raw_request)
 
     async def event_generator():
         try:
@@ -717,8 +728,8 @@ async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWit
                 for i, example in enumerate(request.examples)
             ]
 
-            # Create cell executor and run with evaluation
-            executor = CellExecutor()
+            # Create cell executor with per-user API key
+            executor = CellExecutor(paradigm_api_key=api_key)
             async for event in executor.execute_workflow_with_evaluation(
                 plan=plan,
                 examples=examples,
@@ -953,7 +964,7 @@ async def approve_cell(workflow_id: str, cell_id: str):
 
 
 @api_router.post("/workflows/{workflow_id}/cells/{cell_id}/rerun", tags=["Cell-Based Workflows"])
-async def rerun_cell(workflow_id: str, cell_id: str):
+async def rerun_cell(workflow_id: str, cell_id: str, raw_request: Request):
     """
     Rerun a specific cell with its current code and the latest execution context.
 
@@ -973,6 +984,8 @@ async def rerun_cell(workflow_id: str, cell_id: str):
     Raises:
         HTTPException: 404 if workflow or cell not found, 500 if execution fails
     """
+    api_key = get_paradigm_api_key(raw_request)
+
     try:
         logger.info("Rerunning cell {} in workflow {}".format(cell_id, workflow_id))
 
@@ -1016,8 +1029,8 @@ async def rerun_cell(workflow_id: str, cell_id: str):
             }
             logger.warning("No execution context found, using empty context")
 
-        # Execute the cell
-        executor = CellExecutor()
+        # Execute the cell with per-user API key
+        executor = CellExecutor(paradigm_api_key=api_key)
 
         try:
             import asyncio
@@ -1082,7 +1095,8 @@ async def rerun_cell(workflow_id: str, cell_id: str):
 async def execute_single_cell(
     workflow_id: str,
     cell_id: str,
-    request: CellExecuteSingleRequest
+    request: CellExecuteSingleRequest,
+    raw_request: Request
 ):
     """
     Execute a single cell with provided input and context.
@@ -1104,7 +1118,7 @@ async def execute_single_cell(
     """
     # Validate API keys upfront since we may need to generate code
     validate_anthropic_api_key()
-    validate_lighton_api_key()
+    api_key = get_paradigm_api_key(raw_request)
 
     try:
         logger.info("Executing single cell {} in workflow {} with input: {}".format(
@@ -1150,8 +1164,8 @@ async def execute_single_cell(
         if request.execution_context:
             context.update(request.execution_context)
 
-        # Execute the cell
-        executor = CellExecutor()
+        # Execute the cell with per-user API key
+        executor = CellExecutor(paradigm_api_key=api_key)
 
         # Generate code for the cell if it hasn't been generated yet
         if not cell.generated_code:
@@ -1229,7 +1243,7 @@ async def execute_single_cell(
 
 
 @api_router.post("/workflows/{workflow_id}/cells/{cell_id}/feedback", tags=["Cell-Based Workflows"])
-async def submit_cell_feedback(workflow_id: str, cell_id: str, request: CellFeedbackRequest):
+async def submit_cell_feedback(workflow_id: str, cell_id: str, request: CellFeedbackRequest, raw_request: Request):
     """
     Submit feedback for a cell and regenerate its code based on user input.
 
@@ -1285,8 +1299,9 @@ async def submit_cell_feedback(workflow_id: str, cell_id: str, request: CellFeed
                 detail="Cell not found: {}".format(cell_id)
             )
 
-        # Regenerate the cell code with feedback
-        executor = CellExecutor()
+        # Regenerate the cell code with feedback (pass API key for consistency)
+        api_key = get_paradigm_api_key(raw_request)
+        executor = CellExecutor(paradigm_api_key=api_key)
 
         # Build comprehensive feedback context message for Claude
         feedback_context = """CELL DESCRIPTION:
@@ -1440,6 +1455,7 @@ async def update_cell_success_criteria(workflow_id: str, cell_id: str, request: 
 
 @api_router.post("/files/upload", response_model=FileUploadResponse, tags=["Files"])
 async def upload_file(
+    raw_request: Request,
     file: UploadFile = File(...)
 ):
     """
@@ -1462,8 +1478,8 @@ async def upload_file(
         Files are processed asynchronously. The endpoint waits for embedding
         to complete before returning, ensuring files are fully searchable.
     """
-    # Validate required API keys
-    validate_lighton_api_key()
+    # Extract per-user Paradigm API key
+    api_key = get_paradigm_api_key(raw_request)
 
     try:
         logger.info(f"Uploading file: {file.filename}")
@@ -1472,8 +1488,9 @@ async def upload_file(
         file_content = await file.read()
 
         # Upload to Paradigm using POST /api/v2/files endpoint
-        # Wait for embedding to ensure files are fully indexed before workflows can use them
-        result = await paradigm_client.upload_file(
+        # Create per-request client with user's API key
+        client = ParadigmClient(api_key=api_key)
+        result = await client.upload_file(
             file_content=file_content,
             filename=file.filename,
             wait_for_embedding=True
@@ -1491,7 +1508,7 @@ async def upload_file(
         )
 
 @api_router.get("/files/{file_id}", response_model=FileInfoResponse, tags=["Files"])
-async def get_file_info(file_id: int, include_content: bool = False):
+async def get_file_info(file_id: int, raw_request: Request, include_content: bool = False):
     """
     Retrieve metadata and optionally content of an uploaded file.
     
@@ -1508,11 +1525,12 @@ async def get_file_info(file_id: int, include_content: bool = False):
     Raises:
         HTTPException: 503 if API keys are missing, 500 if retrieval fails
     """
-    # Validate required API keys
-    validate_lighton_api_key()
-    
+    # Extract per-user Paradigm API key
+    api_key = get_paradigm_api_key(raw_request)
+
     try:
-        result = await paradigm_client.get_file(file_id, include_content)
+        client = ParadigmClient(api_key=api_key)
+        result = await client.get_file(file_id, include_content)
         return FileInfoResponse(**result)
         
     except Exception as e:
@@ -1523,7 +1541,7 @@ async def get_file_info(file_id: int, include_content: bool = False):
         )
 
 @api_router.delete("/files/{file_id}", tags=["Files"])
-async def delete_file(file_id: int):
+async def delete_file(file_id: int, raw_request: Request):
     """
     Delete an uploaded file from the system.
     
@@ -1542,11 +1560,12 @@ async def delete_file(file_id: int):
     Warning:
         This operation is irreversible
     """
-    # Validate required API keys
-    validate_lighton_api_key()
-    
+    # Extract per-user Paradigm API key
+    api_key = get_paradigm_api_key(raw_request)
+
     try:
-        success = await paradigm_client.delete_file(file_id)
+        client = ParadigmClient(api_key=api_key)
+        success = await client.delete_file(file_id)
         return {"success": success, "message": f"File {file_id} deleted successfully"}
         
     except Exception as e:
@@ -1557,7 +1576,7 @@ async def delete_file(file_id: int):
         )
 
 @api_router.get("/files/{file_id}/chunks", tags=["Files"])
-async def get_file_chunks(file_id: int):
+async def get_file_chunks(file_id: int, raw_request: Request):
     """
     Get text chunks from an uploaded file for output example extraction.
 
@@ -1570,10 +1589,11 @@ async def get_file_chunks(file_id: int):
     Returns:
         dict: File chunks and metadata from Paradigm
     """
-    validate_lighton_api_key()
+    api_key = get_paradigm_api_key(raw_request)
 
     try:
-        result = await paradigm_client.get_file_chunks(file_id)
+        client = ParadigmClient(api_key=api_key)
+        result = await client.get_file_chunks(file_id)
         return result
 
     except Exception as e:

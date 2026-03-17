@@ -2027,6 +2027,65 @@ Architecture:
             background: #fee;
             border-radius: 4px;
         }
+
+        /* API Key configuration bar */
+        .api-key-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--lo-white);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--lo-border);
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .api-key-bar label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--lo-text);
+            white-space: nowrap;
+        }
+
+        .api-key-bar input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid var(--lo-border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: monospace;
+        }
+
+        .api-key-bar input:focus {
+            outline: none;
+            border-color: var(--lo-primary);
+        }
+
+        .api-key-bar button {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            background: var(--lo-primary);
+            color: white;
+        }
+
+        .api-key-bar button:hover {
+            background: var(--lo-primary-hover);
+        }
+
+        .api-key-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .api-key-status.connected { background: var(--lo-success); }
+        .api-key-status.disconnected { background: var(--lo-error); }
     </style>
     <!-- jsPDF Library for client-side PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2036,7 +2095,16 @@ Architecture:
         <img src="/lighton-logo.png" alt="LightOn Logo">
         <span>workflow builder</span>
     </h1>
-    
+
+    <!-- Paradigm API Key Configuration -->
+    <div class="api-key-bar">
+        <label for="paradigmApiKey">Paradigm API Key:</label>
+        <input type="password" id="paradigmApiKey" placeholder="Enter your Paradigm API key..." />
+        <button onclick="saveApiKey()">Save</button>
+        <button onclick="toggleApiKeyVisibility()" style="background: var(--lo-text-light);" title="Show/hide key">👁</button>
+        <div id="apiKeyStatus" class="api-key-status disconnected" title="No API key set"></div>
+    </div>
+
     <!-- Step 1: Workflow Description & Examples -->
     <div class="container">
         <h2>1. Workflow Description & Examples</h2>
@@ -2577,6 +2645,97 @@ if __name__ == "__main__":
         let pendingEnhancedData = null;          // Stored enhanced data during pause
 
         // =============================================================
+        // PARADIGM API KEY MANAGEMENT
+        // =============================================================
+
+        /**
+         * Get the stored Paradigm API key from localStorage.
+         * @returns {string|null} The API key or null if not set
+         */
+        function getParadigmApiKey() {
+            return localStorage.getItem('paradigm_api_key') || null;
+        }
+
+        /**
+         * Build headers object that includes the Paradigm API key.
+         * Use this for all fetch calls that hit Paradigm-dependent endpoints.
+         * @param {object} extraHeaders - Additional headers to merge
+         * @returns {object} Headers object with Content-Type and X-Paradigm-Api-Key
+         */
+        function getApiHeaders(extraHeaders = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...extraHeaders
+            };
+            const apiKey = getParadigmApiKey();
+            if (apiKey) {
+                headers['X-Paradigm-Api-Key'] = apiKey;
+            }
+            return headers;
+        }
+
+        /**
+         * Build headers for file upload (no Content-Type — FormData sets it).
+         * @returns {object} Headers with just the API key
+         */
+        function getFileUploadHeaders() {
+            const headers = {};
+            const apiKey = getParadigmApiKey();
+            if (apiKey) {
+                headers['X-Paradigm-Api-Key'] = apiKey;
+            }
+            return headers;
+        }
+
+        /**
+         * Save the Paradigm API key to localStorage and update the status indicator.
+         */
+        function saveApiKey() {
+            const input = document.getElementById('paradigmApiKey');
+            const key = input.value.trim();
+            if (key) {
+                localStorage.setItem('paradigm_api_key', key);
+                updateApiKeyStatus(true);
+                console.log('Paradigm API key saved');
+            } else {
+                localStorage.removeItem('paradigm_api_key');
+                updateApiKeyStatus(false);
+            }
+        }
+
+        /**
+         * Toggle visibility of the API key input field.
+         */
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('paradigmApiKey');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        /**
+         * Update the green/red status indicator for the API key.
+         * @param {boolean} hasKey - Whether a key is currently stored
+         */
+        function updateApiKeyStatus(hasKey) {
+            const status = document.getElementById('apiKeyStatus');
+            if (hasKey) {
+                status.className = 'api-key-status connected';
+                status.title = 'API key configured';
+            } else {
+                status.className = 'api-key-status disconnected';
+                status.title = 'No API key set';
+            }
+        }
+
+        // On page load: restore API key from localStorage
+        (function initApiKey() {
+            const savedKey = getParadigmApiKey();
+            if (savedKey) {
+                document.getElementById('paradigmApiKey').value = savedKey;
+                updateApiKeyStatus(true);
+            }
+        })();
+
+        // =============================================================
         // COLLAPSIBLE SECTION TOGGLE FUNCTIONS
         // =============================================================
 
@@ -2791,7 +2950,7 @@ if __name__ == "__main__":
             try {
                 const response = await fetch(`${API_BASE}/workflows/${workflowId}/cells/${cellId}/success-criteria`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getApiHeaders(),
                     body: JSON.stringify({ success_criteria: criteria })
                 });
 
@@ -3147,6 +3306,11 @@ if __name__ == "__main__":
          * @returns {object} Response object with data and status
          */
         async function loggedFetch(url, options = {}, description = '') {
+            // Inject Paradigm API key header into all outgoing requests
+            const apiKey = getParadigmApiKey();
+            if (apiKey) {
+                options.headers = { ...options.headers, 'X-Paradigm-Api-Key': apiKey };
+            }
             const logId = addLog(`🌐 API CALL: ${description || url}`, 'api');
             
             try {
@@ -4013,7 +4177,8 @@ if __name__ == "__main__":
 
             try {
                 const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/stop`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: getApiHeaders()
                 });
 
                 const result = await response.json();
@@ -4135,9 +4300,7 @@ if __name__ == "__main__":
             try {
                 const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/execute-with-evaluation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: getApiHeaders(),
                     body: JSON.stringify({ examples })
                 });
 
@@ -4420,9 +4583,7 @@ if __name__ == "__main__":
 
             const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/cells/${cell.id}/execute-single`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: getApiHeaders(),
                 body: JSON.stringify(payload)
             });
 
@@ -4450,9 +4611,7 @@ if __name__ == "__main__":
             try {
                 const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/execute-stream`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: getApiHeaders(),
                     body: JSON.stringify(payload)
                 });
 
@@ -4744,9 +4903,7 @@ if __name__ == "__main__":
                 // Use fetch with streaming for SSE
                 const response = await fetch(`${API_BASE}/workflows/${currentWorkflowId}/execute-stream`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: getApiHeaders(),
                     body: JSON.stringify(payload)
                 });
 
@@ -5431,6 +5588,7 @@ if __name__ == "__main__":
 
                     const response = await fetch(`${API_BASE}/files/upload`, {
                         method: 'POST',
+                        headers: getFileUploadHeaders(),
                         body: formData
                     });
 
@@ -5690,6 +5848,7 @@ if __name__ == "__main__":
 
                     const uploadResponse = await fetch(`${API_BASE}/files/upload`, {
                         method: 'POST',
+                        headers: getFileUploadHeaders(),
                         body: formData
                     });
 
@@ -5708,7 +5867,9 @@ if __name__ == "__main__":
                     addLog(`✅ Uploaded ${file.name} (ID: ${uploadData.id}), extracting text...`, 'info');
 
                     // Extract text chunks from the uploaded file
-                    const chunksResponse = await fetch(`${API_BASE}/files/${uploadData.id}/chunks`);
+                    const chunksResponse = await fetch(`${API_BASE}/files/${uploadData.id}/chunks`, {
+                        headers: getApiHeaders()
+                    });
 
                     if (chunksResponse.ok) {
                         const chunksData = await chunksResponse.json();
@@ -6459,7 +6620,7 @@ if __name__ == "__main__":
             try {
                 const response = await fetch(`/api/workflows/${workflowId}/cells/${cellId}/rerun`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: getApiHeaders()
                 });
 
                 if (!response.ok) {
@@ -6532,7 +6693,7 @@ if __name__ == "__main__":
             try {
                 const response = await fetch(`/api/workflows/${workflowId}/cells/${cellId}/feedback`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getApiHeaders(),
                     body: JSON.stringify({ feedback: feedback })
                 });
 
@@ -6619,7 +6780,9 @@ if __name__ == "__main__":
 
                 try {
                     // 1. Fetch execution data from API
-                    const response = await fetch(`${API_BASE}/workflows/${workflowId}/executions/${executionId}`);
+                    const response = await fetch(`${API_BASE}/workflows/${workflowId}/executions/${executionId}`, {
+                        headers: getApiHeaders()
+                    });
 
                     if (!response.ok) {
                         throw new Error(`Failed to fetch execution data: ${response.status}`);
@@ -6908,9 +7071,7 @@ if __name__ == "__main__":
             try {
                 const response = await fetch(`${API_BASE}/workflow/generate-package/${currentWorkflowId}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: getApiHeaders()
                 });
 
                 if (!response.ok) {
@@ -7406,9 +7567,7 @@ if __name__ == "__main__":
             try {
                 const response = await fetch(`${API_BASE}/workflow/generate-mcp-package/${currentWorkflowId}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: getApiHeaders()
                 });
 
                 if (!response.ok) {

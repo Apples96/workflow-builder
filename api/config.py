@@ -60,14 +60,15 @@ class Settings:
     def validate(self) -> None:
         """
         Validate that required settings are present.
-        
+
+        Only ANTHROPIC_API_KEY is required server-side (paid by LightOn).
+        LIGHTON_API_KEY is optional here — users provide their own via the frontend.
+
         Raises:
-            ValueError: If any required API key is missing
+            ValueError: If ANTHROPIC_API_KEY is missing
         """
         if not self.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required")
-        if not self.lighton_api_key:
-            raise ValueError("LIGHTON_API_KEY is required")
 
 # Global settings instance - used throughout the application
 settings = Settings()
