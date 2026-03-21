@@ -185,8 +185,11 @@ class CellResponse(BaseModel):
     code_description: Optional[str] = Field(None, description="Human-readable explanation of what the code does")
     success_criteria: Optional[str] = Field(None, description="User-editable criteria for LLM validation")
     output: Optional[str] = Field(None, description="Human-readable output after execution")
+    output_variables: Optional[Dict[str, Any]] = Field(None, description="Variables produced by this cell")
     execution_time: Optional[float] = Field(None, description="Time taken to execute in seconds")
     error: Optional[str] = Field(None, description="Error message if cell failed")
+    evaluation_score: Optional[float] = Field(None, description="Quality score from evaluator (0.0-1.0)")
+    evaluation_attempts: int = Field(default=0, description="Number of evaluation retry attempts")
 
 
 class WorkflowPlanResponse(BaseModel):

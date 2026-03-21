@@ -1,0 +1,110 @@
+# Eval manifest for the workflow builder test suite.
+# Each test references a workflow file and declares assertions to check.
+
+tests:
+  - name: single-doc-extraction
+    workflow_file: tests/ugap-test/test-single-doc-extraction.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_has_output
+        cell_name_contains: "extract"
+        output_variable: "holder_siret"
+        check: not_empty
+      - type: cell_has_output
+        cell_name_contains: "extract"
+        output_variable: "holder_name"
+        check: not_empty
+      - type: cell_count_gte
+        min_cells: 2
+      - type: total_time_under
+        max_seconds: 480
+    tags: [extraction, single-doc, en]
+
+  - name: cross-doc-comparison
+    workflow_file: tests/ugap-test/test-cross-doc-comparison.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 3
+      - type: total_time_under
+        max_seconds: 600
+    tags: [extraction, multi-doc, comparison, fr]
+
+  - name: conditional-cross-doc
+    workflow_file: tests/ugap-test/test-conditional-cross-doc.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 3
+      - type: total_time_under
+        max_seconds: 600
+    tags: [conditional, checkbox, cross-doc, fr]
+
+  - name: math-validation
+    workflow_file: tests/ugap-test/test-math-validation.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 3
+      - type: total_time_under
+        max_seconds: 600
+    tags: [math, validation, multi-doc, en]
+
+  - name: external-api
+    workflow_file: tests/ugap-test/test-external-api.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 2
+      - type: total_time_under
+        max_seconds: 480
+    tags: [api, extraction, fr]
+
+  - name: parallel-extraction
+    workflow_file: tests/ugap-test/test-parallel-extraction.md
+    assertions:
+      - type: all_cells_completed
+      - type: has_parallel_layer
+      - type: cell_count_gte
+        min_cells: 4
+      - type: total_time_under
+        max_seconds: 600
+    tags: [parallel, multi-doc, aggregation, en]
+
+  - name: criteria-screening
+    workflow_file: tests/ugap-test/test-criteria-screening.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 3
+      - type: total_time_under
+        max_seconds: 600
+    tags: [criteria, screening, multi-doc, fr]
+
+  - name: doc-completeness
+    workflow_file: tests/ugap-test/test-doc-completeness.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 2
+      - type: total_time_under
+        max_seconds: 480
+    tags: [completeness, validation, single-doc, en]
+
+  - name: structured-report
+    workflow_file: tests/ugap-test/test-structured-report.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 3
+      - type: cell_has_output
+        cell_name_contains: "report"
+        output_variable: "final_result"
+        check: not_empty
+      - type: output_matches_pattern
+        cell_name_contains: "report"
+        output_variable: "final_result"
+        pattern: "\\|.*Field.*\\|.*Value.*\\|"
+      - type: total_time_under
+        max_seconds: 600
+    tags: [report, output-example, multi-doc, en]

@@ -1,30 +1,4 @@
-"""
-Cell-Based Workflow Executor
-
-This module handles step-by-step execution of cell-based workflows.
-It supports both sequential and parallel execution based on layer structure.
-
-Key Components:
-    - CellExecutor: Executes workflow cells with parallel layer support
-    - State management between cells and layers
-    - Real-time event streaming via async generators
-    - Per-cell retry and LLM evaluation cycles
-
-The executor:
-    - Generates code for each cell on-demand (parallel within layers)
-    - Executes cells in layer order (parallel within each layer)
-    - Passes outputs from one layer to the next via execution context
-    - Yields SSE events for each stage of execution
-    - Handles failures gracefully, preserving partial results
-    - Each cell has its own retry + evaluation cycle running in parallel
-
-Parallelization:
-    - Cells in the same layer execute concurrently
-    - Each cell runs its full retry + evaluation cycle independently
-    - A layer completes only when ALL cells reach final state
-    - Layer N+1 starts only after layer N completes
-    - Context is merged from all parallel cells before next layer
-"""
+"""Cell-based workflow executor with parallel layer support and LLM evaluation."""
 
 import asyncio
 import io
@@ -46,18 +20,7 @@ from ...paradigm_client import ParadigmClient, _extract_v3_answer
 
 @dataclass
 class CellExecutionResult:
-    """
-    Result of executing a single cell with full retry/evaluation cycle.
-
-    Attributes:
-        cell: The cell that was executed
-        success: Whether the cell completed successfully
-        output: Human-readable output text
-        output_variables: Variables produced by the cell
-        events: List of events that occurred during execution
-        error: Error message if failed
-        attempts: Number of attempts made
-    """
+    """Result of executing a single cell with full retry/evaluation cycle."""
     cell: WorkflowCell
     success: bool
     output: str = ""
@@ -76,80 +39,37 @@ logger = logging.getLogger(__name__)
 
 
 class CellExecutor:
-    """
-    Executes workflow cells one at a time with state passing.
-
-    This executor handles the step-by-step execution of cell-based
-    workflows, yielding events for real-time progress streaming.
-
-    Attributes:
-        max_cell_execution_time: Maximum seconds per cell (default 300)
-        cell_generator: Generator for cell code
-    """
+    """Executes workflow cells with state passing and real-time event streaming."""
 
     def __init__(self, paradigm_api_key: str = None):
-        """Initialize the cell executor.
-
-        Args:
-            paradigm_api_key: Per-request Paradigm API key. Falls back to settings if not provided.
-        """
         self.max_cell_execution_time = settings.max_cell_execution_time
         self.max_retry_attempts = settings.max_retry_attempts
         self.max_evaluation_retries = settings.max_evaluation_retries
+        self.min_eval_score_to_proceed = settings.min_evaluation_score_to_proceed
         self.paradigm_api_key = paradigm_api_key or settings.lighton_api_key
         self.cell_generator = CellCodeGenerator()
         self.cell_evaluator = CellOutputEvaluator()
 
     def _format_output_variables(self, variables: Dict[str, Any]) -> Dict[str, str]:
-        """
-        Format output variables for display in the UI.
-
-        Shows the FULL output without any truncation so users can see
-        complete results for every cell.
-
-        Args:
-            variables: Dictionary of output variables
-
-        Returns:
-            Dictionary with formatted string representations (never truncated)
-        """
+        """Format output variables for UI display, showing full content without truncation."""
         import json
 
         formatted = {}
         for key, value in variables.items():
-            # Skip internal/technical variables
             if key in ["LIGHTON_API_KEY", "PARADIGM_API_KEY", "user_input", "attached_file_ids"]:
                 continue
 
-            # Format based on type - NO TRUNCATION
-            if isinstance(value, dict):
-                # Format dict as pretty JSON (full content)
-                formatted[key] = json.dumps(value, indent=2, ensure_ascii=False)
-            elif isinstance(value, list):
-                # Format lists nicely (show all items)
+            if isinstance(value, (dict, list)):
                 formatted[key] = json.dumps(value, indent=2, ensure_ascii=False)
             elif isinstance(value, str):
-                # Show full string
                 formatted[key] = value
             else:
-                # Numbers, booleans, etc.
                 formatted[key] = str(value)
 
         return formatted
 
     def _summarize_dict_structure(self, d: dict, depth: int = 0, max_depth: int = 3) -> str:
-        """
-        Recursively summarize the key structure of a dict so the LLM knows
-        what keys exist and what types/previews they hold.
-
-        Args:
-            d: The dictionary to summarize
-            depth: Current recursion depth
-            max_depth: Maximum depth to recurse into
-
-        Returns:
-            str: Human-readable summary of the dict structure
-        """
+        """Recursively summarize dict key structure with types and previews for LLM context."""
         if depth >= max_depth:
             return "{...}"
         parts = []
@@ -173,12 +93,7 @@ class CellExecutor:
         return "{{{}}}".format("\n" + "\n".join(parts) + "\n" + "  " * depth) if parts else "{}"
 
     def _load_cell_generation_guidance(self) -> str:
-        """
-        Load critical sections from the cell generation prompt.
-
-        Returns:
-            str: Key guidance sections for code generation
-        """
+        """Load critical sections from the cell generation prompt."""
         try:
             from pathlib import Path
             prompt_file = Path(__file__).parent.parent / "prompts" / "cell.md"
@@ -212,31 +127,13 @@ class CellExecutor:
             return ""
 
     def _extract_return_hints(self, code: str, outputs_produced: List[str]) -> Dict[str, str]:
-        """
-        Extract the return statement from generated code to hint to consumer cells.
-
-        Parses the generated code to find the return {...} statement and maps
-        each output variable to the return snippet, so downstream cells know
-        the actual data format being produced.
-
-        Uses brace-counting to correctly capture nested dicts in the return
-        statement (e.g. return {"key": {"nested": "value"}}).
-
-        Args:
-            code: Generated Python code for a cell
-            outputs_produced: List of variable names the cell outputs
-
-        Returns:
-            Dict mapping variable names to the return statement snippet
-        """
-        # Find the start of a return { statement
+        """Extract return statement from generated code to hint output format to consumer cells."""
         match = re.search(r'return\s*\{', code)
         if not match:
             return {}
 
-        # Use brace-counting to find the matching closing brace
         start = match.start()
-        brace_start = match.end() - 1  # position of the opening {
+        brace_start = match.end() - 1
         depth = 0
         i = brace_start
         while i < len(code):
@@ -246,7 +143,6 @@ class CellExecutor:
             elif ch == '}':
                 depth -= 1
                 if depth == 0:
-                    # Found the matching closing brace
                     return_stmt = code[start:i + 1]
                     hints = {}
                     for var_name in outputs_produced:
@@ -254,12 +150,11 @@ class CellExecutor:
                             hints[var_name] = return_stmt
                     return hints
             elif ch in ('"', "'"):
-                # Skip over string literals to avoid counting braces inside strings
                 quote = ch
                 i += 1
                 while i < len(code) and code[i] != quote:
                     if code[i] == '\\':
-                        i += 1  # skip escaped character
+                        i += 1
                     i += 1
             i += 1
 
@@ -276,44 +171,25 @@ class CellExecutor:
         output_example: Optional[str] = None,
         is_final_cell: bool = False
     ) -> str:
-        """
-        Use Claude to fix failed cell code.
-
-        Args:
-            cell: The cell that failed
-            failed_code: The code that caused the error
-            error_message: The error message/traceback
-            execution_context: Current workflow context
-            workflow_description: Overall workflow description
-            attempt_number: Which retry attempt this is
-            output_example: Optional example of desired output format (only for final cell)
-            is_final_cell: Whether this is the final cell in the workflow
-
-        Returns:
-            str: Fixed Python code
-        """
+        """Use Claude to fix failed cell code based on error message."""
         logger.info("Attempting to fix cell '{}' (attempt {}/{})".format(
             cell.name, attempt_number, self.max_retry_attempts
         ))
 
-        # Load FULL cell generation prompt (same as original generator)
         from ..prompts.loader import PromptLoader
         full_cell_prompt = PromptLoader.load("cell")
 
         logger.info("Loaded {} chars of full cell prompt for fix".format(len(full_cell_prompt)))
 
-        # Build context information — show full structure for dicts/lists so
-        # report/aggregation cells know what keys are available to format.
+        # Show full dict/list structure so report/aggregation cells know available keys
         context_summary = []
         for key, value in execution_context.items():
             if key in ["LIGHTON_API_KEY", "PARADIGM_API_KEY"]:
                 continue
             if isinstance(value, dict):
-                # Show the full key structure (with nested keys) instead of truncating
                 value_str = self._summarize_dict_structure(value)
                 context_summary.append("  - {} (dict): {}".format(key, value_str))
             elif isinstance(value, list):
-                # Show list length and first item type/preview
                 if value:
                     first_item = str(value[0])[:80]
                     value_str = "list of {} items, first: {}".format(len(value), first_item)
@@ -321,7 +197,6 @@ class CellExecutor:
                     value_str = "empty list"
                 context_summary.append("  - {} (list): {}".format(key, value_str))
             elif isinstance(value, str):
-                # Show full string up to 500 chars for report cells that need the text
                 value_str = value[:500]
                 if len(value) > 500:
                     value_str += "... ({} chars total)".format(len(value))
@@ -331,7 +206,6 @@ class CellExecutor:
 
         context_info = "\n".join(context_summary) if context_summary else "  (none yet)"
 
-        # Create the fix prompt with all necessary guidance
         fix_prompt = """You are debugging Python code that failed during execution. Fix the code to make it work correctly.
 
 FULL CELL GENERATION PROMPT (ALL GUIDELINES):
@@ -355,7 +229,6 @@ CELL INFORMATION:
             outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none"
         )
 
-        # Add cell-specific success criteria if present
         if cell.success_criteria:
             fix_prompt += """
 
@@ -366,7 +239,6 @@ Your fixed code MUST produce output that meets these specific requirements.""".f
                 criteria=cell.success_criteria
             )
 
-        # Add output example for final cell if provided
         if output_example and is_final_cell:
             fix_prompt += """
 
@@ -380,7 +252,6 @@ Your fixed code should produce output with similar format/structure.""".format(
                 example=output_example
             )
 
-        # Continue with the rest of the prompt
         fix_prompt += """
 
 CURRENT EXECUTION CONTEXT (available variables):
@@ -415,7 +286,6 @@ The code must be complete and executable.
             error_message=error_message
         )
 
-        # Call Claude to fix the code
         from ...clients import create_anthropic_client
         anthropic_client = create_anthropic_client()
 
@@ -440,8 +310,6 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
         )
 
         fixed_code = response.content[0].text
-
-        # Clean up the code
         fixed_code = self.cell_generator._extract_code(fixed_code)
 
         logger.info("Generated fixed code for cell '{}' ({} chars)".format(
@@ -454,15 +322,7 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
         self,
         all_example_results: List[Dict[str, Any]]
     ) -> str:
-        """
-        Build a formatted section showing all example inputs/outputs for the fix prompt.
-
-        Args:
-            all_example_results: List of all example execution results
-
-        Returns:
-            str: Formatted examples section for the fix prompt
-        """
+        """Build formatted examples section showing all inputs/outputs for the fix prompt."""
         if not all_example_results:
             return "(no example results)"
 
@@ -471,18 +331,15 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
         max_total_length = 6000  # Total examples section limit
 
         for idx, result in enumerate(all_example_results, 1):
-            # Extract relevant info from the result
             user_input = result.get("user_input", "(unknown)")
             output_text = result.get("output", "(no output)")
             variables = result.get("variables", {})
             formatted_vars = result.get("formatted_variables", {})
             success = result.get("success", False)
 
-            # Truncate output if too long
             if len(output_text) > max_output_length:
                 output_text = output_text[:max_output_length] + "... (truncated)"
 
-            # Format variables for display
             vars_display = ""
             if formatted_vars:
                 for var_name, var_value in formatted_vars.items():
@@ -514,7 +371,6 @@ EXAMPLE {idx}: {status}
                 vars_display=vars_display
             )
 
-            # Check if adding this example would exceed total limit
             if len(examples_text) + len(example_section) > max_total_length:
                 examples_text += "\n... ({} more examples truncated due to length)\n".format(
                     len(all_example_results) - idx + 1
@@ -525,6 +381,33 @@ EXAMPLE {idx}: {status}
 
         return examples_text
 
+    def _build_evaluation_history_section(self, evaluation_history: Optional[List[Dict[str, Any]]]) -> str:
+        """Build a section summarizing previous evaluation attempts for feedback accumulation."""
+        if not evaluation_history or len(evaluation_history) <= 1:
+            return ""
+
+        # Only include previous attempts (not the current one which is already in the main feedback)
+        previous = evaluation_history[:-1]
+        if not previous:
+            return ""
+
+        lines = [
+            "\nPREVIOUS EVALUATION ATTEMPTS ({} prior attempts):".format(len(previous)),
+            "Review what was tried before and what feedback was given. Use this to inform your fix."
+        ]
+        for entry in previous:
+            attempt = entry.get("attempt", "?")
+            score = entry.get("score", "N/A")
+            feedback = entry.get("feedback", "No feedback")
+            issues = entry.get("issues", [])
+            lines.append("\n--- Attempt {} (score: {}) ---".format(attempt, score))
+            lines.append("Feedback: {}".format(feedback[:500]))
+            if issues:
+                lines.append("Issues: {}".format("; ".join(str(i) for i in issues[:5])))
+
+        lines.append("\nIf the same issues persist, consider a different approach. If the issue is a small bug, a targeted fix is fine.\n")
+        return "\n".join(lines)
+
     async def fix_cell_code_from_evaluation(
         self,
         cell: WorkflowCell,
@@ -533,42 +416,21 @@ EXAMPLE {idx}: {status}
         all_example_results: List[Dict[str, Any]],
         workflow_description: str,
         attempt_number: int,
-        output_example: Optional[str] = None
+        output_example: Optional[str] = None,
+        evaluation_history: Optional[List[Dict[str, Any]]] = None
     ) -> str:
-        """
-        Use Claude to fix cell code based on evaluation feedback.
-
-        This is called when the evaluation of ALL examples fails.
-        Claude receives the evaluation feedback and all example outputs
-        so it can identify patterns and fix the code accordingly.
-
-        Args:
-            cell: The cell that produced invalid output
-            current_code: The current code that needs fixing
-            evaluation_result: The evaluation result with feedback and issues
-            all_example_results: List of all example execution results
-            workflow_description: Overall workflow description
-            attempt_number: Which evaluation retry attempt this is
-            output_example: Optional example of desired output format (only for final cell)
-
-        Returns:
-            str: Fixed Python code
-        """
+        """Use Claude to fix cell code based on evaluation feedback from all examples."""
         logger.info("Fixing cell '{}' based on evaluation feedback (attempt {}/{})".format(
             cell.name, attempt_number, self.max_evaluation_retries
         ))
 
-        # Load FULL cell generation prompt (same as original generator)
         from ..prompts.loader import PromptLoader
         full_cell_prompt = PromptLoader.load("cell")
 
-        # Build all examples section to show patterns across results
         examples_section = self._build_examples_section_for_fix(all_example_results)
 
-        # Format issues list
         issues_text = "\n".join("- {}".format(issue) for issue in evaluation_result.issues) if evaluation_result.issues else "No specific issues listed"
 
-        # Create the fix prompt with evaluation feedback and ALL example outputs
         fix_prompt = """You are fixing Python code that executed successfully but produced INCORRECT or INVALID output.
 The code runs without errors, but the output doesn't meet expectations based on evaluation.
 
@@ -593,7 +455,6 @@ CELL INFORMATION:
             outputs=", ".join(cell.outputs_produced) if cell.outputs_produced else "none"
         )
 
-        # Add cell-specific success criteria if present
         if cell.success_criteria:
             fix_prompt += """
 
@@ -604,7 +465,6 @@ Your fixed code MUST produce output that meets these specific requirements.""".f
                 criteria=cell.success_criteria
             )
 
-        # Add output example for final cell if provided
         if output_example:
             fix_prompt += """
 
@@ -618,7 +478,6 @@ Your fixed code should produce output with similar format/structure.""".format(
                 example=output_example
             )
 
-        # Continue with the rest of the prompt
         fix_prompt += """
 
 CURRENT CODE (executes but produces wrong output):
@@ -640,7 +499,7 @@ OUTPUT ANALYSIS FROM EVALUATOR:
 {output_analysis}
 
 The evaluator identified these OUTPUT problems. Your job is to fix the CODE to produce correct OUTPUT.
-
+{history_section}
 FIX INSTRUCTIONS:
 1. The code RUNS without errors, but produces incorrect/invalid OUTPUT
 2. Review ALL example outputs above to identify PATTERNS in the issues
@@ -662,10 +521,10 @@ The code must be complete and executable.
             examples_section=examples_section,
             feedback=evaluation_result.feedback,
             issues=issues_text,
-            output_analysis=evaluation_result.output_analysis or "No specific analysis provided"
+            output_analysis=evaluation_result.output_analysis or "No specific analysis provided",
+            history_section=self._build_evaluation_history_section(evaluation_history)
         )
 
-        # Call Claude to fix the code
         from ...clients import create_anthropic_client
         anthropic_client = create_anthropic_client()
 
@@ -690,8 +549,6 @@ CRITICAL RULES:
         )
 
         fixed_code = response.content[0].text
-
-        # Clean up the code
         fixed_code = self.cell_generator._extract_code(fixed_code)
 
         logger.info("Generated evaluation-fixed code for cell '{}' ({} chars)".format(
@@ -707,33 +564,7 @@ CRITICAL RULES:
         attached_file_ids: Optional[List[int]] = None,
         workflow_description: str = ""
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """
-        Execute workflow cell by cell, yielding events as they occur.
-
-        This is an async generator that yields SSE-compatible events
-        for real-time streaming to the frontend.
-
-        Args:
-            plan: The workflow plan with cell definitions
-            user_input: User's input query
-            attached_file_ids: Optional list of attached file IDs
-            workflow_description: Original workflow description
-
-        Yields:
-            dict: Event objects with type and relevant data
-
-        Event Types:
-            - workflow_start: Beginning of workflow execution
-            - cell_generating: Code generation started for a cell
-            - cell_ready: Cell code generated successfully
-            - cell_executing: Cell execution started
-            - cell_output: Intermediate output from cell
-            - cell_completed: Cell finished successfully
-            - cell_failed: Cell execution failed
-            - workflow_completed: All cells finished successfully
-            - workflow_failed: Workflow stopped due to cell failure
-        """
-        # Initialize execution context with user inputs
+        """Execute workflow cell by cell, yielding SSE-compatible events for real-time streaming."""
         execution_context: Dict[str, Any] = {
             "user_input": user_input,
             "attached_file_ids": attached_file_ids or []
@@ -742,22 +573,18 @@ CRITICAL RULES:
         total_cells = len(plan.cells)
         completed_cells = 0
 
-        # Track return hints from generated cells to help consumer cells
-        # understand the actual output format of their inputs
+        # Track return hints from producer cells for downstream consumer cells
         producer_return_hints: Dict[str, str] = {}
 
         logger.info("Starting stepwise execution with {} cells".format(total_cells))
 
-        # Emit workflow start event
         yield {
             "type": "workflow_start",
             "total_cells": total_cells,
             "timestamp": datetime.utcnow().isoformat()
         }
 
-        # Execute each cell in order
         for cell in plan.cells:
-            # Retry loop for each cell
             attempt = 0
             cell_succeeded = False
             last_error = None
@@ -767,7 +594,6 @@ CRITICAL RULES:
                 is_retry = attempt > 1
 
                 try:
-                    # === Phase 1: Generate code for this cell ===
                     if cell.status == CellStatus.PENDING or is_retry:
                         cell.mark_generating()
 
@@ -782,7 +608,6 @@ CRITICAL RULES:
                             "timestamp": datetime.utcnow().isoformat()
                         }
 
-                        # Generate the cell code (or fix it if this is a retry)
                         if is_retry:
                             logger.info("🔄 Retrying cell '{}' (attempt {}/{})".format(
                                 cell.name, attempt, self.max_retry_attempts
@@ -797,7 +622,6 @@ CRITICAL RULES:
                                 "timestamp": datetime.utcnow().isoformat()
                             }
 
-                            # Use Claude to fix the failed code
                             code = await self.fix_cell_code(
                                 cell=cell,
                                 failed_code=cell.generated_code,
@@ -809,7 +633,6 @@ CRITICAL RULES:
                                 is_final_cell=(cell.step_number == total_cells)
                             )
                         else:
-                            # First attempt - generate normally with producer hints
                             code = await self.cell_generator.generate_cell_code(
                                 cell=cell,
                                 available_context=plan.shared_context_schema,
@@ -819,7 +642,6 @@ CRITICAL RULES:
 
                         cell.mark_ready(code, cell.description)
 
-                        # Extract return hints from this cell's code for downstream cells
                         new_hints = self._extract_return_hints(code, cell.outputs_produced)
                         producer_return_hints.update(new_hints)
 
@@ -836,7 +658,6 @@ CRITICAL RULES:
                             "timestamp": datetime.utcnow().isoformat()
                         }
 
-                    # === Phase 2: Execute the cell ===
                     cell.mark_executing()
 
                     yield {
@@ -848,7 +669,6 @@ CRITICAL RULES:
                         "timestamp": datetime.utcnow().isoformat()
                     }
 
-                    # Validate required inputs are present in context
                     for required_input in cell.inputs_required:
                         if required_input not in execution_context:
                             logger.warning(
@@ -865,7 +685,6 @@ CRITICAL RULES:
                                 )
                             )
 
-                    # Execute the cell and capture output
                     start_time = time.time()
                     cell_result = await self._execute_cell_code(
                         cell.generated_code,
@@ -874,18 +693,14 @@ CRITICAL RULES:
                     )
                     execution_time = time.time() - start_time
 
-                    # Update context with cell outputs
                     output_variables = cell_result.get("variables", {})
                     execution_context.update(output_variables)
 
-                    # Store updated execution context for cell reruns
-                    from .executor import workflow_executor
+                    from ..core.executor import workflow_executor
                     workflow_executor.store_execution_context(plan.workflow_id, execution_context)
 
-                    # Format output variables for display
                     formatted_outputs = self._format_output_variables(output_variables)
 
-                    # Mark cell as completed
                     cell.mark_completed(
                         output=cell_result.get("output", ""),
                         variables=output_variables,
@@ -902,7 +717,7 @@ CRITICAL RULES:
                         "step_number": cell.step_number,
                         "output": cell_result.get("output", ""),
                         "variables": list(output_variables.keys()),
-                        "variable_values": formatted_outputs,  # Add formatted values
+                        "variable_values": formatted_outputs,
                         "execution_time": execution_time,
                         "attempt": attempt,
                         "was_retried": attempt > 1,
@@ -918,7 +733,6 @@ CRITICAL RULES:
                     ))
 
                     if attempt >= self.max_retry_attempts:
-                        # Final failure after all retries
                         cell.mark_failed(error_msg)
 
                         yield {
@@ -938,7 +752,6 @@ CRITICAL RULES:
                             "timestamp": datetime.utcnow().isoformat()
                         }
                         return
-                    # Otherwise, continue to next retry attempt
 
                 except Exception as e:
                     import traceback
@@ -951,7 +764,6 @@ CRITICAL RULES:
                     ))
 
                     if attempt >= self.max_retry_attempts:
-                        # Final failure after all retries
                         cell.mark_failed(error_msg)
 
                         logger.error("Cell '{}' failed after {} attempts: {}".format(
@@ -977,9 +789,8 @@ CRITICAL RULES:
                             "timestamp": datetime.utcnow().isoformat()
                         }
                         return
-                    # Otherwise, continue to next retry attempt
 
-        # All cells completed successfully
+        # All cells completed
         final_result = execution_context.get("final_result", "Workflow completed successfully")
 
         yield {
@@ -996,59 +807,32 @@ CRITICAL RULES:
         context: Dict[str, Any],
         cell_id: str
     ) -> Dict[str, Any]:
-        """
-        Execute a single cell's code with the given context.
-
-        Args:
-            code: The Python code to execute
-            context: Input context dictionary
-            cell_id: ID of the cell being executed
-
-        Returns:
-            dict: {
-                "output": str,  # Human-readable output
-                "variables": dict  # Variables produced by the cell
-            }
-
-        Raises:
-            Exception: If execution fails
-            asyncio.TimeoutError: If execution times out
-        """
-        # Inject API keys into the code
+        """Execute a single cell's code with the given context and return output + variables."""
         code = self._inject_api_keys(code)
-
-        # Create execution environment
         execution_globals = self._create_execution_environment()
-
-        # Capture stdout for cell output messages
         output_lines: List[str] = []
 
-        # Custom print function to capture CELL_OUTPUT messages
+        # Custom print that captures CELL_OUTPUT messages for the UI
         original_print = print
 
         def capture_print(*args, sep=' ', end='\n', file=None, flush=False):
             message = sep.join(str(arg) for arg in args)
 
-            # Capture CELL_OUTPUT messages
             if "CELL_OUTPUT:" in message:
                 output_lines.append(message.replace("CELL_OUTPUT:", "").strip())
 
-            # Also call original print for logging
             original_print(*args, sep=sep, end=end, file=file, flush=flush)
 
         execution_globals['print'] = capture_print
 
         try:
-            # Compile the code
             compiled_code = compile(code, '<cell>', 'exec')
 
-            # Execute with timeout
             result = await asyncio.wait_for(
                 self._run_cell_code(compiled_code, execution_globals, context),
                 timeout=self.max_cell_execution_time
             )
 
-            # Format output
             output = "\n".join(output_lines) if output_lines else ""
 
             return {
@@ -1063,7 +847,6 @@ CRITICAL RULES:
         except Exception as e:
             raise Exception("Cell execution failed: {}".format(str(e)))
         finally:
-            # Restore original print
             execution_globals['print'] = original_print
 
     async def _run_cell_code(
@@ -1072,37 +855,23 @@ CRITICAL RULES:
         execution_globals: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Run the compiled cell code and return its output.
-
-        Args:
-            compiled_code: Compiled Python code
-            execution_globals: Global namespace for execution
-            context: Input context to pass to the cell
-
-        Returns:
-            dict: Output variables from the cell
-        """
+        """Run compiled cell code and return output variables."""
         stderr_capture = io.StringIO()
 
         try:
             with redirect_stderr(stderr_capture):
-                # Execute the code to define the function
                 exec(compiled_code, execution_globals)
 
-                # Get the execute_cell function
                 if 'execute_cell' not in execution_globals:
                     raise Exception("execute_cell function not found in generated code")
 
                 cell_func = execution_globals['execute_cell']
 
-                # Execute the cell function
                 if asyncio.iscoroutinefunction(cell_func):
                     result = await cell_func(context)
                 else:
                     result = cell_func(context)
 
-                # Ensure result is a dictionary
                 if not isinstance(result, dict):
                     result = {"final_result": str(result)}
 
@@ -1115,16 +884,7 @@ CRITICAL RULES:
             raise
 
     def _inject_api_keys(self, code: str) -> str:
-        """
-        Inject actual API keys into the generated code.
-
-        Args:
-            code: The code with placeholder keys
-
-        Returns:
-            str: Code with actual keys injected
-        """
-        # Replace placeholder API keys with actual values (uses per-request key)
+        """Replace placeholder API keys in generated code with actual values."""
         code = code.replace(
             'LIGHTON_API_KEY = os.getenv("PARADIGM_API_KEY", "your_api_key_here")',
             'LIGHTON_API_KEY = "{}"'.format(self.paradigm_api_key)
@@ -1141,115 +901,37 @@ CRITICAL RULES:
         return code
 
     def _create_execution_environment(self) -> Dict[str, Any]:
-        """
-        Create a safe execution environment for cell code.
-
-        The environment includes:
-        - Standard builtins for basic Python operations
-        - Pre-injected ParadigmClient class (cells don't need to define it)
-        - Pre-injected API configuration (LIGHTON_API_KEY, LIGHTON_BASE_URL)
-        - Helper function _extract_v3_answer for parsing v3 responses
-
-        Returns:
-            dict: Global namespace for code execution
-        """
+        """Create execution environment with builtins, ParadigmClient, and API config pre-injected."""
         return {
             '__name__': '__main__',
             '__builtins__': {
-                # Basic types
-                'len': len,
-                'str': str,
-                'int': int,
-                'float': float,
-                'bool': bool,
-                'list': list,
-                'dict': dict,
-                'tuple': tuple,
-                'set': set,
-
-                # Iteration
-                'range': range,
-                'enumerate': enumerate,
-                'zip': zip,
-                'sorted': sorted,
-                'reversed': reversed,
-
-                # Math
-                'sum': sum,
-                'min': min,
-                'max': max,
-                'abs': abs,
-                'round': round,
-
-                # Type checking
-                'isinstance': isinstance,
-                'hasattr': hasattr,
-                'getattr': getattr,
-                'setattr': setattr,
-                'type': type,
-
-                # Exceptions
-                'ValueError': ValueError,
-                'TypeError': TypeError,
-                'Exception': Exception,
-                'RuntimeError': RuntimeError,
+                'len': len, 'str': str, 'int': int, 'float': float, 'bool': bool,
+                'list': list, 'dict': dict, 'tuple': tuple, 'set': set,
+                'range': range, 'enumerate': enumerate, 'zip': zip,
+                'sorted': sorted, 'reversed': reversed,
+                'sum': sum, 'min': min, 'max': max, 'abs': abs, 'round': round,
+                'isinstance': isinstance, 'hasattr': hasattr, 'getattr': getattr,
+                'setattr': setattr, 'type': type,
+                'ValueError': ValueError, 'TypeError': TypeError,
+                'Exception': Exception, 'RuntimeError': RuntimeError,
                 'NameError': NameError,
-
-                # Import support
                 '__import__': __import__,
-
-                # Other utilities
-                'any': any,
-                'all': all,
-                'globals': globals,
-                'print': print,
-
-                # Class building
-                '__build_class__': __build_class__,
-                'object': object,
-                'super': super,
-                'property': property,
-                'staticmethod': staticmethod,
+                'any': any, 'all': all, 'globals': globals, 'print': print,
+                '__build_class__': __build_class__, 'object': object, 'super': super,
+                'property': property, 'staticmethod': staticmethod,
                 'classmethod': classmethod,
-
-                # Binary types
-                'bytes': bytes,
-                'bytearray': bytearray,
-
-                # Iteration internals
-                'iter': iter,
-                'next': next,
-                'slice': slice,
-                'map': map,
-                'filter': filter,
-
-                # Introspection
-                'vars': vars,
-                'dir': dir,
-                'id': id,
-                'hash': hash,
-
-                # String/numeric conversion
-                'ord': ord,
-                'chr': chr,
-                'bin': bin,
-                'oct': oct,
-                'hex': hex,
-
-                # Math helpers
-                'divmod': divmod,
-                'pow': pow,
-                'callable': callable,
+                'bytes': bytes, 'bytearray': bytearray,
+                'iter': iter, 'next': next, 'slice': slice,
+                'map': map, 'filter': filter,
+                'vars': vars, 'dir': dir, 'id': id, 'hash': hash,
+                'ord': ord, 'chr': chr, 'bin': bin, 'oct': oct, 'hex': hex,
+                'divmod': divmod, 'pow': pow, 'callable': callable,
             },
-            # Pre-injected Paradigm API client and configuration
-            # Cells can use ParadigmClient directly without defining it
             'ParadigmClient': ParadigmClient,
             'LIGHTON_API_KEY': self.paradigm_api_key,
             'LIGHTON_BASE_URL': settings.lighton_base_url,
-            # Helper function for parsing v3 API responses
             '_extract_v3_answer': _extract_v3_answer,
-            # Typing symbols pre-injected so generated code doesn't crash
-            # if it uses Dict/Any/List in annotations without importing
+            # Pre-injected typing symbols so generated code doesn't crash on annotations
             'Dict': Dict,
             'Any': Any,
             'List': List,
@@ -1263,35 +945,7 @@ CRITICAL RULES:
         examples: List[Dict[str, Any]],
         workflow_description: str = ""
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """
-        Execute workflow with smoke test evaluation for multiple examples.
-
-        Uses layer-based parallelization with the "smoke test" approach:
-        1. Group cells by layer
-        2. For each layer, execute all cells in parallel
-        3. Each cell runs: smoke test -> evaluate -> retry if needed -> remaining examples
-        4. Wait for ALL cells in a layer to complete ALL examples before next layer
-        5. Context is merged from all cells before moving to next layer
-
-        This ensures proper layer synchronization while maintaining parallel execution
-        within layers and LLM evaluation for quality assurance.
-
-        Args:
-            plan: The workflow plan with cell definitions
-            examples: List of example inputs, each with user_input and attached_file_ids
-            workflow_description: Original workflow description
-
-        Yields:
-            dict: Event objects with type and relevant data
-
-        Event Types (in addition to standard cell events):
-            - layer_started: Beginning of layer execution
-            - layer_completed: All cells in layer finished
-            - cell_evaluating: Starting evaluation of smoke test output
-            - cell_evaluation_passed: Evaluation passed
-            - cell_evaluation_failed: Evaluation failed, will retry
-            - cell_evaluation_max_retries: Max evaluation retries reached
-        """
+        """Execute workflow with layer-based parallelization and smoke test evaluation."""
         if not examples:
             yield {
                 "type": "error",
@@ -1303,7 +957,6 @@ CRITICAL RULES:
         total_cells = len(plan.cells)
         total_examples = len(examples)
 
-        # Group cells by layer for proper synchronization
         layers = plan.get_cells_by_layer()
         total_layers = len(layers)
         is_parallel = plan.is_parallel_workflow()
@@ -1322,8 +975,7 @@ CRITICAL RULES:
             "timestamp": datetime.utcnow().isoformat()
         }
 
-        # Track execution contexts per example (each example has its own context flow)
-        # This is shared across all cells and updated as layers complete
+        # Each example has its own context flow, updated as layers complete
         example_contexts: List[Dict[str, Any]] = []
         for i, example in enumerate(examples):
             example_contexts.append({
@@ -1333,12 +985,10 @@ CRITICAL RULES:
 
         completed_cells = 0
 
-        # Execute layer by layer to ensure proper synchronization
         for layer_num in sorted(layers.keys()):
             layer_cells = layers[layer_num]
             is_parallel_layer = len(layer_cells) > 1
 
-            # Emit layer started event
             yield {
                 "type": "layer_started",
                 "layer": layer_num,
@@ -1348,10 +998,8 @@ CRITICAL RULES:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            # Create a queue for real-time event streaming
             event_queue: asyncio.Queue = asyncio.Queue()
 
-            # Start layer execution in a separate task
             layer_task = asyncio.create_task(
                 self._execute_layer_with_examples(
                     layer_cells=layer_cells,
@@ -1363,24 +1011,19 @@ CRITICAL RULES:
                 )
             )
 
-            # Stream events from the queue in real-time until layer completes
             while not layer_task.done():
                 try:
-                    # Wait for events with a short timeout to check if task is done
                     event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
                     yield event
                 except asyncio.TimeoutError:
                     continue
 
-            # Get the layer results
             layer_results = await layer_task
 
-            # Drain any remaining events from the queue
             while not event_queue.empty():
                 event = event_queue.get_nowait()
                 yield event
 
-            # Update example contexts with outputs from cells
             for result in layer_results:
                 if result.get("success"):
                     cell_outputs = result.get("example_outputs", {})
@@ -1388,7 +1031,6 @@ CRITICAL RULES:
                         if ex_idx < len(example_contexts):
                             example_contexts[ex_idx].update(outputs)
 
-            # Check if all cells in layer succeeded
             all_succeeded = all(r.get("success", False) for r in layer_results)
             failed_cells = [r["cell"].name for r in layer_results if not r.get("success")]
 
@@ -1411,7 +1053,6 @@ CRITICAL RULES:
 
             completed_cells += len(layer_cells)
 
-            # Emit layer completed event
             yield {
                 "type": "layer_completed",
                 "layer": layer_num,
@@ -1420,7 +1061,6 @@ CRITICAL RULES:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-        # All layers completed successfully
         yield {
             "type": "workflow_completed",
             "total_cells": total_cells,
@@ -1439,33 +1079,15 @@ CRITICAL RULES:
         plan: WorkflowPlan,
         event_queue: asyncio.Queue
     ) -> List[Dict[str, Any]]:
-        """
-        Execute all cells in a layer in parallel, each with full evaluation and all examples.
-
-        This method ensures that ALL cells in the layer complete ALL their examples
-        (including retries and evaluation cycles) before returning. Events are streamed
-        in real-time via the event_queue.
-
-        Args:
-            layer_cells: List of cells in this layer
-            examples: List of example inputs
-            example_contexts: Current execution contexts per example
-            workflow_description: Workflow description for code generation/fixing
-            plan: The workflow plan
-            event_queue: Queue to push events for real-time streaming
-
-        Returns:
-            List of results, one per cell, with output data (events already streamed)
-        """
+        """Execute all cells in a layer in parallel, streaming events via event_queue."""
         if not layer_cells:
             return []
 
-        # Execute all cells in parallel - each runs its full evaluation + examples cycle
         tasks = [
             self._execute_cell_with_all_examples_streaming(
                 cell=cell,
                 examples=examples,
-                example_contexts=[ctx.copy() for ctx in example_contexts],  # Each cell gets copies
+                example_contexts=[ctx.copy() for ctx in example_contexts],
                 workflow_description=workflow_description,
                 plan=plan,
                 event_queue=event_queue
@@ -1473,7 +1095,6 @@ CRITICAL RULES:
             for cell in layer_cells
         ]
 
-        # Wait for ALL cells to complete before returning
         results = await asyncio.gather(*tasks)
         return list(results)
 
@@ -1485,33 +1106,12 @@ CRITICAL RULES:
         workflow_description: str,
         plan: WorkflowPlan
     ) -> Dict[str, Any]:
-        """
-        Execute a single cell with full evaluation cycle and all examples.
-
-        This is the core execution logic for one cell:
-        1. Generate code
-        2. Run smoke test (first example)
-        3. Evaluate output with LLM
-        4. Fix and retry if evaluation fails (up to max_evaluation_retries)
-        5. Run remaining examples
-        6. Return results
-
-        Args:
-            cell: The cell to execute
-            examples: List of all example inputs
-            example_contexts: Execution contexts for each example
-            workflow_description: Workflow description
-            plan: The workflow plan
-
-        Returns:
-            Dict with success status, events, and example outputs
-        """
+        """Execute a single cell with smoke test, LLM evaluation, retry cycle, then remaining examples."""
         events: List[Dict[str, Any]] = []
         cell_code = None
         example_outputs: Dict[int, Dict[str, Any]] = {}  # example_idx -> outputs
         total_examples = len(examples)
 
-        # === Phase 1: Generate initial code ===
         cell.mark_generating()
         events.append({
             "type": "cell_generating",
@@ -1557,15 +1157,14 @@ CRITICAL RULES:
             })
             return {"cell": cell, "success": False, "events": events, "example_outputs": {}}
 
-        # === Phase 2: Smoke test + evaluation loop ===
         evaluation_attempt = 0
+        evaluation_history = []  # Accumulate feedback across retries
         cell_passed_evaluation = False
         smoke_test_result = None
 
         while evaluation_attempt < self.max_evaluation_retries and not cell_passed_evaluation:
             evaluation_attempt += 1
 
-            # Execute smoke test (first example)
             smoke_test_context = example_contexts[0].copy()
 
             events.append({
@@ -1589,7 +1188,6 @@ CRITICAL RULES:
                 )
                 execution_time = time.time() - start_time
 
-                # Prepare output for evaluation
                 output_variables = smoke_test_result.get("variables", {})
                 formatted_outputs = self._format_output_variables(output_variables)
 
@@ -1628,7 +1226,6 @@ CRITICAL RULES:
                     })
                     return {"cell": cell, "success": False, "events": events, "example_outputs": {}}
 
-                # Try to fix with existing fix_cell_code method
                 events.append({
                     "type": "cell_retrying",
                     "cell_id": cell.id,
@@ -1664,7 +1261,6 @@ CRITICAL RULES:
                 })
                 continue
 
-            # === Phase 3: Evaluate smoke test output ===
             events.append({
                 "type": "cell_evaluating",
                 "cell_id": cell.id,
@@ -1674,8 +1270,7 @@ CRITICAL RULES:
                 "timestamp": datetime.utcnow().isoformat()
             })
 
-            # Determine if this is the final cell (produces final_result)
-            # Only pass output_example to evaluator for final cell
+            # Only pass output_example to evaluator for the final cell
             is_final_cell = "final_result" in cell.outputs_produced
             cell_output_example = plan.output_example if is_final_cell else None
 
@@ -1689,16 +1284,29 @@ CRITICAL RULES:
 
             if evaluation_result.is_valid:
                 cell_passed_evaluation = True
+                # Store evaluation metadata on cell
+                cell.evaluation_score = getattr(evaluation_result, 'score', 1.0)
+                cell.evaluation_attempts = evaluation_attempt
+                cell.evaluation_history = evaluation_history if evaluation_history else None
                 events.append({
                     "type": "cell_evaluation_passed",
                     "cell_id": cell.id,
                     "cell_name": cell.name,
                     "display_step": cell.get_display_step(),
                     "feedback": evaluation_result.feedback,
+                    "score": getattr(evaluation_result, 'score', None),
                     "timestamp": datetime.utcnow().isoformat()
                 })
             else:
                 logger.warning("Evaluation failed for cell '{}': {}".format(cell.name, evaluation_result.feedback))
+
+                # Accumulate evaluation feedback for history
+                evaluation_history.append({
+                    "attempt": evaluation_attempt,
+                    "score": getattr(evaluation_result, 'score', None),
+                    "feedback": evaluation_result.feedback,
+                    "issues": evaluation_result.issues
+                })
 
                 events.append({
                     "type": "cell_evaluation_failed",
@@ -1713,18 +1321,38 @@ CRITICAL RULES:
                 })
 
                 if evaluation_attempt >= self.max_evaluation_retries:
-                    logger.warning("Max evaluation retries reached for cell '{}', proceeding anyway".format(cell.name))
-                    events.append({
-                        "type": "cell_evaluation_max_retries",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "display_step": cell.get_display_step(),
-                        "message": "Max evaluation retries reached, proceeding with current code",
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
-                    cell_passed_evaluation = True  # Force proceed
+                    eval_score = getattr(evaluation_result, 'score', 0.5)
+                    if eval_score >= self.min_eval_score_to_proceed:
+                        logger.warning("Max retries reached for cell '{}', proceeding with score {:.2f}".format(
+                            cell.name, eval_score))
+                        events.append({
+                            "type": "cell_evaluation_max_retries",
+                            "cell_id": cell.id,
+                            "cell_name": cell.name,
+                            "display_step": cell.get_display_step(),
+                            "message": "Max retries reached, proceeding with acceptable score {:.2f}".format(eval_score),
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                        cell_passed_evaluation = True
+                    else:
+                        logger.error("Max retries reached for cell '{}' with low score {:.2f}, marking failed".format(
+                            cell.name, eval_score))
+                        cell.mark_failed("Evaluation failed after {} attempts (score: {:.2f})".format(
+                            self.max_evaluation_retries, eval_score))
+                        events.append({
+                            "type": "cell_failed",
+                            "cell_id": cell.id,
+                            "cell_name": cell.name,
+                            "display_step": cell.get_display_step(),
+                            "error": "Evaluation failed with low score {:.2f} after {} attempts".format(
+                                eval_score, self.max_evaluation_retries),
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                    # Store evaluation metadata regardless
+                    cell.evaluation_score = eval_score
+                    cell.evaluation_attempts = evaluation_attempt
+                    cell.evaluation_history = evaluation_history
                 else:
-                    # Fix code based on evaluation feedback
                     events.append({
                         "type": "cell_fixing_from_evaluation",
                         "cell_id": cell.id,
@@ -1735,7 +1363,6 @@ CRITICAL RULES:
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
-                    # Wrap single smoke test result in list for fix method
                     single_example_result = [{
                         "user_input": smoke_test_context.get("user_input", ""),
                         "output": smoke_test_result.get("output", "") if smoke_test_result else "",
@@ -1752,7 +1379,8 @@ CRITICAL RULES:
                         all_example_results=single_example_result,
                         workflow_description=workflow_description,
                         attempt_number=evaluation_attempt + 1,
-                        output_example=plan.output_example if hasattr(plan, 'output_example') and cell.step_number == len(plan.cells) else None
+                        output_example=plan.output_example if hasattr(plan, 'output_example') and cell.step_number == len(plan.cells) else None,
+                        evaluation_history=evaluation_history
                     )
                     cell.mark_ready(cell_code, cell.code_description)
 
@@ -1766,13 +1394,14 @@ CRITICAL RULES:
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
-        # === Phase 4: Execute remaining examples ===
-        # First, update context for first example with smoke test results
+        # If cell was marked failed (e.g. low eval score), return early
+        if cell.status == CellStatus.FAILED:
+            return {"cell": cell, "success": False, "events": events, "example_outputs": {}}
+
         if smoke_test_result:
             example_contexts[0].update(smoke_test_result.get("variables", {}))
             example_outputs[0] = smoke_test_result.get("variables", {})
 
-        # Store first example output
         first_example_output = {
             "output": smoke_test_result.get("output", "") if smoke_test_result else "",
             "variables": list(smoke_test_result.get("variables", {}).keys()) if smoke_test_result else [],
@@ -1794,7 +1423,6 @@ CRITICAL RULES:
             "timestamp": datetime.utcnow().isoformat()
         })
 
-        # Execute remaining examples (2, 3, ...)
         for example_idx in range(1, total_examples):
             example = examples[example_idx]
             example_context = example_contexts[example_idx]
@@ -1820,7 +1448,6 @@ CRITICAL RULES:
                 )
                 execution_time = time.time() - start_time
 
-                # Update context for this example
                 example_contexts[example_idx].update(example_result.get("variables", {}))
                 example_outputs[example_idx] = example_result.get("variables", {})
 
@@ -1842,7 +1469,6 @@ CRITICAL RULES:
                 })
 
             except Exception as e:
-                # Example execution failed - log but continue
                 logger.warning("Example {} execution failed for cell '{}': {}".format(
                     example_idx, cell.name, str(e)
                 ))
@@ -1858,7 +1484,6 @@ CRITICAL RULES:
                     "timestamp": datetime.utcnow().isoformat()
                 })
 
-        # === Cell completed for all examples ===
         cell.mark_completed(
             output="Completed for {} examples".format(total_examples),
             variables={},
@@ -1892,40 +1517,13 @@ CRITICAL RULES:
         plan: WorkflowPlan,
         event_queue: asyncio.Queue
     ) -> Dict[str, Any]:
-        """
-        Execute a single cell with all examples, then evaluate (Alternative A approach).
-
-        This approach runs ALL examples before evaluation to ensure:
-        - All examples run with the same code
-        - All outputs are available for the next layer
-        - Evaluation can see patterns across all examples
-
-        Flow:
-        1. Generate code
-        2. Run ALL examples
-        3. Evaluate outputs from all examples
-        4. If evaluation fails → fix code → go back to step 2
-        5. If evaluation passes → cell complete with all outputs
-
-        Args:
-            cell: The cell to execute
-            examples: List of all example inputs
-            example_contexts: Execution contexts for each example
-            workflow_description: Workflow description
-            plan: The workflow plan
-            event_queue: Queue to push events for real-time streaming
-
-        Returns:
-            Dict with success status and example outputs (events already streamed)
-        """
+        """Execute a cell with all examples, evaluate outputs, and retry if evaluation fails."""
         cell_code = None
         total_examples = len(examples)
 
         async def emit(event: Dict[str, Any]):
-            """Helper to push event to queue."""
             await event_queue.put(event)
 
-        # === Phase 1: Generate initial code ===
         cell.mark_generating()
         await emit({
             "type": "cell_generating",
@@ -1971,14 +1569,13 @@ CRITICAL RULES:
             })
             return {"cell": cell, "success": False, "example_outputs": {}}
 
-        # === Phase 2: Execute ALL examples + evaluation loop ===
         evaluation_attempt = 0
+        evaluation_history = []  # Accumulate feedback across retries
         cell_passed_evaluation = False
 
         while evaluation_attempt < self.max_evaluation_retries and not cell_passed_evaluation:
             evaluation_attempt += 1
 
-            # Reset outputs for this attempt - all examples will run with current code
             example_outputs: Dict[int, Dict[str, Any]] = {}
             example_results: List[Dict[str, Any]] = []
             all_examples_succeeded = True
@@ -1995,7 +1592,6 @@ CRITICAL RULES:
                 "timestamp": datetime.utcnow().isoformat()
             })
 
-            # Run ALL examples with current code
             for example_idx in range(total_examples):
                 example = examples[example_idx]
                 example_context = example_contexts[example_idx].copy()
@@ -2025,7 +1621,6 @@ CRITICAL RULES:
                     output_variables = example_result.get("variables", {})
                     formatted_outputs = self._format_output_variables(output_variables)
 
-                    # Store results
                     example_outputs[example_idx] = output_variables
                     example_results.append({
                         "example_idx": example_idx,
@@ -2078,9 +1673,7 @@ CRITICAL RULES:
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
-            # === Phase 3: Handle execution failures or evaluate outputs ===
             if not all_examples_succeeded:
-                # Some examples failed - need to fix code
                 if evaluation_attempt >= self.max_evaluation_retries:
                     cell.mark_failed(execution_error or "Multiple examples failed")
                     await emit({
@@ -2105,7 +1698,6 @@ CRITICAL RULES:
                     "timestamp": datetime.utcnow().isoformat()
                 })
 
-                # Fix code based on first error encountered
                 cell_code = await self.fix_cell_code(
                     cell=cell,
                     failed_code=cell_code,
@@ -2127,9 +1719,8 @@ CRITICAL RULES:
                     "fix_reason": "execution_error",
                     "timestamp": datetime.utcnow().isoformat()
                 })
-                continue  # Retry all examples with fixed code
+                continue
 
-            # All examples succeeded - now evaluate ALL examples together
             await emit({
                 "type": "cell_evaluating",
                 "cell_id": cell.id,
@@ -2140,7 +1731,6 @@ CRITICAL RULES:
                 "timestamp": datetime.utcnow().isoformat()
             })
 
-            # Build ExampleOutput for ALL successful examples
             all_example_outputs = []
             for idx, result in enumerate(example_results):
                 if result.get("success", True):  # Include all results (default to success)
@@ -2152,12 +1742,10 @@ CRITICAL RULES:
                         formatted_variables=result.get("formatted_variables", {})
                     ))
 
-            # Determine if this is the final cell (produces final_result)
-            # Only pass output_example to evaluator for final cell
+            # Only pass output_example to evaluator for the final cell
             is_final_cell = "final_result" in cell.outputs_produced
             cell_output_example = plan.output_example if is_final_cell else None
 
-            # Evaluate ALL examples together
             evaluation_result = await self.cell_evaluator.evaluate_all_examples_output(
                 cell=cell,
                 example_outputs=all_example_outputs,
@@ -2168,16 +1756,29 @@ CRITICAL RULES:
 
             if evaluation_result.is_valid:
                 cell_passed_evaluation = True
+                # Store evaluation metadata on cell
+                cell.evaluation_score = getattr(evaluation_result, 'score', 1.0)
+                cell.evaluation_attempts = evaluation_attempt
+                cell.evaluation_history = evaluation_history if evaluation_history else None
                 await emit({
                     "type": "cell_evaluation_passed",
                     "cell_id": cell.id,
                     "cell_name": cell.name,
                     "display_step": cell.get_display_step(),
                     "feedback": evaluation_result.feedback,
+                    "score": getattr(evaluation_result, 'score', None),
                     "timestamp": datetime.utcnow().isoformat()
                 })
             else:
                 logger.warning("Evaluation failed for cell '{}': {}".format(cell.name, evaluation_result.feedback))
+
+                # Accumulate evaluation feedback for history
+                evaluation_history.append({
+                    "attempt": evaluation_attempt,
+                    "score": getattr(evaluation_result, 'score', None),
+                    "feedback": evaluation_result.feedback,
+                    "issues": evaluation_result.issues
+                })
 
                 await emit({
                     "type": "cell_evaluation_failed",
@@ -2192,16 +1793,37 @@ CRITICAL RULES:
                 })
 
                 if evaluation_attempt >= self.max_evaluation_retries:
-                    logger.warning("Max evaluation retries reached for cell '{}', proceeding anyway".format(cell.name))
-                    await emit({
-                        "type": "cell_evaluation_max_retries",
-                        "cell_id": cell.id,
-                        "cell_name": cell.name,
-                        "display_step": cell.get_display_step(),
-                        "message": "Max evaluation retries reached, proceeding with current code",
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
-                    cell_passed_evaluation = True  # Force proceed
+                    eval_score = getattr(evaluation_result, 'score', 0.5)
+                    if eval_score >= self.min_eval_score_to_proceed:
+                        logger.warning("Max retries reached for cell '{}', proceeding with score {:.2f}".format(
+                            cell.name, eval_score))
+                        await emit({
+                            "type": "cell_evaluation_max_retries",
+                            "cell_id": cell.id,
+                            "cell_name": cell.name,
+                            "display_step": cell.get_display_step(),
+                            "message": "Max retries reached, proceeding with acceptable score {:.2f}".format(eval_score),
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                        cell_passed_evaluation = True
+                    else:
+                        logger.error("Max retries reached for cell '{}' with low score {:.2f}, marking failed".format(
+                            cell.name, eval_score))
+                        cell.mark_failed("Evaluation failed after {} attempts (score: {:.2f})".format(
+                            self.max_evaluation_retries, eval_score))
+                        await emit({
+                            "type": "cell_failed",
+                            "cell_id": cell.id,
+                            "cell_name": cell.name,
+                            "display_step": cell.get_display_step(),
+                            "error": "Evaluation failed with low score {:.2f} after {} attempts".format(
+                                eval_score, self.max_evaluation_retries),
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                    # Store evaluation metadata regardless
+                    cell.evaluation_score = eval_score
+                    cell.evaluation_attempts = evaluation_attempt
+                    cell.evaluation_history = evaluation_history
                 else:
                     await emit({
                         "type": "cell_fixing_from_evaluation",
@@ -2213,7 +1835,6 @@ CRITICAL RULES:
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
-                    # Fix code using ALL example results for pattern identification
                     cell_code = await self.fix_cell_code_from_evaluation(
                         cell=cell,
                         current_code=cell_code,
@@ -2221,7 +1842,8 @@ CRITICAL RULES:
                         all_example_results=example_results,
                         workflow_description=workflow_description,
                         attempt_number=evaluation_attempt + 1,
-                        output_example=plan.output_example if hasattr(plan, 'output_example') and cell.step_number == len(plan.cells) else None
+                        output_example=plan.output_example if hasattr(plan, 'output_example') and cell.step_number == len(plan.cells) else None,
+                        evaluation_history=evaluation_history
                     )
                     cell.mark_ready(cell_code, cell.code_description)
 
@@ -2234,15 +1856,15 @@ CRITICAL RULES:
                         "fix_reason": "evaluation_feedback",
                         "timestamp": datetime.utcnow().isoformat()
                     })
-                    # Continue to retry all examples with fixed code
 
-        # === Phase 4: Update contexts and complete ===
-        # Update the original example_contexts with final outputs
+        # If cell was marked failed (e.g. low eval score), return early
+        if cell.status == CellStatus.FAILED:
+            return {"cell": cell, "success": False, "example_outputs": {}}
+
         for example_idx, outputs in example_outputs.items():
             if example_idx < len(example_contexts):
                 example_contexts[example_idx].update(outputs)
 
-        # Cell completed for all examples
         cell.mark_completed(
             output="Completed for {} examples".format(total_examples),
             variables={},
@@ -2274,24 +1896,7 @@ CRITICAL RULES:
         workflow_description: str,
         max_retries: int = 3
     ) -> Dict[str, Any]:
-        """
-        Execute cell code with automatic retry on execution errors.
-
-        This handles runtime errors during execution, not evaluation failures.
-
-        Args:
-            cell: The cell being executed
-            code: The code to execute
-            context: Execution context
-            workflow_description: Workflow description for fix attempts
-            max_retries: Maximum retry attempts for execution errors
-
-        Returns:
-            dict: Execution result with output and variables
-
-        Raises:
-            Exception: If execution fails after all retries
-        """
+        """Execute cell code with automatic retry on runtime errors (not evaluation failures)."""
         current_code = code
         last_error = None
 
@@ -2317,7 +1922,6 @@ CRITICAL RULES:
                 if attempt + 1 >= max_retries:
                     break
 
-                # Try to fix the code
                 import traceback
                 error_msg = "Error: {}\n\nTraceback:\n{}".format(str(e), traceback.format_exc())
 
@@ -2346,33 +1950,14 @@ CRITICAL RULES:
         shared_context_schema: Optional[Dict[str, str]] = None,
         producer_return_hints: Optional[Dict[str, str]] = None
     ) -> CellExecutionResult:
-        """
-        Execute a single cell with complete retry and evaluation cycles.
-
-        This runs INDEPENDENTLY for each cell in a parallel layer.
-        Each cell goes through:
-        1. Code generation (if needed)
-        2. Code execution with retry on errors (up to max_retry_attempts)
-        3. LLM evaluation of output with retry on invalid (up to max_evaluation_retries)
-
-        Args:
-            cell: The cell to execute
-            execution_context: Input context (variables from previous layers)
-            workflow_description: Overall workflow description
-            output_example: Optional example of desired output format (for final cell evaluation)
-            shared_context_schema: Schema of all variables in the workflow plan
-            producer_return_hints: Return statement hints from producer cells
-
-        Returns:
-            CellExecutionResult with success status, outputs, and events
-        """
+        """Execute a single cell with code generation, execution retry, and LLM evaluation cycles."""
         events: List[Dict[str, Any]] = []
         cell_code = cell.generated_code
         attempt = 0
         evaluation_attempt = 0
+        evaluation_history = []  # Accumulate feedback across retries
         last_error = None
 
-        # Phase 1: Generate code if not already generated
         if cell.status == CellStatus.PENDING or cell_code is None:
             cell.mark_generating()
             events.append({
@@ -2425,7 +2010,6 @@ CRITICAL RULES:
                     events=events
                 )
 
-        # Phase 2: Execute with retry loop
         while attempt < self.max_retry_attempts:
             attempt += 1
             is_retry = attempt > 1
@@ -2444,7 +2028,6 @@ CRITICAL RULES:
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
-                    # Fix the code based on error
                     cell_code = await self.fix_cell_code(
                         cell=cell,
                         failed_code=cell_code,
@@ -2457,7 +2040,6 @@ CRITICAL RULES:
                     )
                     cell.mark_ready(cell_code, cell.code_description)
 
-                # Execute the cell
                 cell.mark_executing()
                 events.append({
                     "type": "cell_executing",
@@ -2469,7 +2051,6 @@ CRITICAL RULES:
                     "timestamp": datetime.utcnow().isoformat()
                 })
 
-                # Validate required inputs are present in context
                 for required_input in cell.inputs_required:
                     if required_input not in execution_context:
                         logger.warning(
@@ -2497,7 +2078,6 @@ CRITICAL RULES:
                 output_variables = cell_result.get("variables", {})
                 formatted_outputs = self._format_output_variables(output_variables)
 
-                # Execution succeeded - now do LLM evaluation
                 events.append({
                     "type": "cell_executed",
                     "cell_id": cell.id,
@@ -2508,14 +2088,12 @@ CRITICAL RULES:
                     "timestamp": datetime.utcnow().isoformat()
                 })
 
-                # Phase 3: LLM Evaluation loop
                 cell_passed_evaluation = False
                 evaluation_attempt = 0
 
                 while evaluation_attempt < self.max_evaluation_retries and not cell_passed_evaluation:
                     evaluation_attempt += 1
 
-                    # Prepare output for evaluation
                     smoke_test_output = ExampleOutput(
                         example_id="cell_{}".format(cell.id),
                         user_input=execution_context.get("user_input", ""),
@@ -2533,8 +2111,7 @@ CRITICAL RULES:
                         "timestamp": datetime.utcnow().isoformat()
                     })
 
-                    # Determine if this is the final cell (produces final_result)
-                    # Only pass output_example to evaluator for final cell
+                    # Only pass output_example to evaluator for the final cell
                     is_final_cell = "final_result" in cell.outputs_produced
                     cell_output_example = output_example if is_final_cell else None
 
@@ -2548,15 +2125,28 @@ CRITICAL RULES:
 
                     if evaluation_result.is_valid:
                         cell_passed_evaluation = True
+                        # Store evaluation metadata on cell
+                        cell.evaluation_score = getattr(evaluation_result, 'score', 1.0)
+                        cell.evaluation_attempts = evaluation_attempt
+                        cell.evaluation_history = evaluation_history if evaluation_history else None
                         events.append({
                             "type": "cell_evaluation_passed",
                             "cell_id": cell.id,
                             "cell_name": cell.name,
                             "display_step": cell.get_display_step(),
                             "feedback": evaluation_result.feedback,
+                            "score": getattr(evaluation_result, 'score', None),
                             "timestamp": datetime.utcnow().isoformat()
                         })
                     else:
+                        # Accumulate evaluation feedback for history
+                        evaluation_history.append({
+                            "attempt": evaluation_attempt,
+                            "score": getattr(evaluation_result, 'score', None),
+                            "feedback": evaluation_result.feedback,
+                            "issues": evaluation_result.issues
+                        })
+
                         events.append({
                             "type": "cell_evaluation_failed",
                             "cell_id": cell.id,
@@ -2570,21 +2160,38 @@ CRITICAL RULES:
                         })
 
                         if evaluation_attempt >= self.max_evaluation_retries:
-                            # Max retries reached, proceed anyway
-                            logger.warning(
-                                "Max evaluation retries reached for cell '{}', proceeding anyway".format(cell.name)
-                            )
-                            events.append({
-                                "type": "cell_evaluation_max_retries",
-                                "cell_id": cell.id,
-                                "cell_name": cell.name,
-                                "display_step": cell.get_display_step(),
-                                "message": "Max evaluation retries reached, proceeding with current output",
-                                "timestamp": datetime.utcnow().isoformat()
-                            })
-                            cell_passed_evaluation = True  # Force proceed
+                            eval_score = getattr(evaluation_result, 'score', 0.5)
+                            if eval_score >= self.min_eval_score_to_proceed:
+                                logger.warning("Max retries reached for cell '{}', proceeding with score {:.2f}".format(
+                                    cell.name, eval_score))
+                                events.append({
+                                    "type": "cell_evaluation_max_retries",
+                                    "cell_id": cell.id,
+                                    "cell_name": cell.name,
+                                    "display_step": cell.get_display_step(),
+                                    "message": "Max retries reached, proceeding with acceptable score {:.2f}".format(eval_score),
+                                    "timestamp": datetime.utcnow().isoformat()
+                                })
+                                cell_passed_evaluation = True
+                            else:
+                                logger.error("Max retries reached for cell '{}' with low score {:.2f}, marking failed".format(
+                                    cell.name, eval_score))
+                                cell.mark_failed("Evaluation failed after {} attempts (score: {:.2f})".format(
+                                    self.max_evaluation_retries, eval_score))
+                                events.append({
+                                    "type": "cell_failed",
+                                    "cell_id": cell.id,
+                                    "cell_name": cell.name,
+                                    "display_step": cell.get_display_step(),
+                                    "error": "Evaluation failed with low score {:.2f} after {} attempts".format(
+                                        eval_score, self.max_evaluation_retries),
+                                    "timestamp": datetime.utcnow().isoformat()
+                                })
+                            # Store evaluation metadata regardless
+                            cell.evaluation_score = eval_score
+                            cell.evaluation_attempts = evaluation_attempt
+                            cell.evaluation_history = evaluation_history
                         else:
-                            # Fix code based on evaluation feedback
                             events.append({
                                 "type": "cell_fixing_from_evaluation",
                                 "cell_id": cell.id,
@@ -2595,7 +2202,6 @@ CRITICAL RULES:
                                 "timestamp": datetime.utcnow().isoformat()
                             })
 
-                            # Wrap single execution result in list for fix method
                             single_example_result = [{
                                 "user_input": execution_context.get("user_input", ""),
                                 "output": cell_result.get("output", ""),
@@ -2610,11 +2216,11 @@ CRITICAL RULES:
                                 all_example_results=single_example_result,
                                 workflow_description=workflow_description,
                                 attempt_number=evaluation_attempt + 1,
-                                output_example=cell_output_example
+                                output_example=cell_output_example,
+                                evaluation_history=evaluation_history
                             )
                             cell.mark_ready(cell_code, cell.code_description)
 
-                            # Re-execute with fixed code
                             cell.mark_executing()
                             start_time = time.time()
                             cell_result = await self._execute_cell_code(
@@ -2626,7 +2232,6 @@ CRITICAL RULES:
                             output_variables = cell_result.get("variables", {})
                             formatted_outputs = self._format_output_variables(output_variables)
 
-                # Cell completed successfully
                 cell.mark_completed(
                     output=cell_result.get("output", ""),
                     variables=output_variables,
@@ -2675,7 +2280,6 @@ CRITICAL RULES:
                     cell.name, attempt, self.max_retry_attempts, error_msg
                 ))
 
-        # All retries exhausted
         cell.mark_failed(last_error or "Unknown error")
         events.append({
             "type": "cell_failed",
@@ -2705,31 +2309,7 @@ CRITICAL RULES:
         shared_context_schema: Optional[Dict[str, str]] = None,
         producer_return_hints: Optional[Dict[str, str]] = None
     ) -> Tuple[bool, Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Execute all cells in a layer in parallel.
-
-        Each cell runs its FULL validation cycle independently:
-        - Code generation
-        - Execution with retry on errors
-        - LLM evaluation with retry on invalid output
-
-        The layer completes only when ALL cells have reached a final state
-        (either completed successfully or exhausted all retries).
-
-        Args:
-            layer_cells: List of cells in this layer
-            execution_context: Input context (variables from previous layers)
-            workflow_description: Overall workflow description
-            output_example: Optional example of desired output format (for final cell)
-            shared_context_schema: Schema of all variables in the workflow plan
-            producer_return_hints: Return statement hints from producer cells
-
-        Returns:
-            Tuple of:
-            - success: True if all cells completed successfully
-            - merged_context: Combined context with outputs from all cells
-            - events: All events from all cells
-        """
+        """Execute all cells in a layer in parallel, each with full retry/evaluation cycles."""
         if not layer_cells:
             return True, execution_context.copy(), []
 
@@ -2738,11 +2318,10 @@ CRITICAL RULES:
             layer, len(layer_cells)
         ))
 
-        # Execute all cells in parallel - each with its own retry/evaluation cycle
         tasks = [
             self.execute_cell_with_full_validation(
                 cell=cell,
-                execution_context=execution_context.copy(),  # Each cell gets a copy
+                execution_context=execution_context.copy(),
                 workflow_description=workflow_description,
                 output_example=output_example,
                 shared_context_schema=shared_context_schema,
@@ -2751,15 +2330,12 @@ CRITICAL RULES:
             for cell in layer_cells
         ]
 
-        # Wait for all cells to complete (success or failure)
         results: List[CellExecutionResult] = await asyncio.gather(*tasks)
 
-        # Collect all events from all cells
         all_events: List[Dict[str, Any]] = []
         for result in results:
             all_events.extend(result.events)
 
-        # Check if all cells succeeded
         all_succeeded = all(result.success for result in results)
         failed_cells = [r.cell.name for r in results if not r.success]
 
@@ -2768,14 +2344,12 @@ CRITICAL RULES:
                 layer, failed_cells
             ))
 
-        # Merge contexts from all successful cells
         merged_context = execution_context.copy()
         for result in results:
             if result.success and result.output_variables:
                 merged_context.update(result.output_variables)
 
-        # Store updated context
-        from .executor import workflow_executor
+        from ..core.executor import workflow_executor
         if layer_cells:
             workflow_executor.store_execution_context(
                 layer_cells[0].workflow_id,
@@ -2797,43 +2371,14 @@ CRITICAL RULES:
         attached_file_ids: Optional[List[int]] = None,
         workflow_description: str = ""
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """
-        Execute workflow with layer-based parallelization.
-
-        Executes cells layer by layer:
-        - All cells in a layer run in parallel
-        - Each cell has its own retry + evaluation cycle
-        - Layer N+1 only starts after ALL cells in layer N complete
-        - Context is merged from all parallel cells before next layer
-
-        Args:
-            plan: The workflow plan with cell definitions
-            user_input: User's input query
-            attached_file_ids: Optional list of attached file IDs
-            workflow_description: Original workflow description
-
-        Yields:
-            dict: Event objects with type and relevant data
-
-        Event Types:
-            - workflow_start: Beginning of workflow execution
-            - layer_started: Beginning of layer execution
-            - cell_generating, cell_ready, cell_executing, etc.: Cell-level events
-            - layer_completed: All cells in layer finished
-            - layer_failed: One or more cells in layer failed
-            - workflow_completed: All layers finished successfully
-            - workflow_failed: Workflow stopped due to layer failure
-        """
-        # Initialize execution context
+        """Execute workflow layer by layer with parallel cells and merged context between layers."""
         execution_context: Dict[str, Any] = {
             "user_input": user_input,
             "attached_file_ids": attached_file_ids or []
         }
 
-        # Track return hints from generated cells to help consumer cells
         producer_return_hints: Dict[str, str] = {}
 
-        # Group cells by layer
         layers = plan.get_cells_by_layer()
         total_layers = len(layers)
         total_cells = len(plan.cells)
@@ -2842,7 +2387,6 @@ CRITICAL RULES:
             total_layers, total_cells
         ))
 
-        # Emit workflow start event
         yield {
             "type": "workflow_start",
             "total_cells": total_cells,
@@ -2853,12 +2397,10 @@ CRITICAL RULES:
 
         completed_cells = 0
 
-        # Execute layer by layer
         for layer_num in sorted(layers.keys()):
             layer_cells = layers[layer_num]
             is_parallel_layer = len(layer_cells) > 1
 
-            # Emit layer started event
             yield {
                 "type": "layer_started",
                 "layer": layer_num,
@@ -2868,7 +2410,6 @@ CRITICAL RULES:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            # Execute all cells in this layer in parallel
             success, merged_context, events = await self.execute_layer(
                 layer_cells=layer_cells,
                 execution_context=execution_context,
@@ -2878,12 +2419,10 @@ CRITICAL RULES:
                 producer_return_hints=producer_return_hints
             )
 
-            # Yield all events from this layer's execution
             for event in events:
                 yield event
 
             if not success:
-                # Get list of failed cells
                 failed_cells = [c for c in layer_cells if c.status == CellStatus.FAILED]
 
                 yield {
@@ -2905,11 +2444,9 @@ CRITICAL RULES:
                 }
                 return
 
-            # Update context for next layer
             execution_context = merged_context
             completed_cells += len(layer_cells)
 
-            # Extract return hints from completed cells for downstream layers
             for cell in layer_cells:
                 if cell.generated_code and cell.outputs_produced:
                     new_hints = self._extract_return_hints(
@@ -2917,7 +2454,6 @@ CRITICAL RULES:
                     )
                     producer_return_hints.update(new_hints)
 
-            # Emit layer completed event
             yield {
                 "type": "layer_completed",
                 "layer": layer_num,
@@ -2926,7 +2462,6 @@ CRITICAL RULES:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-        # All layers completed successfully
         final_result = execution_context.get("final_result", "Workflow completed successfully")
 
         yield {
@@ -2939,5 +2474,4 @@ CRITICAL RULES:
         }
 
 
-# Global executor instance
 cell_executor = CellExecutor()

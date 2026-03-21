@@ -45,83 +45,76 @@ Evaluate cell outputs to determine if they are valid and meet expectations. You 
 
 ## Response Format
 
-You MUST respond in exactly this format:
+Use the `submit_evaluation` tool to submit your evaluation. You MUST call this tool with your assessment.
 
-```
-VALID: [true/false]
+### Scoring Guidelines
 
-FEEDBACK:
-[Your detailed feedback explaining your evaluation. Be specific about what you checked and why you reached your conclusion.]
-
-ISSUES:
-- [Issue 1, if any]
-- [Issue 2, if any]
-(or "None" if no issues found)
-
-OUTPUT_ANALYSIS:
-[If VALID is false, provide detailed analysis of what is wrong with the OUTPUT - missing fields, incorrect data types, structural issues, etc. DO NOT suggest code changes - describe OUTPUT problems only.]
-(or "None" if no issues)
-```
+- **is_valid**: true if the output is acceptable (passes evaluation), false if it has clear problems
+- **confidence**: How confident you are in your judgment (0.0-1.0). Use lower values when the output is ambiguous or you're unsure whether an issue is a real problem
+- **score**: Overall quality of the cell output (0.0-1.0):
+  - 1.0: Perfect — all outputs correct, well-structured, complete
+  - 0.8-0.9: Good — minor imperfections but fully functional
+  - 0.6-0.7: Acceptable — works but has notable issues (missing optional fields, suboptimal structure)
+  - 0.4-0.5: Poor — partially correct but has significant problems
+  - 0.0-0.3: Bad — mostly wrong, missing critical data, or fundamentally broken
+- **field_scores**: Score each output variable individually (0.0-1.0). This helps identify which specific outputs need improvement
+- **issues**: List specific problems found. Empty list if none
+- **output_analysis**: If is_valid is false, describe what is wrong with the OUTPUT (not the code). If valid, set to "None"
 
 ## Examples
 
+These examples show the expected tool call arguments for `submit_evaluation`:
+
 ### Example 1: Valid Output
-```
-VALID: true
-
-FEEDBACK:
-The cell executed successfully and returned a properly structured document search result. The output contains a list of documents with IDs and relevance scores, which matches the expected output format. The search returned 3 results for the query, which is reasonable.
-
-ISSUES:
-None
-
-OUTPUT_ANALYSIS:
-None
+```json
+{
+  "is_valid": true,
+  "confidence": 0.95,
+  "score": 0.9,
+  "feedback": "The cell executed successfully and returned a properly structured document search result. The output contains a list of documents with IDs and relevance scores, which matches the expected output format. The search returned 3 results for the query, which is reasonable.",
+  "issues": [],
+  "output_analysis": "None",
+  "field_scores": {"search_results": 0.9, "result_count": 1.0}
+}
 ```
 
 ### Example 2: Invalid Output - Wrong Type
-```
-VALID: false
-
-FEEDBACK:
-The cell is supposed to return a dictionary with 'documents' and 'count' keys, but instead returned a raw string containing the API response. This indicates the JSON parsing step is missing or failing.
-
-ISSUES:
-- Output is a string instead of a dictionary
-- Missing expected 'documents' key
-- Missing expected 'count' key
-
-OUTPUT_ANALYSIS:
-The output is a raw string containing what appears to be JSON data, but it has not been parsed into a Python dictionary. The expected output structure is a dictionary with 'documents' (list) and 'count' (integer) keys, but the actual output is a string representation of the API response.
+```json
+{
+  "is_valid": false,
+  "confidence": 0.95,
+  "score": 0.2,
+  "feedback": "The cell is supposed to return a dictionary with 'documents' and 'count' keys, but instead returned a raw string containing the API response. This indicates the JSON parsing step is missing or failing.",
+  "issues": ["Output is a string instead of a dictionary", "Missing expected 'documents' key", "Missing expected 'count' key"],
+  "output_analysis": "The output is a raw string containing what appears to be JSON data, but it has not been parsed into a Python dictionary. The expected output structure is a dictionary with 'documents' (list) and 'count' (integer) keys, but the actual output is a string representation of the API response.",
+  "field_scores": {"documents": 0.0, "count": 0.0}
+}
 ```
 
 ### Example 3: Invalid Output - Empty When Shouldn't Be
-```
-VALID: false
-
-FEEDBACK:
-The cell returned an empty list for document analysis, but the input clearly specified document IDs that exist and should produce analysis results. An empty response here indicates either the API call failed silently or the response parsing is incorrect.
-
-ISSUES:
-- Empty analysis results when documents were provided
-- Possible silent API failure or incorrect response handling
-
-OUTPUT_ANALYSIS:
-The output is an empty list, which is unexpected given that specific document IDs were provided as input. The expected output is a list of analysis objects (one per document), but the actual output contains zero items. This suggests either no data was received from the API, or the data was received but not properly extracted into the output.
+```json
+{
+  "is_valid": false,
+  "confidence": 0.85,
+  "score": 0.1,
+  "feedback": "The cell returned an empty list for document analysis, but the input clearly specified document IDs that exist and should produce analysis results. An empty response here indicates either the API call failed silently or the response parsing is incorrect.",
+  "issues": ["Empty analysis results when documents were provided", "Possible silent API failure or incorrect response handling"],
+  "output_analysis": "The output is an empty list, which is unexpected given that specific document IDs were provided as input. The expected output is a list of analysis objects (one per document), but the actual output contains zero items.",
+  "field_scores": {"analysis_results": 0.0}
+}
 ```
 
 ### Example 4: Valid Output - Empty But Acceptable
-```
-VALID: true
-
-FEEDBACK:
-The search returned zero results, which is a valid outcome for the query "xyz123nonexistent". The output structure is correct (empty list with count=0), and the cell executed without errors. Empty results are acceptable when the search query doesn't match any documents.
-
-ISSUES:
-None
-
-OUTPUT_ANALYSIS:
-None
+```json
+{
+  "is_valid": true,
+  "confidence": 0.9,
+  "score": 0.85,
+  "feedback": "The search returned zero results, which is a valid outcome for the query 'xyz123nonexistent'. The output structure is correct (empty list with count=0), and the cell executed without errors. Empty results are acceptable when the search query doesn't match any documents.",
+  "issues": [],
+  "output_analysis": "None",
+  "field_scores": {"search_results": 0.85, "result_count": 1.0}
+}
 ```
 
 ## OUTPUT EXAMPLE EVALUATION (if provided)

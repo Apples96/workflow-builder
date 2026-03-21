@@ -50,6 +50,7 @@ class Settings:
         self.max_cell_execution_time: int = int(os.getenv("MAX_CELL_EXECUTION_TIME", "300"))
         self.max_retry_attempts: int = int(os.getenv("MAX_RETRY_ATTEMPTS", "5"))
         self.max_evaluation_retries: int = int(os.getenv("MAX_EVALUATION_RETRIES", "5"))
+        self.min_evaluation_score_to_proceed: float = float(os.getenv("MIN_EVALUATION_SCORE_TO_PROCEED", "0.6"))
 
         # LLM Configuration (Anthropic)
         self.anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")

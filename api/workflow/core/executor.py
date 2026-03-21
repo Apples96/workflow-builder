@@ -12,12 +12,10 @@ from ...config import settings
 
 logger = logging.getLogger(__name__)
 
-# Import Upstash Redis
 # Support both Vercel KV environment variables and direct Upstash variables
 try:
     from upstash_redis import Redis
 
-    # Try Vercel KV variables first (automatically set when linking Vercel KV)
     redis_url = os.getenv("KV_REST_API_URL") or os.getenv("UPSTASH_REDIS_REST_URL")
     redis_token = os.getenv("KV_REST_API_TOKEN") or os.getenv("UPSTASH_REDIS_REST_TOKEN")
 
@@ -36,12 +34,9 @@ class WorkflowExecutor:
     def __init__(self):
         self.max_execution_time = settings.max_execution_time
         self.use_redis = redis_client is not None
-        # Fallback to in-memory if Redis not available
         self.workflows: Dict[str, Workflow] = {}
-        # Cell-based workflow plans storage
-        self.workflow_plans: Dict[str, WorkflowPlan] = {}  # workflow_id -> plan
-        # Execution context storage for cell reruns
-        self.execution_contexts: Dict[str, Dict[str, Any]] = {}  # workflow_id -> execution_context
+        self.workflow_plans: Dict[str, WorkflowPlan] = {}
+        self.execution_contexts: Dict[str, Dict[str, Any]] = {}
 
         if self.use_redis:
             logger.info("✅ Using Redis (Upstash) for workflow storage")
@@ -51,8 +46,6 @@ class WorkflowExecutor:
     def store_workflow(self, workflow: Workflow) -> None:
         """Store a workflow for later execution"""
         if self.use_redis:
-            # Store in Redis with 24h expiration
-            # Convert Workflow object to dict, then to JSON string
             workflow_dict = {
                 "id": workflow.id,
                 "name": workflow.name,
@@ -79,7 +72,6 @@ class WorkflowExecutor:
         if self.use_redis:
             workflow_data = redis_client.get("workflow:{}".format(workflow_id))
             if workflow_data:
-                # Parse JSON string back to Workflow object
                 workflow_dict = json.loads(workflow_data)
                 return Workflow(**workflow_dict)
             return None
@@ -87,15 +79,8 @@ class WorkflowExecutor:
             return self.workflows.get(workflow_id)
 
     def store_workflow_plan(self, workflow_id: str, plan: WorkflowPlan) -> None:
-        """
-        Store a workflow plan for cell-based execution.
-
-        Args:
-            workflow_id: ID of the parent workflow
-            plan: The workflow plan with cell definitions
-        """
+        """Store a workflow plan for cell-based execution."""
         if self.use_redis:
-            # Store in Redis with 24h expiration
             plan_data = json.dumps(plan.to_dict())
             redis_client.setex(
                 "workflow_plan:{}".format(workflow_id),
@@ -108,15 +93,7 @@ class WorkflowExecutor:
             logger.info("Stored workflow plan for {} in memory".format(workflow_id))
 
     def get_workflow_plan(self, workflow_id: str) -> Optional[WorkflowPlan]:
-        """
-        Retrieve a workflow plan.
-
-        Args:
-            workflow_id: ID of the parent workflow
-
-        Returns:
-            WorkflowPlan if found, None otherwise
-        """
+        """Retrieve a workflow plan, or None if not found."""
         if self.use_redis:
             plan_data = redis_client.get("workflow_plan:{}".format(workflow_id))
             if plan_data:
@@ -127,15 +104,8 @@ class WorkflowExecutor:
             return self.workflow_plans.get(workflow_id)
 
     def store_execution_context(self, workflow_id: str, context: Dict[str, Any]) -> None:
-        """
-        Store execution context for a workflow (for cell reruns).
-
-        Args:
-            workflow_id: ID of the workflow
-            context: Current execution context with all variable values
-        """
+        """Store execution context for a workflow (for cell reruns)."""
         if self.use_redis:
-            # Store in Redis with 24h expiration
             context_data = json.dumps(context, default=str)
             redis_client.setex(
                 "execution_context:{}".format(workflow_id),
@@ -146,15 +116,7 @@ class WorkflowExecutor:
             self.execution_contexts[workflow_id] = context
 
     def get_execution_context(self, workflow_id: str) -> Dict[str, Any]:
-        """
-        Retrieve execution context for a workflow.
-
-        Args:
-            workflow_id: ID of the workflow
-
-        Returns:
-            Execution context dict, or empty dict if not found
-        """
+        """Retrieve execution context for a workflow, or empty dict if not found."""
         if self.use_redis:
             context_data = redis_client.get("execution_context:{}".format(workflow_id))
             if context_data:
@@ -162,15 +124,5 @@ class WorkflowExecutor:
             return {}
         else:
             return self.execution_contexts.get(workflow_id, {})
-
-    def update_workflow_plan(self, workflow_id: str, plan: WorkflowPlan) -> None:
-        """
-        Update a workflow plan (e.g., after cell execution).
-
-        Args:
-            workflow_id: ID of the parent workflow
-            plan: The updated plan
-        """
-        self.store_workflow_plan(workflow_id, plan)
 
 workflow_executor = WorkflowExecutor()

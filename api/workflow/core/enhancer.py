@@ -1,25 +1,3 @@
-"""
-Workflow Description Enhancer
-
-This module handles enhancing raw workflow descriptions into detailed,
-actionable specifications using Claude AI. It separates the enhancement
-logic from the core workflow generation for better maintainability.
-
-Key Features:
-    - Language preservation (French/English/etc.)
-    - Automatic parallelization analysis and layer-based structuring
-    - Ambiguity detection and clarification requests
-    - Paradigm API tool selection guidance
-    - Detailed step-by-step workflow specifications
-
-Architecture:
-    - Loads enhancement prompt from markdown file
-    - Uses Anthropic Claude for intelligent enhancement
-    - Automatically analyzes for parallelization opportunities
-    - Returns layer-structured enhancement results
-    - Maintains context for code generation
-"""
-
 import logging
 from typing import Dict, Any, Optional
 
@@ -31,54 +9,23 @@ logger = logging.getLogger(__name__)
 
 
 def load_enhancement_prompt() -> str:
-    """
-    Load the workflow enhancement prompt template from markdown file.
-
-    Returns:
-        str: The enhancement prompt content, or empty string if not found
-    """
+    """Load the workflow enhancement prompt template from markdown file."""
     return PromptLoader.load_optional("enhancer")
 
 
 class WorkflowEnhancer:
-    """
-    Enhances raw workflow descriptions into detailed specifications.
-
-    This class takes user-provided natural language workflow descriptions
-    and transforms them into comprehensive, step-by-step specifications
-    that can be effectively converted to executable code.
-
-    Features:
-        - Language preservation (responds in same language as input)
-        - Automatic parallelization optimization
-        - Ambiguity detection and clarification requests
-        - Paradigm API tool selection guidance
-        - Professional output formatting specifications
-    """
+    """Enhances raw workflow descriptions into detailed, actionable specifications using Claude AI."""
 
     def __init__(self, anthropic_client=None):
-        """
-        Initialize the workflow enhancer.
-
-        Args:
-            anthropic_client: Optional Anthropic client. If not provided,
-                            creates one using the centralized factory.
-        """
         self.anthropic_client = anthropic_client or create_anthropic_client()
         self._enhancement_prompt = None
     
     @property
     def enhancement_prompt(self) -> str:
-        """
-        Get the enhancement prompt, loading it lazily on first access.
-        
-        Returns:
-            str: The enhancement prompt template
-        """
+        """Get the enhancement prompt, loading it lazily on first access."""
         if self._enhancement_prompt is None:
             self._enhancement_prompt = load_enhancement_prompt()
             
-            # Fallback prompt if file loading fails
             if not self._enhancement_prompt:
                 logger.warning("⚠️ Using fallback enhancement prompt")
                 self._enhancement_prompt = self._get_fallback_prompt()
@@ -86,12 +33,7 @@ class WorkflowEnhancer:
         return self._enhancement_prompt
     
     def _get_fallback_prompt(self) -> str:
-        """
-        Get a minimal fallback prompt if the main prompt file cannot be loaded.
-        
-        Returns:
-            str: Basic enhancement prompt
-        """
+        """Return a minimal fallback prompt if the main prompt file cannot be loaded."""
         return """You are an AI assistant that helps create detailed workflow descriptions.
 
 Your task is to enhance the user's workflow description into clear, specific steps.
@@ -115,25 +57,10 @@ Enhance this workflow description:"""
         raw_description: str,
         output_example: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Enhance a raw workflow description using Claude AI to create a more detailed,
-        actionable workflow specification with proper tool usage and clear steps.
-
-        Args:
-            raw_description: User's initial natural language workflow description
-            output_example: Optional example of desired output format to guide enhancement
-
-        Returns:
-            Dict containing enhanced description, questions, and warnings
-
-        Raises:
-            Exception: If enhancement fails due to API or processing errors
-        """
+        """Enhance a raw workflow description into a detailed, actionable specification."""
         try:
-            # Build user message with optional output example
             user_message = "Raw workflow description: {}".format(raw_description)
 
-            # Include output example if provided to guide step descriptions
             if output_example:
                 user_message += "\n\n## USER-PROVIDED OUTPUT EXAMPLE\n"
                 user_message += "The user has provided the following example of their desired output format. "
@@ -158,11 +85,9 @@ Enhance this workflow description:"""
             
             logger.info(f"✅ Enhanced workflow description ({len(result_text)} chars)")
 
-            # Parse parallelization info directly from the layer-structured output
             parallelization_info = self._parse_parallelization_info(result_text)
             logger.info(f"✅ Parallelization: {parallelization_info['total_layers']} layers, {parallelization_info['parallel_steps_count']} parallel steps")
 
-            # Extract questions and warnings from the enhanced description
             extracted = self._extract_questions_and_warnings(result_text)
             logger.info(f"✅ Extracted {len(extracted['questions'])} question(s) and {len(extracted['warnings'])} warning(s)")
 
@@ -179,25 +104,13 @@ Enhance this workflow description:"""
             raise Exception(error_msg)
 
     def _extract_questions_and_warnings(self, result_text: str) -> Dict[str, list]:
-        """
-        Extract questions and warnings from "QUESTIONS AND LIMITATIONS:" sections
-        in the enhanced description text.
-
-        Args:
-            result_text: The LLM response with enhanced description
-
-        Returns:
-            Dict with "questions" and "warnings" lists
-        """
+        """Extract questions and warnings from 'QUESTIONS AND LIMITATIONS:' sections."""
         import re
 
         questions = []
         warnings = []
 
         try:
-            # Pattern to find "QUESTIONS AND/ET LIMITATIONS:" sections
-            # Supports both English and French headers
-            # Captures content until next step header, layer header, separator, or end
             pattern = (
                 r'QUESTIONS\s+(?:AND|ET)\s+LIMITATIONS:\s*\n?'
                 r'(.*?)'
@@ -208,21 +121,17 @@ Enhance this workflow description:"""
             for match in matches:
                 content = match.strip()
 
-                # Skip empty content or "None" entries
                 if not content:
                     continue
 
-                # Check if this is a "None" entry (case-insensitive, multiple languages)
                 none_patterns = [r'^\s*none\.?\s*$', r'^\s*aucune?\.?\s*$']
                 is_none = any(re.match(pat, content, re.IGNORECASE) for pat in none_patterns)
                 if is_none:
                     continue
 
-                # Check if this section contains an ambiguity warning
                 if "AMBIGUITY DETECTED" in content.upper() or "⚠️" in content:
                     warnings.append(content)
 
-                # Extract numbered questions (format: "1. Question here")
                 numbered_questions = re.findall(r'^\s*\d+\.\s*(.+)$', content, re.MULTILINE)
 
                 if numbered_questions:
@@ -241,15 +150,7 @@ Enhance this workflow description:"""
         }
 
     def _parse_parallelization_info(self, result_text: str) -> Dict[str, Any]:
-        """
-        Parse parallelization metadata from the LLM response.
-
-        Args:
-            result_text: The LLM response with layer-structured description
-
-        Returns:
-            Dict with parallelization metadata
-        """
+        """Parse parallelization metadata from the layer-structured LLM response."""
         info = {
             "total_layers": 1,
             "parallel_layers": 0,
@@ -259,44 +160,35 @@ Enhance this workflow description:"""
         }
 
         try:
-            # Count layers by looking for "LAYER X:" patterns
             import re
             layer_matches = re.findall(r'LAYER\s+(\d+)', result_text, re.IGNORECASE)
             if layer_matches:
                 info["total_layers"] = max(int(m) for m in layer_matches)
 
-            # Count parallel layers (those marked with PARALLEL)
             parallel_layer_matches = re.findall(r'LAYER\s+\d+\s*\(PARALLEL\)', result_text, re.IGNORECASE)
             info["parallel_layers"] = len(parallel_layer_matches)
 
-            # Count steps in format X.Y
             step_matches = re.findall(r'STEP\s+(\d+\.\d+)', result_text, re.IGNORECASE)
             info["parallel_steps"] = step_matches
 
-            # Count parallel steps (those not ending in .1 in parallel layers)
-            # This is a rough estimate - multiple steps in same layer are parallel
             layer_step_counts = {}
             for step in step_matches:
                 layer = step.split('.')[0]
                 layer_step_counts[layer] = layer_step_counts.get(layer, 0) + 1
 
-            # Steps in layers with more than 1 step are parallel
             info["parallel_steps_count"] = sum(
                 count for count in layer_step_counts.values() if count > 1
             )
 
             info["has_parallelization"] = info["parallel_layers"] > 0
 
-            # Try to extract from summary section if present
             if "PARALLELIZATION SUMMARY" in result_text.upper():
                 summary_section = result_text.upper().split("PARALLELIZATION SUMMARY")[1]
 
-                # Extract total layers
                 total_match = re.search(r'TOTAL LAYERS:\s*(\d+)', summary_section)
                 if total_match:
                     info["total_layers"] = int(total_match.group(1))
 
-                # Extract parallel layers count
                 parallel_match = re.search(r'PARALLEL LAYERS:\s*(\d+)', summary_section)
                 if parallel_match:
                     info["parallel_layers"] = int(parallel_match.group(1))

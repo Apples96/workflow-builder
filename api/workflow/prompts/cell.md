@@ -160,7 +160,8 @@ The v3 Agent API provides a unified interface. Use these pre-injected methods:
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `agent_query(query, file_ids=None, force_tool=None)` | Query documents with AI | Dict (use `extract_answer()`) |
+| `agent_query(query, file_ids=None, force_tool=None, response_format=None)` | Query documents with AI | Dict (use `extract_answer()`) |
+| `chat_completion(prompt, guided_json=None, guided_choice=None, guided_regex=None)` | LLM completion with structured output (no documents) | String |
 | `get_file_chunks(file_id)` | Get raw text chunks | Dict with `chunks` list |
 | `wait_for_embedding(file_id)` | Wait for file indexing | Dict when ready |
 | `extract_answer(response)` | Extract text from v3 response | String |
@@ -176,42 +177,126 @@ The v3 Agent API provides a unified interface. Use these pre-injected methods:
 
 **Paradigm's own recommendation:** *"It is recommended to not force a tool when scoping, as the automatic routing will ensure the optimal tool for your type of file(s) is used."*
 
-### Quick Usage Examples
+### 🚨 CRITICAL: USE STRUCTURED EXTRACTION — NEVER PARSE FREE TEXT WITH REGEX
+
+When you need to extract specific fields from a document, **always use structured output** to get clean, parseable data. **NEVER** write regex patterns to parse free-text LLM responses — this is brittle and fails when the LLM formats its response differently (markdown, bullet points, bold markers, etc.).
+
+**There are two approaches for structured extraction:**
+
+#### Approach 1: `response_format` with `agent_query()` (RECOMMENDED for document extraction)
+
+Use this when extracting fields directly from documents. The `response_format` parameter accepts a JSON schema and guarantees the response matches that structure.
 
 ```python
-# RECOMMENDED: Let agent choose and use multi-turn reasoning
+# GOOD: Structured extraction — guaranteed clean JSON output
 result = await paradigm_client.agent_query(
-    query="What is the total amount?",
-    file_ids=[123]
+    query="From section D - Identification du titulaire, extract: company name, SIRET number, registered address, and legal form",
+    file_ids=[dc4_id],
+    response_format={
+        "type": "object",
+        "properties": {
+            "company_name": {"type": "string"},
+            "siret": {"type": "string"},
+            "address": {"type": "string"},
+            "legal_form": {"type": "string"}
+        },
+        "required": ["company_name", "siret", "address", "legal_form"]
+    }
 )
 answer = paradigm_client.extract_answer(result)
+# answer is a JSON string like: {"company_name": "SAS INOP'S", "siret": "51308250300055", ...}
+data = json.loads(answer)
+company_name = data["company_name"]
+siret = data["siret"]
+```
 
-# RECOMMENDED: Multi-field extraction — agent can search multiple times
+```python
+# BAD: Free-text extraction then regex parsing — FRAGILE, DO NOT DO THIS
 result = await paradigm_client.agent_query(
-    query="Extract the vendor name, invoice number, date, and total amount",
-    file_ids=[123]
+    query="Extract company name and SIRET from section D",
+    file_ids=[dc4_id]
 )
 answer = paradigm_client.extract_answer(result)
+# answer is free text like: "The **company name** is SAS INOP'S and the SIRET is 513 082 503 00055"
+# Now you'd need complex regex that breaks on different formatting...
+match = re.search(r"company name[^:]*:\s*(.+)", answer)  # FRAGILE — DON'T DO THIS
+```
 
-# ONLY IF NEEDED: Force a specific tool (single-turn, single tool call)
-# Use sparingly — only when you know exactly which tool and need nothing else
-result = await paradigm_client.agent_query(
-    query="Find the invoice total",
-    file_ids=[123],
-    force_tool="document_search"  # Single-turn only — agent cannot follow up
+#### Approach 2: `chat_completion()` with `guided_json` / `guided_choice` (for classification and text parsing)
+
+Use this when you already have text and need to classify it, parse it into structured fields, or force a specific choice. No documents involved — just an LLM call with guaranteed output format.
+
+```python
+# Classification with guided_choice — guaranteed to return one of the options
+status = await paradigm_client.chat_completion(
+    prompt="Based on this comparison, determine the status: DC4 says 'SAS INOPS', Acte says 'SAS INOP'S'",
+    guided_choice=["validé", "à vérifier", "non validé"]
 )
-answer = paradigm_client.extract_answer(result)
+# status is exactly one of: "validé", "à vérifier", "non validé"
+
+# Structured parsing with guided_json — guaranteed valid JSON
+parsed = await paradigm_client.chat_completion(
+    prompt="Parse this checkbox information: " + raw_text,
+    guided_json={
+        "type": "object",
+        "properties": {
+            "case_1_checked": {"type": "boolean"},
+            "case_2_checked": {"type": "boolean"},
+            "num_checked": {"type": "integer"}
+        },
+        "required": ["case_1_checked", "case_2_checked", "num_checked"]
+    }
+)
+data = json.loads(parsed)
 ```
 
 ### When to Use Which Method
 
 | Use Case | Method |
 |----------|--------|
-| Most document queries (RECOMMENDED) | `agent_query()` — agent chooses tools, multi-turn |
-| Multi-field extraction | `agent_query()` — agent can search multiple times |
-| Simple single-field lookup (only if speed critical) | `agent_query(force_tool="document_search")` — single-turn |
+| Extract fields from documents (RECOMMENDED) | `agent_query(response_format=...)` — structured JSON from doc search |
+| Classify text or force specific values | `chat_completion(guided_choice=[...])` — guaranteed to match |
+| Parse already-extracted text into structured data | `chat_completion(guided_json={...})` — guaranteed valid JSON |
+| Free-form document question (no field extraction) | `agent_query()` — agent chooses tools, multi-turn |
+| Multi-field extraction without strict structure | `agent_query()` — agent can search multiple times |
+| Force output to match a pattern (dates, IDs) | `chat_completion(guided_regex="...")` — regex-constrained output |
 | Raw text extraction | `get_file_chunks()` |
 | After file upload | `wait_for_embedding()` |
+
+### Quick Usage Examples
+
+```python
+# RECOMMENDED: Structured multi-field extraction from a document
+result = await paradigm_client.agent_query(
+    query="Extract the vendor name, invoice number, date, and total amount",
+    file_ids=[123],
+    response_format={
+        "type": "object",
+        "properties": {
+            "vendor_name": {"type": "string"},
+            "invoice_number": {"type": "string"},
+            "date": {"type": "string"},
+            "total_amount": {"type": "number"}
+        },
+        "required": ["vendor_name", "invoice_number", "date", "total_amount"]
+    }
+)
+answer = paradigm_client.extract_answer(result)
+data = json.loads(answer)  # Guaranteed valid JSON matching the schema
+
+# Free-form question (when you don't need structured fields)
+result = await paradigm_client.agent_query(
+    query="What is the main subject of this document?",
+    file_ids=[123]
+)
+answer = paradigm_client.extract_answer(result)
+
+# Classification of already-extracted text
+status = await paradigm_client.chat_completion(
+    prompt="Is this IBAN valid? IBAN: FR76 3000 6000 0112 3456 7890 189. Mod-97 result: 1",
+    guided_choice=["valid", "invalid"]
+)
+```
 
 ### QUERIES MUST INCLUDE ALL INFORMATION FROM THE CELL INSTRUCTIONS
 
@@ -314,8 +399,11 @@ result = await paradigm_client.agent_query(
 
 ```python
 # v3 Agent API (Primary)
-async def agent_query(query, file_ids=None, force_tool=None, model="alfred-ft5", timeout=300) -> Dict
+async def agent_query(query, file_ids=None, force_tool=None, response_format=None, model="alfred-ft5", timeout=300) -> Dict
 def extract_answer(response) -> str  # Extracts text from v3 response
+
+# v2 Chat Completion (Structured Output — no documents)
+async def chat_completion(prompt, model=None, system_prompt=None, guided_choice=None, guided_json=None, guided_regex=None) -> str
 
 # v2 File Operations
 async def get_file_chunks(file_id) -> Dict  # Returns {"chunks": [...]}
@@ -324,10 +412,10 @@ async def wait_for_embedding(file_id, max_wait_time=300, poll_interval=2) -> Dic
 
 ## EXAMPLE CELL IMPLEMENTATIONS (v3 Agent API)
 
-### Example 1: Search a Specific Document Using document_mapping (v3)
+### Example 1: Structured Field Extraction from a Document (RECOMMENDED)
 
-This example shows the **generic pattern** for extracting data from a specific document type.
-The document type ("Invoice" in this example) comes from the cell's task description in the workflow plan.
+This example shows the **recommended pattern** for extracting specific fields from a document.
+Uses `response_format` to get guaranteed JSON output — no regex parsing needed.
 
 ```python
 import asyncio
@@ -342,23 +430,20 @@ logger = logging.getLogger(__name__)
 
 async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Cell: Extract data from a specific document using document_mapping.
+    Cell: Extract structured data from a specific document using response_format.
 
     The document type to target comes from this cell's task description.
-    In this example, the cell task says "Extract key information from the Invoice".
+    In this example, the cell task says "Extract holder info from the DC4".
     """
     # Get document_mapping from previous cell
     document_mapping = context.get("document_mapping", {})
 
     # IMPORTANT: The document type comes from THIS CELL'S TASK in the workflow plan
-    # If the cell task says "Extract from Invoice" → use "Invoice"
-    # If the cell task says "Analyze the Contract" → use "Contract"
-    target_doc_type = "Invoice"  # <-- Determined by the cell's task description
+    target_doc_type = "DC4"  # <-- Determined by the cell's task description
 
     # Find the file ID with case-insensitive matching for robustness
     file_id = document_mapping.get(target_doc_type)
     if not file_id:
-        # Try case-insensitive match
         for key in document_mapping.keys():
             if target_doc_type.lower() in key.lower():
                 file_id = document_mapping[key]
@@ -369,27 +454,49 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
             target_doc_type, list(document_mapping.keys())
         ))
 
-    print("CELL_OUTPUT: Extracting data from {} document (ID: {})...".format(target_doc_type, file_id))
+    print("CELL_OUTPUT: Extracting structured data from {} (ID: {})...".format(target_doc_type, file_id))
 
     # ParadigmClient is pre-injected - just instantiate it
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
-        # CRITICAL: Pass file_ids to search ONLY within the target document
-        # Let the agent choose tools (multi-turn) — it can search and follow up as needed
+        # RECOMMENDED: Use response_format for guaranteed structured JSON output
         result = await paradigm_client.agent_query(
-            query="Extract key information: vendor name, invoice number, date, line items, and total amount",
-            file_ids=[file_id]  # <-- REQUIRED: targets the specific document
+            query="From section D - Identification du titulaire du marché public, extract: company name (Nom commercial et Dénomination sociale), SIRET number, registered address (Adresse du siège social), and legal form (Forme juridique)",
+            file_ids=[file_id],
+            response_format={
+                "type": "object",
+                "properties": {
+                    "company_name": {"type": "string"},
+                    "siret": {"type": "string"},
+                    "address": {"type": "string"},
+                    "legal_form": {"type": "string"}
+                },
+                "required": ["company_name", "siret", "address", "legal_form"]
+            }
         )
 
         answer = paradigm_client.extract_answer(result)
-        print("CELL_OUTPUT: Successfully extracted information from {}".format(target_doc_type))
+        print("CELL_OUTPUT: Raw structured response: {}".format(answer[:200]))
+
+        # Parse the guaranteed JSON response
+        data = json.loads(answer)
+
+        # Return flat string variables for downstream cells
+        company_name = data.get("company_name", "NON TROUVÉ")
+        siret = data.get("siret", "NON TROUVÉ")
+        address = data.get("address", "NON TROUVÉ")
+        legal_form = data.get("legal_form", "NON TROUVÉ")
+
+        print("CELL_OUTPUT: Extracted - Name: {}, SIRET: {}, Address: {}, Legal form: {}".format(
+            company_name, siret, address, legal_form))
 
         return {
-            "invoice_data": {
-                "raw_answer": answer,
-                "source": target_doc_type,
-                "document_id": file_id
-            }
+            "holder_name": company_name,
+            "holder_siret": siret,
+            "holder_address": address,
+            "holder_legal_form": legal_form,
+            "final_result": "Company: {}\nSIRET: {}\nAddress: {}\nLegal form: {}".format(
+                company_name, siret, address, legal_form)
         }
     finally:
         await paradigm_client.close()
@@ -645,12 +752,15 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 8. Print progress with `print("CELL_OUTPUT: message")`
 9. Always close the ParadigmClient in a finally block
 10. **CRITICAL**: Use `get_file_chunks()` for raw text extraction (v2 file API)
-11. **CRITICAL**: Use `agent_query()` for ALL AI interactions (v3 Agent API)
+11. **CRITICAL**: Use `agent_query()` for ALL document AI interactions (v3 Agent API). Use `chat_completion()` for non-document structured output (classification, parsing).
 12. **CRITICAL**: When using `agent_query()` for a SPECIFIC document, you MUST pass `file_ids=[doc_id]`
 13. **CRITICAL**: Extract document IDs from `document_mapping` dict using the document type from your cell's task (e.g., `doc_id = context["document_mapping"]["Invoice"]`)
 14. **CRITICAL**: Use `extract_answer()` method to parse v3 response
 15. **CRITICAL**: v3 document_analysis returns directly - NO POLLING NEEDED
 16. **CRITICAL**: Prefer calling `agent_query()` WITHOUT `force_tool` — this lets the agent reason in multi-turn mode, call multiple tools, and retrieve more information. Only use `force_tool="document_search"` or `"document_analysis"` when you are certain you need exactly one specific tool call and nothing else.
+22. **CRITICAL**: When extracting specific fields from documents, ALWAYS use `response_format` with `agent_query()` to get structured JSON output. NEVER write regex to parse free-text LLM responses — this is brittle and will fail on different formatting. See Example 1.
+23. **CRITICAL**: When classifying text or forcing a specific choice, use `chat_completion(guided_choice=[...])`. When parsing text into structured data, use `chat_completion(guided_json={...})`. These guarantee the output format.
+24. **CRITICAL**: When using `response_format` or `guided_json`, always parse the response with `json.loads()` and access fields by key. Handle missing fields with `.get("key", "default_value")`.
 17. **CRITICAL**: ALWAYS `await` every ParadigmClient method call — `agent_query()`, `get_file_chunks()`, `wait_for_embedding()`, and `close()` are ALL async. Missing `await` causes `'coroutine' object has no attribute 'get'`.
 18. **CRITICAL**: NEVER `import paradigm_client` or `from paradigm_client import ...` — ParadigmClient is pre-injected. Just use it directly.
 19. **CRITICAL**: ALWAYS include `from typing import Optional, List, Dict, Any` in your imports, even when fixing or regenerating code.

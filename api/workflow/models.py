@@ -265,6 +265,11 @@ class WorkflowCell:
     error: Optional[str] = None
     execution_time: Optional[float] = None
 
+    # Evaluation metadata
+    evaluation_score: Optional[float] = None  # Final quality score (0.0-1.0) from evaluator
+    evaluation_attempts: int = 0  # Number of evaluation retry attempts
+    evaluation_history: Optional[List[Dict[str, Any]]] = None  # History of evaluation feedback
+
     # Timestamps
     created_at: datetime = field(default_factory=datetime.utcnow)
     executed_at: Optional[datetime] = None
@@ -335,6 +340,9 @@ class WorkflowCell:
             "output_variables": self.output_variables,
             "error": self.error,
             "execution_time": self.execution_time,
+            "evaluation_score": self.evaluation_score,
+            "evaluation_attempts": self.evaluation_attempts,
+            "evaluation_history": self.evaluation_history,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "executed_at": self.executed_at.isoformat() if self.executed_at else None,
         }
@@ -361,6 +369,9 @@ class WorkflowCell:
             output_variables=data.get("output_variables"),
             error=data.get("error"),
             execution_time=data.get("execution_time"),
+            evaluation_score=data.get("evaluation_score"),
+            evaluation_attempts=data.get("evaluation_attempts", 0),
+            evaluation_history=data.get("evaluation_history"),
         )
         # Handle status
         status_val = data.get("status", "pending")

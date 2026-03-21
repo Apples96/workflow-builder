@@ -211,7 +211,8 @@ class ParadigmClient:
         model: Optional[str] = None,
         chat_setting_id: Optional[int] = None,
         timeout: Optional[int] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
+        response_format: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Unified v3 Agent API - the primary interface for Paradigm queries.
@@ -231,6 +232,8 @@ class ParadigmClient:
             chat_setting_id: Agent settings ID (uses instance default if not provided)
             timeout: Request timeout in seconds (default: 300)
             max_retries: Maximum number of retry attempts for transient failures (default: 3)
+            response_format: Optional JSON schema to enforce structured output format.
+                Example: {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}
 
         Returns:
             dict: Full v3 API response
@@ -256,7 +259,8 @@ class ParadigmClient:
                     company_scope=company_scope,
                     model=model,
                     chat_setting_id=chat_setting_id,
-                    timeout=timeout
+                    timeout=timeout,
+                    response_format=response_format
                 ),
                 max_retries=max_retries,
                 operation_name="Paradigm agent_query"
@@ -271,7 +275,8 @@ class ParadigmClient:
                 company_scope=company_scope,
                 model=model,
                 chat_setting_id=chat_setting_id,
-                timeout=timeout
+                timeout=timeout,
+                response_format=response_format
             )
 
     async def _agent_query_impl(
@@ -285,6 +290,7 @@ class ParadigmClient:
         model: str = "alfred-ft5",
         chat_setting_id: Optional[int] = None,
         timeout: int = 300,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Internal implementation of agent_query without retry wrapper.
@@ -312,6 +318,8 @@ class ParadigmClient:
             payload["workspace_ids"] = workspace_ids
         if force_tool:
             payload["force_tool"] = force_tool
+        if response_format:
+            payload["response_format"] = response_format
 
         logger.info("PARADIGM v3 AGENT QUERY")
         logger.info("ENDPOINT: {}".format(endpoint))
@@ -360,6 +368,111 @@ class ParadigmClient:
     def extract_answer(self, response: Dict[str, Any]) -> str:
         """Extract text answer from v3 response."""
         return _extract_v3_answer(response)
+
+    # =========================================================================
+    # v2 CHAT COMPLETION (Structured Output)
+    # =========================================================================
+
+    async def chat_completion(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        guided_choice: Optional[List[str]] = None,
+        guided_json: Optional[Dict[str, Any]] = None,
+        guided_regex: Optional[str] = None
+    ) -> str:
+        """
+        Chat completion with optional structured output constraints.
+
+        No documents involved — just a conversation with the AI. Use this for
+        parsing, classification, or structured extraction from already-extracted text.
+
+        Args:
+            prompt: Your question or instruction
+            model: Which AI model to use (default: alfred-ft5)
+            system_prompt: Optional instructions for the AI's behavior and output format
+            guided_choice: Optional list of allowed response values (forces AI to choose from list)
+            guided_json: Optional JSON schema to enforce structured JSON output format
+            guided_regex: Optional regex pattern to enforce structured output format
+
+        Returns:
+            str: The AI's response (guaranteed to match the guided format if provided)
+
+        Example with guided_json:
+            data = await paradigm_client.chat_completion(
+                prompt="Extract fields from: " + text,
+                guided_json={
+                    "type": "object",
+                    "properties": {
+                        "company_name": {"type": "string"},
+                        "siret": {"type": "string"},
+                        "address": {"type": "string"}
+                    },
+                    "required": ["company_name", "siret", "address"]
+                }
+            )
+            # Returns valid JSON string matching the schema
+
+        Example with guided_choice:
+            status = await paradigm_client.chat_completion(
+                prompt="Classify this result: " + text,
+                guided_choice=["validé", "à vérifier", "non validé"]
+            )
+            # Returns exactly one of the choices
+        """
+        if model is None:
+            model = settings.paradigm_model if HAS_SETTINGS and settings else "alfred-ft5"
+
+        endpoint = "{}/api/v2/chat/completions".format(self.base_url)
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model,
+            "messages": messages
+        }
+
+        # Add guided parameters if provided
+        if guided_choice:
+            payload["guided_choice"] = guided_choice
+        if guided_json:
+            payload["guided_json"] = guided_json
+        if guided_regex:
+            payload["guided_regex"] = guided_regex
+
+        logger.info("PARADIGM CHAT COMPLETION")
+        logger.info("PROMPT: {}...".format(prompt[:100]))
+        if guided_json:
+            logger.info("GUIDED_JSON: {}".format(json.dumps(guided_json)[:200]))
+        if guided_choice:
+            logger.info("GUIDED_CHOICE: {}".format(guided_choice))
+
+        session = await self._get_session()
+        async with session.post(
+            endpoint,
+            json=payload,
+            headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=120)
+        ) as response:
+            response_text = await response.text()
+
+            if response.status == 200:
+                result = json.loads(response_text)
+                # Extract the completion text from the response
+                choices = result.get("choices", [])
+                if choices:
+                    answer = choices[0].get("message", {}).get("content", "")
+                else:
+                    answer = ""
+                logger.info("CHAT COMPLETION SUCCESS: {}...".format(answer[:200]))
+                return answer
+            else:
+                logger.error("PARADIGM CHAT COMPLETION ERROR: {} - {}".format(response.status, response_text))
+                raise Exception("Paradigm chat completion failed: {} - {}".format(response.status, response_text))
 
     # =========================================================================
     # v2 FILE OPERATIONS

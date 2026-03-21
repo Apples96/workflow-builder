@@ -1,21 +1,4 @@
-"""
-Cell Code Generator
-
-This module handles code generation for individual workflow cells.
-Each cell gets its own self-contained Python code that can be executed
-independently with a shared context.
-
-Key Components:
-    - CellCodeGenerator: Generates code for individual cells
-    - Parallel code generation for cells in the same layer
-    - Code validation and cleanup utilities
-
-The generator produces code that:
-    - Includes all necessary imports and ParadigmClient
-    - Defines an `execute_cell(context)` function
-    - Accepts inputs from context dict
-    - Returns outputs as a dict for the next cell
-"""
+"""Cell code generation for individual workflow cells."""
 
 import asyncio
 import logging
@@ -31,37 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 def load_cell_prompt() -> str:
-    """
-    Load the cell generation system prompt from markdown file.
-
-    Returns:
-        str: The cell generation system prompt content
-
-    Raises:
-        FileNotFoundError: If the cell prompt cannot be loaded
-    """
+    """Load the cell generation system prompt from markdown file."""
     return PromptLoader.load("cell")
 
 
 class CellCodeGenerator:
-    """
-    Generates Python code for individual workflow cells.
-
-    Each generated cell is self-contained with its own ParadigmClient
-    and implements the execute_cell function signature.
-
-    Attributes:
-        anthropic_client: Anthropic API client for Claude calls
-    """
+    """Generates self-contained Python code for individual workflow cells."""
 
     def __init__(self, anthropic_client=None):
-        """
-        Initialize the cell code generator.
-
-        Args:
-            anthropic_client: Optional Anthropic client. If not provided,
-                            creates one using the centralized factory.
-        """
         self.anthropic_client = anthropic_client or create_anthropic_client()
 
     async def generate_cell_code(
@@ -71,79 +31,85 @@ class CellCodeGenerator:
         workflow_description: str,
         producer_return_hints: Optional[Dict[str, str]] = None
     ) -> str:
-        """
-        Generate Python code for a single cell.
-
-        Args:
-            cell: The cell definition with inputs/outputs
-            available_context: Schema of variables available from previous cells
-            workflow_description: Original workflow description for context
-            producer_return_hints: Optional mapping from variable name to the
-                return statement snippet from the cell that produced it, helping
-                consumer cells understand the actual data format
-
-        Returns:
-            str: The complete Python code for this cell
-
-        Raises:
-            Exception: If code generation fails
-        """
+        """Generate Python code for a single cell. Retries once on validation failure."""
         logger.info("Generating code for cell: {} (step {})".format(
             cell.name, cell.step_number
         ))
 
-        # Load the system prompt
         system_prompt = load_cell_prompt()
         if not system_prompt:
             raise Exception("Could not load cell generation prompt")
 
-        # Build the user message with cell context
         user_message = self._build_user_message(
             cell, available_context, workflow_description,
             producer_return_hints=producer_return_hints
         )
 
-        try:
-            # Call Claude to generate the code
-            # Use configured max tokens (reduced from 32000 to save costs)
-            response = self.anthropic_client.messages.create(
-                model=settings.anthropic_model,
-                max_tokens=settings.anthropic_max_tokens_cell,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-                timeout=settings.anthropic_timeout
-            )
+        last_error = None
+        max_gen_attempts = 2
 
-            # Get the raw output
-            raw_output = response.content[0].text
-            logger.info("Raw cell output generated ({} chars)".format(len(raw_output)))
-            logger.info("Raw cell output (first 500 chars):\n{}".format(raw_output[:500]))
+        for attempt in range(1, max_gen_attempts + 1):
+            try:
+                messages = [{"role": "user", "content": user_message}]
 
-            # Extract and clean up the code
-            cleaned_code = self._extract_code(raw_output)
-            logger.info("Cleaned code ({} chars)".format(len(cleaned_code)))
-            logger.info("Cleaned code (first 500 chars):\n{}".format(cleaned_code[:500]))
+                # On retry, append the validation error as feedback
+                if last_error and attempt > 1:
+                    logger.info("Retrying code generation (attempt {}/{}) after error: {}".format(
+                        attempt, max_gen_attempts, last_error))
+                    messages.append({"role": "assistant", "content": "```python\n# (previous attempt had an error)\n```"})
+                    messages.append({"role": "user", "content": (
+                        "Your previous code generation attempt failed validation: {}\n\n"
+                        "Please generate the code again. Output ONLY valid Python code — "
+                        "no markdown, no explanations, no text before or after the code. "
+                        "The code must start with import statements."
+                    ).format(last_error)})
 
-            # Validate the code
-            validation_result = self._validate_code(cleaned_code)
-            if not validation_result["valid"]:
-                logger.error("Code validation failed. Full cleaned code:\n{}".format(cleaned_code))
+                response = self.anthropic_client.messages.create(
+                    model=settings.anthropic_model,
+                    max_tokens=settings.anthropic_max_tokens_cell,
+                    system=system_prompt,
+                    messages=messages,
+                    timeout=settings.anthropic_timeout
+                )
+
+                raw_output = response.content[0].text
+                logger.info("Raw cell output generated ({} chars, attempt {})".format(
+                    len(raw_output), attempt))
+                logger.info("Raw cell output (first 500 chars):\n{}".format(raw_output[:500]))
+
+                cleaned_code = self._extract_code(raw_output)
+                logger.info("Cleaned code ({} chars)".format(len(cleaned_code)))
+                logger.info("Cleaned code (first 500 chars):\n{}".format(cleaned_code[:500]))
+
+                validation_result = self._validate_code(cleaned_code)
+                if not validation_result["valid"]:
+                    last_error = validation_result["error"]
+                    logger.warning("Code validation failed (attempt {}): {}".format(
+                        attempt, last_error))
+                    if attempt < max_gen_attempts:
+                        continue
+                    # Final attempt failed — raise
+                    logger.error("Code validation failed after {} attempts. Full cleaned code:\n{}".format(
+                        max_gen_attempts, cleaned_code))
+                    raise Exception(
+                        "Generated cell code is invalid: {}".format(last_error)
+                    )
+
+                logger.info("Cell code validated successfully (attempt {})".format(attempt))
+                return cleaned_code
+
+            except Exception as e:
+                error_str = str(e)
+                # If this is a validation error and we can retry, continue
+                if "Generated cell code is invalid" in error_str and attempt < max_gen_attempts:
+                    last_error = error_str
+                    continue
+                logger.error("Cell code generation failed: {}".format(error_str))
                 raise Exception(
-                    "Generated cell code is invalid: {}".format(
-                        validation_result["error"]
+                    "Failed to generate code for cell '{}': {}".format(
+                        cell.name, error_str
                     )
                 )
-
-            logger.info("Cell code validated successfully")
-            return cleaned_code
-
-        except Exception as e:
-            logger.error("Cell code generation failed: {}".format(str(e)))
-            raise Exception(
-                "Failed to generate code for cell '{}': {}".format(
-                    cell.name, str(e)
-                )
-            )
 
     def _build_user_message(
         self,
@@ -152,21 +118,7 @@ class CellCodeGenerator:
         workflow_description: str,
         producer_return_hints: Optional[Dict[str, str]] = None
     ) -> str:
-        """
-        Build the user message for the code generation request.
-
-        Args:
-            cell: The cell definition
-            available_context: Variables available from previous cells
-            workflow_description: Original workflow description
-            producer_return_hints: Optional mapping from variable name to the
-                return statement from the producer cell, so this cell knows
-                the actual data format
-
-        Returns:
-            str: Formatted user message
-        """
-        # Format available inputs with producer hints when available
+        """Build the user message for the code generation request."""
         inputs_desc = []
         for var_name in cell.inputs_required:
             type_desc = available_context.get(var_name, "Any")
@@ -177,7 +129,6 @@ class CellCodeGenerator:
                 )
             inputs_desc.append("  - {}: {}{}".format(var_name, type_desc, hint))
 
-        # Format required outputs with type descriptions from the shared context schema
         outputs_desc = []
         for var_name in cell.outputs_produced:
             type_desc = available_context.get(var_name, "Any")
@@ -221,22 +172,10 @@ Generate complete, self-contained Python code that:
         return message
 
     def _extract_code(self, raw_output: str) -> str:
-        """
-        Extract Python code from Claude's output.
-
-        The prompt asks for pure code, but we handle cases where:
-        - Code is wrapped in markdown code blocks
-        - There's explanatory text before/after the code
-
-        Args:
-            raw_output: Raw text from Claude
-
-        Returns:
-            str: Cleaned Python code
-        """
+        """Extract Python code from Claude's raw output, handling markdown blocks and text."""
         cleaned = raw_output.strip()
 
-        # Strategy 1: Extract from markdown code blocks if present
+        # Extract from markdown code blocks if present
         if "```python" in cleaned:
             blocks = re.findall(r'```python\s*(.*?)```', cleaned, re.DOTALL)
             if blocks:
@@ -246,10 +185,9 @@ Generate complete, self-contained Python code that:
                         cleaned = block.strip()
                         break
                 else:
-                    # No execute_cell found, use the largest block
                     cleaned = max(blocks, key=len).strip()
             else:
-                # Unclosed code block - extract everything after ```python
+                # Unclosed code block
                 parts = cleaned.split("```python", 1)
                 if len(parts) > 1:
                     code_part = parts[1]
@@ -258,7 +196,6 @@ Generate complete, self-contained Python code that:
                     else:
                         cleaned = code_part.strip()
         elif "```" in cleaned:
-            # Generic code block without language specifier
             parts = cleaned.split("```")
             if len(parts) >= 2:
                 # Find the part with execute_cell
@@ -267,12 +204,11 @@ Generate complete, self-contained Python code that:
                         cleaned = part.strip()
                         break
                 else:
-                    # Use the largest odd-indexed part (inside code blocks)
                     code_parts = [parts[i] for i in range(1, len(parts), 2)]
                     if code_parts:
                         cleaned = max(code_parts, key=len).strip()
 
-        # Strategy 2: Find code by looking for imports if output starts with text
+        # Find code by looking for imports if output starts with text
         if not cleaned.startswith("import") and not cleaned.startswith("from") and not cleaned.startswith("#"):
             import_match = re.search(r'^(import |from )', cleaned, re.MULTILINE)
             if import_match:
@@ -285,34 +221,22 @@ Generate complete, self-contained Python code that:
         return cleaned
 
     def _validate_code(self, code: str) -> Dict[str, Any]:
-        """
-        Validate that the generated cell code is syntactically correct.
-
-        Args:
-            code: The code to validate
-
-        Returns:
-            dict: {"valid": bool, "error": str or None}
-        """
+        """Validate that the generated cell code is syntactically correct."""
         try:
-            # Check for syntax errors
             compile(code, '<cell>', 'exec')
 
-            # Check for required function
             if 'def execute_cell(' not in code:
                 return {
                     "valid": False,
                     "error": "Missing execute_cell function"
                 }
 
-            # Check for async definition
             if 'async def execute_cell(' not in code:
                 return {
                     "valid": False,
                     "error": "execute_cell must be async"
                 }
 
-            # Check for required imports
             if 'import asyncio' not in code:
                 return {
                     "valid": False,
@@ -340,26 +264,7 @@ Generate complete, self-contained Python code that:
         workflow_description: str,
         producer_return_hints: Optional[Dict[str, str]] = None
     ) -> List[Tuple[WorkflowCell, str, Optional[Exception]]]:
-        """
-        Generate code for all cells in a layer concurrently.
-
-        This method generates code for multiple cells in parallel, which is
-        useful when all cells in a layer are independent and can be generated
-        simultaneously.
-
-        Args:
-            cells: List of cells to generate code for (all in same layer)
-            available_context: Schema of variables available from previous cells
-            workflow_description: Original workflow description for context
-            producer_return_hints: Optional mapping from variable name to producer
-                cell return statement snippets
-
-        Returns:
-            List of tuples: (cell, code, error)
-            - cell: The WorkflowCell object
-            - code: Generated code (or empty if error)
-            - error: Exception if generation failed, None if successful
-        """
+        """Generate code for all cells in a layer concurrently."""
         if not cells:
             return []
 
@@ -369,7 +274,6 @@ Generate complete, self-contained Python code that:
         ))
 
         async def generate_single_cell(cell: WorkflowCell) -> Tuple[WorkflowCell, str, Optional[Exception]]:
-            """Generate code for a single cell, capturing any errors."""
             try:
                 code = await self.generate_cell_code(
                     cell=cell,
@@ -384,11 +288,9 @@ Generate complete, self-contained Python code that:
                 ))
                 return (cell, "", e)
 
-        # Generate all cells in parallel
         tasks = [generate_single_cell(cell) for cell in cells]
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
-        # Count successes and failures
         successes = sum(1 for _, _, err in results if err is None)
         failures = sum(1 for _, _, err in results if err is not None)
 
