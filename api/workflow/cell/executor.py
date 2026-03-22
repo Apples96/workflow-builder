@@ -41,12 +41,14 @@ logger = logging.getLogger(__name__)
 class CellExecutor:
     """Executes workflow cells with state passing and real-time event streaming."""
 
-    def __init__(self, paradigm_api_key: str = None):
+    def __init__(self, paradigm_api_key: str = None, agent_id: int = None, available_tools=None):
         self.max_cell_execution_time = settings.max_cell_execution_time
         self.max_retry_attempts = settings.max_retry_attempts
         self.max_evaluation_retries = settings.max_evaluation_retries
         self.min_eval_score_to_proceed = settings.min_evaluation_score_to_proceed
         self.paradigm_api_key = paradigm_api_key or settings.lighton_api_key
+        self.agent_id = agent_id  # Paradigm agent ID (preferred over chat_setting_id)
+        self.available_tools = available_tools  # Discovered tools for cell generator
         self.cell_generator = CellCodeGenerator()
         self.cell_evaluator = CellOutputEvaluator()
 
@@ -286,8 +288,8 @@ The code must be complete and executable.
             error_message=error_message
         )
 
-        from ...clients import create_anthropic_client
-        anthropic_client = create_anthropic_client()
+        # Reuse existing Anthropic client instead of creating a new one per fix call
+        anthropic_client = self.cell_generator.anthropic_client
 
         system_prompt = """You are an expert Python debugger specializing in fixing workflow automation code.
 
@@ -304,7 +306,7 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
         response = anthropic_client.messages.create(
             model=settings.anthropic_model,
             max_tokens=settings.anthropic_max_tokens_plan,
-            system=system_prompt,
+            system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": fix_prompt}],
             timeout=settings.anthropic_timeout
         )
@@ -525,8 +527,8 @@ The code must be complete and executable.
             history_section=self._build_evaluation_history_section(evaluation_history)
         )
 
-        from ...clients import create_anthropic_client
-        anthropic_client = create_anthropic_client()
+        # Reuse existing Anthropic client instead of creating a new one per fix call
+        anthropic_client = self.cell_generator.anthropic_client
 
         system_prompt = """You are an expert Python developer fixing workflow automation code.
 
@@ -543,7 +545,7 @@ CRITICAL RULES:
         response = anthropic_client.messages.create(
             model=settings.anthropic_model,
             max_tokens=settings.anthropic_max_tokens_plan,
-            system=system_prompt,
+            system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": fix_prompt}],
             timeout=settings.anthropic_timeout
         )
@@ -637,7 +639,8 @@ CRITICAL RULES:
                                 cell=cell,
                                 available_context=plan.shared_context_schema,
                                 workflow_description=workflow_description,
-                                producer_return_hints=producer_return_hints
+                                producer_return_hints=producer_return_hints,
+                                available_tools=self.available_tools
                             )
 
                         cell.mark_ready(code, cell.description)
@@ -900,8 +903,40 @@ CRITICAL RULES:
 
         return code
 
+    # Modules that generated cell code is allowed to import
+    ALLOWED_IMPORT_MODULES = {
+        # Standard library — safe utilities
+        "asyncio", "json", "re", "math", "datetime", "time", "logging",
+        "collections", "itertools", "functools", "copy", "string",
+        "decimal", "fractions", "statistics", "textwrap", "difflib",
+        "hashlib", "hmac", "base64", "urllib", "urllib.parse",
+        "html", "xml", "csv", "io", "uuid", "enum", "dataclasses",
+        "typing", "types", "abc", "contextlib", "traceback",
+        # Network — needed for external API calls in workflows
+        "aiohttp", "httpx",
+        # Data — common data processing libraries
+        "pydantic",
+    }
+
     def _create_execution_environment(self) -> Dict[str, Any]:
         """Create execution environment with builtins, ParadigmClient, and API config pre-injected."""
+        # Restricted __import__ that only allows whitelisted modules
+        _real_import = __import__
+        allowed = self.ALLOWED_IMPORT_MODULES
+
+        def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+            # Allow relative imports (level > 0) — these resolve within already-loaded packages
+            if level > 0:
+                return _real_import(name, globals, locals, fromlist, level)
+            # Check top-level module name against whitelist
+            top_module = name.split(".")[0]
+            if top_module not in allowed:
+                raise ImportError(
+                    "Module '{}' is not allowed in the execution sandbox. "
+                    "Allowed modules: {}".format(name, ", ".join(sorted(allowed)))
+                )
+            return _real_import(name, globals, locals, fromlist, level)
+
         return {
             '__name__': '__main__',
             '__builtins__': {
@@ -914,8 +949,8 @@ CRITICAL RULES:
                 'setattr': setattr, 'type': type,
                 'ValueError': ValueError, 'TypeError': TypeError,
                 'Exception': Exception, 'RuntimeError': RuntimeError,
-                'NameError': NameError,
-                '__import__': __import__,
+                'NameError': NameError, 'ImportError': ImportError,
+                '__import__': _safe_import,
                 'any': any, 'all': all, 'globals': globals, 'print': print,
                 '__build_class__': __build_class__, 'object': object, 'super': super,
                 'property': property, 'staticmethod': staticmethod,
@@ -930,6 +965,7 @@ CRITICAL RULES:
             'ParadigmClient': ParadigmClient,
             'LIGHTON_API_KEY': self.paradigm_api_key,
             'LIGHTON_BASE_URL': settings.lighton_base_url,
+            'LIGHTON_AGENT_ID': self.agent_id,
             '_extract_v3_answer': _extract_v3_answer,
             # Pre-injected typing symbols so generated code doesn't crash on annotations
             'Dict': Dict,
@@ -1128,7 +1164,8 @@ CRITICAL RULES:
             code = await self.cell_generator.generate_cell_code(
                 cell=cell,
                 available_context=plan.shared_context_schema,
-                workflow_description=workflow_description
+                workflow_description=workflow_description,
+                available_tools=self.available_tools
             )
             cell_code = code
             cell.mark_ready(code, cell.description)
@@ -1540,7 +1577,8 @@ CRITICAL RULES:
             code = await self.cell_generator.generate_cell_code(
                 cell=cell,
                 available_context=plan.shared_context_schema,
-                workflow_description=workflow_description
+                workflow_description=workflow_description,
+                available_tools=self.available_tools
             )
             cell_code = code
             cell.mark_ready(code, cell.description)
@@ -1977,7 +2015,8 @@ CRITICAL RULES:
                     cell=cell,
                     available_context=shared_context_schema or {},
                     workflow_description=workflow_description,
-                    producer_return_hints=producer_return_hints
+                    producer_return_hints=producer_return_hints,
+                    available_tools=self.available_tools
                 )
                 cell_code = code
                 cell.mark_ready(code, cell.description)

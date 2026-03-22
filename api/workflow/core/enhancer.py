@@ -1,4 +1,5 @@
 import logging
+import re as re_module
 from typing import Dict, Any, Optional
 
 from ...clients import create_anthropic_client
@@ -52,13 +53,53 @@ QUESTIONS AND LIMITATIONS: [List any unclear points or missing information]
 
 Enhance this workflow description:"""
 
+    def _inject_tools_into_enhancer_prompt(self, prompt: str, available_tools) -> str:
+        """Replace hardcoded tools section in enhancer prompt with discovered tools."""
+        native_tools = getattr(available_tools, 'native_tools', [])
+        mcp_tools = getattr(available_tools, 'mcp_tools', [])
+
+        # Build tool names list
+        tool_parts = []
+        for tool in native_tools:
+            name = getattr(tool, 'name', '') if hasattr(tool, 'name') else tool.get('name', '')
+            desc = getattr(tool, 'description', '') if hasattr(tool, 'description') else tool.get('description', '')
+            tool_parts.append("{} ({})".format(name, desc or name))
+        for tool in mcp_tools:
+            name = getattr(tool, 'name', '') if hasattr(tool, 'name') else tool.get('name', '')
+            desc = getattr(tool, 'description', '') if hasattr(tool, 'description') else tool.get('description', '')
+            tool_parts.append("[MCP] {} ({})".format(name, desc or name))
+
+        if not tool_parts:
+            return prompt
+
+        replacement = "## AVAILABLE PARADIGM TOOLS\n\n"
+        replacement += "The following tools are available for document operations. "
+        replacement += "The planner and code generator will select the appropriate tool — "
+        replacement += "your job is to describe the OPERATION, not which tool to use.\n\n"
+        replacement += "Available tools: {}\n".format(", ".join(tool_parts))
+
+        # Replace the existing section
+        pattern = r'## AVAILABLE PARADIGM TOOLS.*?(?=\n## [A-Z]|\Z)'
+        if re_module.search(pattern, prompt, re_module.DOTALL):
+            result = re_module.sub(pattern, replacement.rstrip(), prompt, count=1, flags=re_module.DOTALL)
+            logger.info("Injected {} tools into enhancer prompt".format(len(tool_parts)))
+            return result
+
+        return prompt
+
     async def enhance_workflow_description(
         self,
         raw_description: str,
-        output_example: Optional[str] = None
+        output_example: Optional[str] = None,
+        available_tools=None
     ) -> Dict[str, Any]:
         """Enhance a raw workflow description into a detailed, actionable specification."""
         try:
+            # Inject discovered tools into the enhancer prompt if available
+            prompt = self.enhancement_prompt
+            if available_tools:
+                prompt = self._inject_tools_into_enhancer_prompt(prompt, available_tools)
+
             user_message = "Raw workflow description: {}".format(raw_description)
 
             if output_example:
@@ -73,7 +114,7 @@ Enhance this workflow description:"""
             response = self.anthropic_client.messages.create(
                 model=settings.anthropic_model,
                 max_tokens=12000,  # Increased for complex workflows
-                system=self.enhancement_prompt,
+                system=[{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_message}]
             )
             

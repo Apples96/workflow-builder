@@ -29,9 +29,18 @@ class CellCodeGenerator:
         cell: WorkflowCell,
         available_context: Dict[str, str],
         workflow_description: str,
-        producer_return_hints: Optional[Dict[str, str]] = None
+        producer_return_hints: Optional[Dict[str, str]] = None,
+        available_tools=None
     ) -> str:
-        """Generate Python code for a single cell. Retries once on validation failure."""
+        """Generate Python code for a single cell. Retries once on validation failure.
+
+        Args:
+            cell: The cell to generate code for
+            available_context: Variable name → type description
+            workflow_description: The full workflow description
+            producer_return_hints: Hints from upstream cells about output formats
+            available_tools: AgentDiscoveryResponse with discovered tools (optional)
+        """
         logger.info("Generating code for cell: {} (step {})".format(
             cell.name, cell.step_number
         ))
@@ -42,7 +51,8 @@ class CellCodeGenerator:
 
         user_message = self._build_user_message(
             cell, available_context, workflow_description,
-            producer_return_hints=producer_return_hints
+            producer_return_hints=producer_return_hints,
+            available_tools=available_tools
         )
 
         last_error = None
@@ -67,7 +77,7 @@ class CellCodeGenerator:
                 response = self.anthropic_client.messages.create(
                     model=settings.anthropic_model,
                     max_tokens=settings.anthropic_max_tokens_cell,
-                    system=system_prompt,
+                    system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
                     messages=messages,
                     timeout=settings.anthropic_timeout
                 )
@@ -116,7 +126,8 @@ class CellCodeGenerator:
         cell: WorkflowCell,
         available_context: Dict[str, str],
         workflow_description: str,
-        producer_return_hints: Optional[Dict[str, str]] = None
+        producer_return_hints: Optional[Dict[str, str]] = None,
+        available_tools=None
     ) -> str:
         """Build the user message for the code generation request."""
         inputs_desc = []
@@ -169,7 +180,45 @@ Generate complete, self-contained Python code that:
             outputs="\n".join(outputs_desc) if outputs_desc else "  (none)"
         )
 
+        # Append MCP tool documentation if this cell uses MCP tools
+        if available_tools:
+            mcp_tools = getattr(available_tools, 'mcp_tools', [])
+            if mcp_tools:
+                mcp_section = self._build_mcp_tools_section(cell, mcp_tools)
+                if mcp_section:
+                    message += mcp_section
+
         return message
+
+    def _build_mcp_tools_section(self, cell: WorkflowCell, mcp_tools) -> str:
+        """Build MCP tool documentation section for the user message.
+
+        Only includes MCP tool info if the cell references MCP tools.
+        """
+        # Check if any of the cell's tools might be MCP-related
+        cell_tools = cell.paradigm_tools_used or []
+
+        # Build list of available MCP tool names for reference
+        mcp_names = []
+        for tool in mcp_tools:
+            name = getattr(tool, 'name', '') if hasattr(tool, 'name') else tool.get('name', '')
+            desc = getattr(tool, 'description', '') if hasattr(tool, 'description') else tool.get('description', '')
+            mcp_names.append((name, desc))
+
+        if not mcp_names:
+            return ""
+
+        lines = [
+            "",
+            "MCP TOOLS AVAILABLE (called via agent_query):",
+            "The following MCP tools are configured on the Paradigm agent.",
+            "They are invoked automatically when you call agent_query with a relevant query.",
+        ]
+        for name, desc in mcp_names:
+            lines.append("- {}: {}".format(name, desc or "MCP tool"))
+        lines.append("")
+
+        return "\n".join(lines)
 
     def _extract_code(self, raw_output: str) -> str:
         """Extract Python code from Claude's raw output, handling markdown blocks and text."""

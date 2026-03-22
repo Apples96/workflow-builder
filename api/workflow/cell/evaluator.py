@@ -120,7 +120,7 @@ class CellOutputEvaluator:
             response = self.anthropic_client.messages.create(
                 model=settings.anthropic_model,
                 max_tokens=4000,
-                system=system_prompt,
+                system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_message}],
                 tools=[EVALUATION_TOOL],
                 tool_choice={"type": "tool", "name": "submit_evaluation"},
@@ -166,7 +166,7 @@ class CellOutputEvaluator:
             response = self.anthropic_client.messages.create(
                 model=settings.anthropic_model,
                 max_tokens=4000,
-                system=system_prompt,
+                system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_message}],
                 tools=[EVALUATION_TOOL],
                 tool_choice={"type": "tool", "name": "submit_evaluation"},

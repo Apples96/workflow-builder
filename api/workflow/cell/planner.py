@@ -62,14 +62,26 @@ class WorkflowPlanner:
         self,
         description: str,
         context: Optional[Dict[str, Any]] = None,
-        output_example: Optional[str] = None
+        output_example: Optional[str] = None,
+        available_tools=None
     ) -> WorkflowPlan:
-        """Create a workflow plan from a natural language description."""
+        """Create a workflow plan from a natural language description.
+
+        Args:
+            description: Natural language workflow description
+            context: Additional context (file IDs, etc.)
+            output_example: Example of desired output format
+            available_tools: AgentDiscoveryResponse with discovered tools (optional)
+        """
         logger.info("Creating workflow plan for: {}...".format(description[:100]))
 
         system_prompt = load_planner_prompt()
         if not system_prompt:
             raise Exception("Could not load planner system prompt")
+
+        # Inject discovered tools into the system prompt if available
+        if available_tools:
+            system_prompt = self._inject_tools_into_prompt(system_prompt, available_tools)
 
         user_message = self._build_user_message(description, context, output_example)
 
@@ -87,7 +99,7 @@ class WorkflowPlanner:
             response = self.anthropic_client.messages.create(
                 model=settings.anthropic_model,
                 max_tokens=settings.anthropic_max_tokens_plan,
-                system=system_prompt,
+                system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_message}],
                 timeout=max(settings.anthropic_timeout, 300)
             )
@@ -177,6 +189,63 @@ class WorkflowPlanner:
         )
 
         return "\n".join(message_parts)
+
+    def _inject_tools_into_prompt(self, system_prompt: str, available_tools) -> str:
+        """Replace the hardcoded PARADIGM TOOL NAMES section with discovered tools.
+
+        Args:
+            system_prompt: The loaded planner.md content
+            available_tools: AgentDiscoveryResponse with native_tools and mcp_tools
+
+        Returns:
+            Updated system prompt with dynamic tool list
+        """
+        # Build the replacement section
+        lines = ["## PARADIGM TOOL NAMES (for paradigm_tools_used field)", ""]
+        lines.append("Use these tool names in the `paradigm_tools_used` array. "
+                      "The cell code generator has full API documentation — you just need to "
+                      "specify WHICH tools each cell uses.")
+        lines.append("")
+
+        # Native tools
+        native_tools = getattr(available_tools, 'native_tools', [])
+        if native_tools:
+            lines.append("### Native Tools")
+            for tool in native_tools:
+                name = getattr(tool, 'name', '') if hasattr(tool, 'name') else tool.get('name', '')
+                desc = getattr(tool, 'description', '') if hasattr(tool, 'description') else tool.get('description', '')
+                lines.append("- `{}` — {}".format(name, desc or name))
+            lines.append("")
+
+        # MCP tools
+        mcp_tools = getattr(available_tools, 'mcp_tools', [])
+        if mcp_tools:
+            lines.append("### MCP Tools (called via agent_query)")
+            for tool in mcp_tools:
+                name = getattr(tool, 'name', '') if hasattr(tool, 'name') else tool.get('name', '')
+                desc = getattr(tool, 'description', '') if hasattr(tool, 'description') else tool.get('description', '')
+                lines.append("- `{}` — {}".format(name, desc or name))
+            lines.append("")
+            lines.append("Note: MCP tools are invoked through agent_query. "
+                          "The agent routes to the correct MCP tool automatically based on the query.")
+            lines.append("")
+
+        replacement = "\n".join(lines)
+
+        # Find and replace the existing section
+        # Match from "## PARADIGM TOOL NAMES" to the next "##" heading or end of relevant content
+        import re
+        pattern = r'## PARADIGM TOOL NAMES.*?(?=\n## [A-Z]|\n---|\Z)'
+        if re.search(pattern, system_prompt, re.DOTALL):
+            result = re.sub(pattern, replacement.rstrip(), system_prompt, count=1, flags=re.DOTALL)
+            logger.info("Injected {} native tools and {} MCP tools into planner prompt".format(
+                len(native_tools), len(mcp_tools)
+            ))
+            return result
+        else:
+            # Section not found — append at end
+            logger.warning("Could not find PARADIGM TOOL NAMES section, appending tools")
+            return system_prompt + "\n\n" + replacement
 
     def _parse_plan_output(self, raw_output: str) -> Dict[str, Any]:
         """Parse the JSON plan from Claude's raw output, handling markdown and truncation."""
