@@ -23,6 +23,37 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
 
+# ============================================================================
+# Agent & Tool Discovery Models
+# ============================================================================
+
+class ParadigmAgent(BaseModel):
+    """A Paradigm agent available to the user."""
+    id: int = Field(..., description="Agent ID in Paradigm")
+    name: str = Field(..., description="Agent name")
+    description: Optional[str] = Field(None, description="Agent description")
+    is_default: bool = Field(default=False, description="Whether this is the default agent")
+
+class DiscoveredTool(BaseModel):
+    """A tool discovered from the Paradigm API (native or MCP)."""
+    name: str = Field(..., description="Tool name")
+    type: str = Field(..., description="Tool type: 'native' or 'mcp'")
+    description: str = Field(default="", description="Tool description")
+    require_document: Optional[bool] = Field(None, description="Whether the tool requires a document")
+    accepted_file_types: List[str] = Field(default_factory=list, description="Accepted file types")
+    mcp_server_name: Optional[str] = Field(None, description="MCP server name (for MCP tools)")
+
+class AgentDiscoveryResponse(BaseModel):
+    """Response from agent/tool discovery."""
+    agents: List[ParadigmAgent] = Field(default_factory=list, description="Available agents")
+    native_tools: List[DiscoveredTool] = Field(default_factory=list, description="Native Paradigm tools")
+    mcp_tools: List[DiscoveredTool] = Field(default_factory=list, description="MCP tools from connected servers")
+
+
+# ============================================================================
+# Workflow Request/Response Models
+# ============================================================================
+
 class WorkflowCreateRequest(BaseModel):
     """
     Request model for creating a new workflow.
@@ -45,6 +76,10 @@ class WorkflowCreateRequest(BaseModel):
     output_example: Optional[str] = Field(
         None,
         description="Optional example of the desired output format to guide workflow generation"
+    )
+    agent_id: Optional[int] = Field(
+        None,
+        description="Paradigm agent ID to use (determines available tools)"
     )
 
 class WorkflowExecuteRequest(BaseModel):

@@ -79,10 +79,22 @@ def assert_cell_has_output(plan: Dict, assertion: Dict) -> AssertionResult:
     check = assertion.get("check", "not_empty")
 
     cells = plan.get("cells", [])
-    cell = _find_cell_by_name(cells, cell_name_contains)
-    if not cell:
-        return AssertionResult(False, "cell_has_output",
-                               "No cell found matching '{}'".format(cell_name_contains))
+
+    # When no cell name filter is given, search ALL cells for the output variable
+    if not cell_name_contains:
+        for candidate in cells:
+            value = _get_cell_output_variable(candidate, output_variable)
+            if value is not None:
+                cell = candidate
+                break
+        else:
+            return AssertionResult(False, "cell_has_output",
+                                   "Variable '{}' not found in any cell".format(output_variable))
+    else:
+        cell = _find_cell_by_name(cells, cell_name_contains)
+        if not cell:
+            return AssertionResult(False, "cell_has_output",
+                                   "No cell found matching '{}'".format(cell_name_contains))
 
     value = _get_cell_output_variable(cell, output_variable)
     if value is None:
@@ -109,10 +121,22 @@ def assert_output_matches_pattern(plan: Dict, assertion: Dict) -> AssertionResul
     pattern = assertion.get("pattern", "")
 
     cells = plan.get("cells", [])
-    cell = _find_cell_by_name(cells, cell_name_contains)
-    if not cell:
-        return AssertionResult(False, "output_matches_pattern",
-                               "No cell found matching '{}'".format(cell_name_contains))
+
+    # When no cell name filter is given, search ALL cells for the output variable
+    if not cell_name_contains:
+        cell = None
+        for candidate in cells:
+            if _get_cell_output_variable(candidate, output_variable) is not None:
+                cell = candidate
+                break
+        if not cell:
+            return AssertionResult(False, "output_matches_pattern",
+                                   "Variable '{}' not found in any cell".format(output_variable))
+    else:
+        cell = _find_cell_by_name(cells, cell_name_contains)
+        if not cell:
+            return AssertionResult(False, "output_matches_pattern",
+                                   "No cell found matching '{}'".format(cell_name_contains))
 
     value = _get_cell_output_variable(cell, output_variable)
     if value is None:

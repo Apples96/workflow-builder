@@ -119,7 +119,8 @@ class ParadigmClient:
         api_key: Optional[str] = None,
         base_url: str = "https://paradigm.lighton.ai",
         v3_base_url: Optional[str] = None,
-        chat_setting_id: Optional[int] = None
+        chat_setting_id: Optional[int] = None,
+        agent_id: Optional[int] = None
     ):
         """
         Initialize the Paradigm client.
@@ -129,6 +130,7 @@ class ParadigmClient:
             base_url: The Paradigm API address for v2 endpoints
             v3_base_url: The v3 Agent API base URL (defaults to base_url)
             chat_setting_id: Agent settings ID (falls back to settings if None)
+            agent_id: Agent ID (preferred over chat_setting_id per Paradigm deprecation)
         """
         # Use provided values or fall back to settings
         if api_key:
@@ -153,6 +155,14 @@ class ParadigmClient:
             self.chat_setting_id = settings.lighton_chat_setting_id
         else:
             self.chat_setting_id = 160  # Default value
+
+        # agent_id is preferred over chat_setting_id (Paradigm deprecated chat_setting_id)
+        if agent_id is not None and agent_id > 0:
+            self.agent_id = agent_id
+        elif HAS_SETTINGS and settings and getattr(settings, 'lighton_agent_id', 0) > 0:
+            self.agent_id = settings.lighton_agent_id
+        else:
+            self.agent_id = None  # Will fall back to chat_setting_id
 
         # v3 Agent API endpoint path
         if HAS_SETTINGS and settings:
@@ -300,16 +310,21 @@ class ParadigmClient:
         """
         endpoint = "{}{}".format(self.v3_base_url, self.v3_agent_endpoint)
 
-        # Use provided chat_setting_id or fall back to instance value
+        # Prefer agent_id over chat_setting_id (deprecated)
         setting_id = chat_setting_id or self.chat_setting_id
 
         payload = {
-            "chat_setting_id": setting_id,
             "query": query,
             "ml_model": model,
             "private_scope": private_scope,
             "company_scope": company_scope
         }
+
+        # Use agent_id if available, otherwise fall back to chat_setting_id
+        if self.agent_id:
+            payload["agent_id"] = self.agent_id
+        else:
+            payload["chat_setting_id"] = setting_id
 
         # Add optional parameters
         if file_ids:
@@ -919,6 +934,109 @@ class ParadigmClient:
         except Exception as e:
             logger.error(f"❌ Search error: {str(e)}")
             raise
+
+    # =========================================================================
+    # TOOL & AGENT DISCOVERY METHODS
+    # =========================================================================
+
+    async def list_agents(self) -> List[Dict[str, Any]]:
+        """
+        List available agents for the current API key.
+
+        Calls GET /api/v3/agents to discover which agents the user has access to,
+        including their tools, workspaces, and configuration.
+
+        Returns:
+            list: List of agent dicts with id, name, description, tools, etc.
+        """
+        endpoint = "{}/api/v3/agents".format(self.v3_base_url)
+        logger.info("Discovering agents from: {}".format(endpoint))
+
+        try:
+            session = await self._get_session()
+            async with session.get(
+                endpoint,
+                headers=self._get_headers(),
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    agents = result.get("results", [])
+                    logger.info("Discovered {} agents".format(len(agents)))
+                    return agents
+                else:
+                    error_text = await response.text()
+                    logger.error("Agent discovery failed: {} - {}".format(response.status, error_text))
+                    raise Exception("Agent discovery failed: {} - {}".format(response.status, error_text))
+        except Exception as e:
+            logger.error("Agent discovery error: {}".format(str(e)))
+            raise
+
+    async def get_agent_tools(self, agent_id: int) -> Dict[str, Any]:
+        """
+        Get the tools (native + MCP servers) available to a specific agent.
+
+        Calls GET /api/v3/agents/{id}/tools to discover what tools the agent can use.
+
+        Args:
+            agent_id: The Paradigm agent ID
+
+        Returns:
+            dict: {"native": [...], "mcp_servers": [...]}
+        """
+        endpoint = "{}/api/v3/agents/{}/tools".format(self.v3_base_url, agent_id)
+        logger.info("Discovering tools for agent {}: {}".format(agent_id, endpoint))
+
+        try:
+            session = await self._get_session()
+            async with session.get(
+                endpoint,
+                headers=self._get_headers(),
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    native_count = len(result.get("native", []))
+                    mcp_count = len(result.get("mcp_servers", []))
+                    logger.info("Agent {} has {} native tools and {} MCP servers".format(
+                        agent_id, native_count, mcp_count
+                    ))
+                    return result
+                else:
+                    error_text = await response.text()
+                    logger.error("Agent tools discovery failed: {} - {}".format(response.status, error_text))
+                    raise Exception("Agent tools discovery failed: {} - {}".format(response.status, error_text))
+        except Exception as e:
+            logger.error("Agent tools discovery error: {}".format(str(e)))
+            raise
+
+    async def discover_all(self) -> Dict[str, Any]:
+        """
+        Discover all agents and their tools for the current API key.
+
+        Combines list_agents() and get_agent_tools() to return a complete picture
+        of what's available.
+
+        Returns:
+            dict: {"agents": [...], "tools_by_agent": {agent_id: {native: [...], mcp_servers: [...]}}}
+        """
+        agents = await self.list_agents()
+        tools_by_agent = {}
+
+        for agent in agents:
+            agent_id = agent.get("id")
+            if agent_id:
+                try:
+                    tools = await self.get_agent_tools(agent_id)
+                    tools_by_agent[agent_id] = tools
+                except Exception as e:
+                    logger.warning("Failed to get tools for agent {}: {}".format(agent_id, str(e)))
+                    tools_by_agent[agent_id] = {"native": [], "mcp_servers": []}
+
+        return {
+            "agents": agents,
+            "tools_by_agent": tools_by_agent
+        }
 
     async def search_with_vision_fallback(
         self,

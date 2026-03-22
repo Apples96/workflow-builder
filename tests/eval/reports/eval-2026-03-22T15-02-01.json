@@ -1,0 +1,73 @@
+{
+  "run_id": "2026-03-22T15:02:01",
+  "timestamp": "2026-03-22T15:02:01.798485",
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "errored": 0,
+    "skipped": 0,
+    "total_time_seconds": 120.8,
+    "pass_rate": 1.0
+  },
+  "tests": [
+    {
+      "name": "single-doc-extraction",
+      "workflow_file": "tests/ugap-test/test-single-doc-extraction.md",
+      "tags": [
+        "extraction",
+        "single-doc",
+        "en"
+      ],
+      "status": "passed",
+      "time_seconds": 120.8,
+      "cells": [
+        {
+          "name": "Document Mapping",
+          "display_step": "1.1",
+          "status": "completed",
+          "time": 19.04887104034424,
+          "evaluation_score": null,
+          "evaluation_attempts": 0
+        },
+        {
+          "name": "Extract Holder Info",
+          "display_step": "2.1",
+          "status": "completed",
+          "time": 47.96144199371338,
+          "evaluation_score": null,
+          "evaluation_attempts": 0
+        }
+      ],
+      "assertions": [
+        {
+          "type": "all_cells_completed",
+          "passed": true,
+          "detail": "2 cells all completed"
+        },
+        {
+          "type": "cell_has_output",
+          "passed": true,
+          "detail": "holder_siret = '51308250300055'"
+        },
+        {
+          "type": "cell_has_output",
+          "passed": true,
+          "detail": "holder_name = 'SAS INOP'S'"
+        },
+        {
+          "type": "cell_count_gte",
+          "passed": true,
+          "detail": "2 cells (min: 2)"
+        },
+        {
+          "type": "total_time_under",
+          "passed": true,
+          "detail": "121s (max: 480s)"
+        }
+      ],
+      "error": null,
+      "workflow_id": "fd2de3f8-c123-4e34-9718-984eda1bca05"
+    }
+  ]
+}

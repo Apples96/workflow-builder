@@ -2086,6 +2086,72 @@ Architecture:
 
         .api-key-status.connected { background: var(--lo-success); }
         .api-key-status.disconnected { background: var(--lo-error); }
+
+        /* Agent selector dropdown */
+        .api-key-bar select {
+            padding: 6px 10px;
+            border: 1px solid var(--lo-border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            background: white;
+            min-width: 180px;
+        }
+        .api-key-bar select:focus {
+            outline: none;
+            border-color: var(--lo-primary);
+        }
+
+        /* Discovered tools display */
+        .discovered-tools-bar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            background: var(--lo-white);
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--lo-border);
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            font-size: 0.8rem;
+        }
+        .discovered-tools-bar .tools-label {
+            font-weight: 600;
+            color: var(--lo-text);
+            margin-right: 4px;
+        }
+        .tool-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .tool-badge.native {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+        .tool-badge.mcp {
+            background: #e3f2fd;
+            color: #1565c0;
+            border: 1px solid #bbdefb;
+        }
+        .tool-badge.mcp::before {
+            content: "MCP";
+            font-size: 0.6rem;
+            font-weight: 700;
+            background: #1565c0;
+            color: white;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-right: 4px;
+        }
+        .tools-placeholder {
+            color: var(--lo-text-light);
+            font-style: italic;
+        }
     </style>
     <!-- jsPDF Library for client-side PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -2096,13 +2162,24 @@ Architecture:
         <span>workflow builder</span>
     </h1>
 
-    <!-- Paradigm API Key Configuration -->
+    <!-- Paradigm API Key & Agent Configuration -->
     <div class="api-key-bar">
-        <label for="paradigmApiKey">Paradigm API Key:</label>
+        <label for="paradigmApiKey">API Key:</label>
         <input type="password" id="paradigmApiKey" placeholder="Enter your Paradigm API key..." />
         <button onclick="saveApiKey()">Save</button>
         <button onclick="toggleApiKeyVisibility()" style="background: var(--lo-text-light);" title="Show/hide key">👁</button>
         <div id="apiKeyStatus" class="api-key-status disconnected" title="No API key set"></div>
+        <label for="paradigmAgent" style="margin-left: 12px;">Agent:</label>
+        <select id="paradigmAgent" onchange="onAgentSelected()" disabled>
+            <option value="">-- save API key to load --</option>
+        </select>
+    </div>
+
+    <!-- Discovered Tools Display -->
+    <div class="discovered-tools-bar" id="discoveredToolsBar">
+        <span class="tools-label">Available tools:</span>
+        <span class="tools-placeholder" id="toolsPlaceholder">Save your API key to discover available tools</span>
+        <span id="toolBadges"></span>
     </div>
 
     <!-- Step 1: Workflow Description & Examples -->
@@ -2230,8 +2307,8 @@ Architecture:
             <div class="deploy-option-content" onclick="event.stopPropagation()">
                 <p>Review and optionally edit the enhanced workflow description:</p>
                 <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 13px; color: #666;">
-                    <strong>Available tools:</strong> document upload, chat, document search, document analysis, image analysis<br>
-                    <strong>📚 API Reference:</strong> Detailed information about endpoints, parameters, and responses can be found in the <a href="https://paradigm.lighton.ai/api/schema/swagger-ui/#/" target="_blank" style="color: #00d4aa;">Paradigm API Swagger documentation</a><br>
+                    <strong>Available tools:</strong> <span id="stepToolsSummary">Save your API key above to discover tools</span><br>
+                    <strong>📚 API Reference:</strong> <a href="https://paradigm.lighton.ai/api/schema/swagger-ui/#/" target="_blank" style="color: #00d4aa;">Paradigm API Swagger documentation</a><br>
                     <strong>💡 Tip:</strong> Use Step 1 above to get an enhanced workflow description, or manually enter your workflow here.
                 </div>
                 <textarea id="workflowDescription" placeholder="Example: Search for documents about LightOn, then analyze those documents to summarize key information..." style="color: #999;"></textarea>
@@ -2671,6 +2748,10 @@ if __name__ == "__main__":
             if (apiKey) {
                 headers['X-Paradigm-Api-Key'] = apiKey;
             }
+            const agentId = getSelectedAgentId();
+            if (agentId) {
+                headers['X-Paradigm-Agent-Id'] = agentId;
+            }
             return headers;
         }
 
@@ -2688,7 +2769,7 @@ if __name__ == "__main__":
         }
 
         /**
-         * Save the Paradigm API key to localStorage and update the status indicator.
+         * Save the Paradigm API key to localStorage, update status, and trigger discovery.
          */
         function saveApiKey() {
             const input = document.getElementById('paradigmApiKey');
@@ -2697,10 +2778,189 @@ if __name__ == "__main__":
                 localStorage.setItem('paradigm_api_key', key);
                 updateApiKeyStatus(true);
                 console.log('Paradigm API key saved');
+                discoverAgentsAndTools();
             } else {
                 localStorage.removeItem('paradigm_api_key');
+                localStorage.removeItem('paradigm_agent_id');
                 updateApiKeyStatus(false);
+                resetToolsDisplay();
             }
+        }
+
+        /**
+         * Discover available agents and tools from the Paradigm API.
+         * Called after saving the API key and on page load if key exists.
+         */
+        async function discoverAgentsAndTools() {
+            const agentSelect = document.getElementById('paradigmAgent');
+            const toolBadges = document.getElementById('toolBadges');
+            const placeholder = document.getElementById('toolsPlaceholder');
+
+            agentSelect.disabled = true;
+            agentSelect.innerHTML = '<option value="">Discovering...</option>';
+            if (placeholder) placeholder.textContent = 'Discovering tools...';
+
+            try {
+                const response = await fetch('/api/agents/discover', {
+                    headers: getApiHeaders()
+                });
+
+                if (!response.ok) {
+                    throw new Error('Discovery failed: ' + response.status);
+                }
+
+                const data = await response.json();
+                window.discoveredTools = data;
+
+                // Populate agent dropdown
+                populateAgentDropdown(data.agents);
+
+                // Display tools from all agents initially
+                displayDiscoveredTools(data.native_tools, data.mcp_tools);
+
+                console.log('Discovery complete:', data.agents.length, 'agents,',
+                    data.native_tools.length, 'native tools,',
+                    data.mcp_tools.length, 'MCP tools');
+
+            } catch (err) {
+                console.warn('Tool discovery failed:', err);
+                agentSelect.innerHTML = '<option value="">Discovery failed</option>';
+                agentSelect.disabled = false;
+                if (placeholder) placeholder.textContent = 'Discovery failed - using defaults';
+            }
+        }
+
+        /**
+         * Populate the agent dropdown with discovered agents.
+         */
+        function populateAgentDropdown(agents) {
+            const agentSelect = document.getElementById('paradigmAgent');
+            const savedAgentId = localStorage.getItem('paradigm_agent_id');
+
+            agentSelect.innerHTML = '';
+
+            if (agents.length === 0) {
+                agentSelect.innerHTML = '<option value="">No agents found</option>';
+                agentSelect.disabled = true;
+                return;
+            }
+
+            agents.forEach(agent => {
+                const option = document.createElement('option');
+                option.value = agent.id;
+                option.textContent = agent.name + (agent.is_default ? ' (default)' : '');
+                agentSelect.appendChild(option);
+            });
+
+            agentSelect.disabled = false;
+
+            // Restore saved selection, or pick default agent
+            if (savedAgentId && agents.some(a => String(a.id) === savedAgentId)) {
+                agentSelect.value = savedAgentId;
+            } else {
+                const defaultAgent = agents.find(a => a.is_default);
+                if (defaultAgent) {
+                    agentSelect.value = defaultAgent.id;
+                }
+                localStorage.setItem('paradigm_agent_id', agentSelect.value);
+            }
+        }
+
+        /**
+         * Handle agent selection change: fetch tools for that specific agent.
+         */
+        async function onAgentSelected() {
+            const agentSelect = document.getElementById('paradigmAgent');
+            const agentId = agentSelect.value;
+
+            if (!agentId) return;
+
+            localStorage.setItem('paradigm_agent_id', agentId);
+
+            try {
+                const response = await fetch('/api/agents/' + agentId + '/tools', {
+                    headers: getApiHeaders()
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayDiscoveredTools(data.native_tools, data.mcp_tools);
+
+                    // Update the global discoveredTools with agent-specific tools
+                    if (window.discoveredTools) {
+                        window.discoveredTools.native_tools = data.native_tools;
+                        window.discoveredTools.mcp_tools = data.mcp_tools;
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to fetch agent tools:', err);
+            }
+        }
+
+        /**
+         * Display discovered tools as badges in the toolbar.
+         */
+        function displayDiscoveredTools(nativeTools, mcpTools) {
+            const toolBadges = document.getElementById('toolBadges');
+            const placeholder = document.getElementById('toolsPlaceholder');
+            const stepSummary = document.getElementById('stepToolsSummary');
+
+            if (placeholder) placeholder.style.display = 'none';
+            toolBadges.innerHTML = '';
+
+            // Render native tool badges
+            (nativeTools || []).forEach(tool => {
+                const badge = document.createElement('span');
+                badge.className = 'tool-badge native';
+                badge.textContent = tool.name;
+                badge.title = tool.description || tool.name;
+                toolBadges.appendChild(badge);
+            });
+
+            // Render MCP tool badges
+            (mcpTools || []).forEach(tool => {
+                const badge = document.createElement('span');
+                badge.className = 'tool-badge mcp';
+                badge.textContent = tool.name;
+                badge.title = tool.description || 'MCP: ' + tool.name;
+                toolBadges.appendChild(badge);
+            });
+
+            // Update Step 2 summary text
+            if (stepSummary) {
+                const names = [
+                    ...(nativeTools || []).map(t => t.name),
+                    ...(mcpTools || []).map(t => '[MCP] ' + t.name)
+                ];
+                stepSummary.textContent = names.length > 0 ? names.join(', ') : 'No tools discovered';
+            }
+        }
+
+        /**
+         * Reset the tools display to placeholder state.
+         */
+        function resetToolsDisplay() {
+            const agentSelect = document.getElementById('paradigmAgent');
+            const toolBadges = document.getElementById('toolBadges');
+            const placeholder = document.getElementById('toolsPlaceholder');
+            const stepSummary = document.getElementById('stepToolsSummary');
+
+            agentSelect.innerHTML = '<option value="">-- save API key to load --</option>';
+            agentSelect.disabled = true;
+            toolBadges.innerHTML = '';
+            if (placeholder) {
+                placeholder.style.display = '';
+                placeholder.textContent = 'Save your API key to discover available tools';
+            }
+            if (stepSummary) stepSummary.textContent = 'Save your API key above to discover tools';
+            window.discoveredTools = null;
+        }
+
+        /**
+         * Get the selected agent ID.
+         */
+        function getSelectedAgentId() {
+            return localStorage.getItem('paradigm_agent_id') || null;
         }
 
         /**
@@ -2726,12 +2986,14 @@ if __name__ == "__main__":
             }
         }
 
-        // On page load: restore API key from localStorage
+        // On page load: restore API key from localStorage and discover tools
         (function initApiKey() {
             const savedKey = getParadigmApiKey();
             if (savedKey) {
                 document.getElementById('paradigmApiKey').value = savedKey;
                 updateApiKeyStatus(true);
+                // Trigger agent/tool discovery
+                discoverAgentsAndTools();
             }
         })();
 
@@ -3306,10 +3568,14 @@ if __name__ == "__main__":
          * @returns {object} Response object with data and status
          */
         async function loggedFetch(url, options = {}, description = '') {
-            // Inject Paradigm API key header into all outgoing requests
+            // Inject Paradigm API key and agent ID headers into all outgoing requests
             const apiKey = getParadigmApiKey();
             if (apiKey) {
                 options.headers = { ...options.headers, 'X-Paradigm-Api-Key': apiKey };
+            }
+            const agentId = getSelectedAgentId();
+            if (agentId) {
+                options.headers = { ...options.headers, 'X-Paradigm-Agent-Id': agentId };
             }
             const logId = addLog(`🌐 API CALL: ${description || url}`, 'api');
             
@@ -3771,7 +4037,8 @@ if __name__ == "__main__":
                     },
                     body: JSON.stringify({
                         description: description,
-                        output_example: buildOutputExampleString()
+                        output_example: buildOutputExampleString(),
+                        agent_id: getSelectedAgentId() ? parseInt(getSelectedAgentId()) : undefined
                     })
                 }, 'CREATE WORKFLOW (CELL-BASED)');
 
@@ -6348,7 +6615,8 @@ if __name__ == "__main__":
                     },
                     body: JSON.stringify({
                         description: description,
-                        output_example: buildOutputExampleString()
+                        output_example: buildOutputExampleString(),
+                        agent_id: getSelectedAgentId() ? parseInt(getSelectedAgentId()) : undefined
                     }),
                     signal: autoExecutionAbortController ? autoExecutionAbortController.signal : undefined
                 }, 'CREATE WORKFLOW (AUTO)');

@@ -42,6 +42,7 @@ class Settings:
         self.lighton_v3_base_url: str = "https://paradigm.lighton.ai"
         self.lighton_v3_agent_endpoint: str = "/api/v3/threads/turns"
         self.lighton_chat_setting_id: int = int(os.getenv("LIGHTON_CHAT_SETTING_ID", "160"))
+        self.lighton_agent_id: int = int(os.getenv("LIGHTON_AGENT_ID", "0"))  # 0 means auto-discover
         self.paradigm_model: str = os.getenv("PARADIGM_MODEL", "alfred-ft5")
         self.paradigm_timeout: int = int(os.getenv("PARADIGM_TIMEOUT", "300"))
 

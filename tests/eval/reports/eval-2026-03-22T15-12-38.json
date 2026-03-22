@@ -1,0 +1,137 @@
+{
+  "run_id": "2026-03-22T15:12:38",
+  "timestamp": "2026-03-22T15:12:38.181013",
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "errored": 0,
+    "skipped": 0,
+    "total_time_seconds": 631.1,
+    "pass_rate": 1.0
+  },
+  "tests": [
+    {
+      "name": "cross-doc-comparison",
+      "workflow_file": "tests/ugap-test/test-cross-doc-comparison.md",
+      "tags": [
+        "extraction",
+        "multi-doc",
+        "comparison",
+        "fr"
+      ],
+      "status": "passed",
+      "time_seconds": 366.4,
+      "cells": [
+        {
+          "name": "Document Mapping",
+          "display_step": "1.1",
+          "status": "completed",
+          "time": 6.388195991516113,
+          "evaluation_score": 0.95,
+          "evaluation_attempts": 1
+        },
+        {
+          "name": "Extract DC4 Titulaire",
+          "display_step": "2.1",
+          "status": "completed",
+          "time": 42.55681490898132,
+          "evaluation_score": 0.85,
+          "evaluation_attempts": 1
+        },
+        {
+          "name": "Extract Acte Candidat",
+          "display_step": "2.2",
+          "status": "completed",
+          "time": 36.40147113800049,
+          "evaluation_score": 0.75,
+          "evaluation_attempts": 1
+        },
+        {
+          "name": "Compare Fields",
+          "display_step": "3.1",
+          "status": "completed",
+          "time": 0.0013132095336914062,
+          "evaluation_score": 0.3,
+          "evaluation_attempts": 5
+        }
+      ],
+      "assertions": [
+        {
+          "type": "all_cells_completed",
+          "passed": true,
+          "detail": "4 cells all completed"
+        },
+        {
+          "type": "cell_count_gte",
+          "passed": true,
+          "detail": "4 cells (min: 3)"
+        },
+        {
+          "type": "total_time_under",
+          "passed": true,
+          "detail": "366s (max: 600s)"
+        }
+      ],
+      "error": null,
+      "workflow_id": "a161a4a8-2edf-4e61-b211-c13be59655cc"
+    },
+    {
+      "name": "conditional-cross-doc",
+      "workflow_file": "tests/ugap-test/test-conditional-cross-doc.md",
+      "tags": [
+        "conditional",
+        "checkbox",
+        "cross-doc",
+        "fr"
+      ],
+      "status": "passed",
+      "time_seconds": 264.7,
+      "cells": [
+        {
+          "name": "Document Association",
+          "display_step": "1.1",
+          "status": "completed",
+          "time": 22.581450939178467,
+          "evaluation_score": null,
+          "evaluation_attempts": 0
+        },
+        {
+          "name": "Detection Cases Cochees",
+          "display_step": "2.1",
+          "status": "completed",
+          "time": 125.16987013816833,
+          "evaluation_score": null,
+          "evaluation_attempts": 0
+        },
+        {
+          "name": "Verification Conditionnelle",
+          "display_step": "3.1",
+          "status": "completed",
+          "time": 0.0009179115295410156,
+          "evaluation_score": null,
+          "evaluation_attempts": 0
+        }
+      ],
+      "assertions": [
+        {
+          "type": "all_cells_completed",
+          "passed": true,
+          "detail": "3 cells all completed"
+        },
+        {
+          "type": "cell_count_gte",
+          "passed": true,
+          "detail": "3 cells (min: 3)"
+        },
+        {
+          "type": "total_time_under",
+          "passed": true,
+          "detail": "265s (max: 600s)"
+        }
+      ],
+      "error": null,
+      "workflow_id": "fed241b6-89e1-40a1-80c8-bc12a8174b5b"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 """Main FastAPI application for the Workflow Automation System."""
 
+import hashlib
 import logging
 import asyncio
 import json
@@ -30,6 +31,9 @@ from .models import (
     CellExecuteSingleRequest,
     ExecuteWithEvaluationRequest,
     SuccessCriteriaRequest,
+    ParadigmAgent,
+    DiscoveredTool,
+    AgentDiscoveryResponse,
 )
 from .workflow.core.enhancer import WorkflowEnhancer
 from .workflow.core.executor import workflow_executor
@@ -100,6 +104,47 @@ def get_paradigm_api_key(request: Request) -> str:
             detail="Paradigm API key required. Please enter your API key in the settings bar."
         )
     return api_key
+
+# ============================================================================
+# Tool Discovery Cache
+# ============================================================================
+
+# In-memory cache: {api_key_hash: {"data": AgentDiscoveryResponse, "timestamp": float}}
+_discovery_cache: Dict[str, Dict[str, Any]] = {}
+DISCOVERY_CACHE_TTL = 3600  # 1 hour
+
+
+def _cache_key(api_key: str) -> str:
+    """Generate a short hash key for caching by API key."""
+    return hashlib.sha256(api_key.encode()).hexdigest()[:16]
+
+
+def get_cached_discovery(api_key: str) -> Optional[AgentDiscoveryResponse]:
+    """Get cached discovery data for an API key, or None if expired/missing."""
+    key = _cache_key(api_key)
+    cached = _discovery_cache.get(key)
+    if cached and (time.time() - cached["timestamp"]) < DISCOVERY_CACHE_TTL:
+        return cached["data"]
+    return None
+
+
+def _get_fallback_tools() -> AgentDiscoveryResponse:
+    """Return hardcoded fallback tools when discovery fails."""
+    return AgentDiscoveryResponse(
+        agents=[],
+        native_tools=[
+            DiscoveredTool(name="agent_query", type="native",
+                          description="AI document queries with multi-turn reasoning"),
+            DiscoveredTool(name="get_file_chunks", type="native",
+                          description="Raw text extraction from documents"),
+            DiscoveredTool(name="wait_for_embedding", type="native",
+                          description="Wait for file indexing after upload"),
+            DiscoveredTool(name="upload_file", type="native",
+                          description="Upload new files to Paradigm"),
+        ],
+        mcp_tools=[]
+    )
+
 
 app = FastAPI(
     title="Workflow Automation API",
@@ -177,19 +222,150 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
+# ============================================================================
+# Agent & Tool Discovery Endpoints
+# ============================================================================
+
+@api_router.get("/agents/discover", response_model=AgentDiscoveryResponse, tags=["Discovery"])
+async def discover_agents_and_tools(raw_request: Request):
+    """Discover available Paradigm agents and their tools for the current API key."""
+    api_key = get_paradigm_api_key(raw_request)
+
+    # Check cache first
+    cached = get_cached_discovery(api_key)
+    if cached:
+        return cached
+
+    client = ParadigmClient(api_key=api_key)
+    try:
+        discovery = await client.discover_all()
+
+        # Build response
+        agents = []
+        all_native_tools = []
+        all_mcp_tools = []
+        seen_native = set()
+        seen_mcp = set()
+
+        for agent_data in discovery.get("agents", []):
+            agents.append(ParadigmAgent(
+                id=agent_data.get("id", 0),
+                name=agent_data.get("name", "Unknown"),
+                description=agent_data.get("description"),
+                is_default=agent_data.get("is_default", False)
+            ))
+
+        # Collect tools from all agents
+        for agent_id, tools_data in discovery.get("tools_by_agent", {}).items():
+            for tool in tools_data.get("native", []):
+                tool_name = tool.get("name", "")
+                if tool_name and tool_name not in seen_native:
+                    seen_native.add(tool_name)
+                    all_native_tools.append(DiscoveredTool(
+                        name=tool_name,
+                        type="native",
+                        description=tool.get("description", ""),
+                        require_document=tool.get("require_document"),
+                        accepted_file_types=tool.get("accepted_file_types") or []
+                    ))
+
+            for mcp_server in tools_data.get("mcp_servers", []):
+                server_name = mcp_server.get("name", "")
+                if server_name and server_name not in seen_mcp:
+                    seen_mcp.add(server_name)
+                    all_mcp_tools.append(DiscoveredTool(
+                        name=server_name,
+                        type="mcp",
+                        description=mcp_server.get("description", ""),
+                        mcp_server_name=server_name
+                    ))
+
+        response = AgentDiscoveryResponse(
+            agents=agents,
+            native_tools=all_native_tools,
+            mcp_tools=all_mcp_tools
+        )
+
+        # Cache the result
+        _discovery_cache[_cache_key(api_key)] = {
+            "data": response,
+            "timestamp": time.time()
+        }
+
+        return response
+
+    except Exception as e:
+        logger.error("Agent discovery failed: {}".format(str(e)))
+        return _get_fallback_tools()
+    finally:
+        await client.close()
+
+
+@api_router.get("/agents/{agent_id}/tools", tags=["Discovery"])
+async def get_agent_tools(agent_id: int, raw_request: Request):
+    """Get the tools available to a specific Paradigm agent."""
+    api_key = get_paradigm_api_key(raw_request)
+
+    client = ParadigmClient(api_key=api_key)
+    try:
+        tools_data = await client.get_agent_tools(agent_id)
+
+        native_tools = [
+            DiscoveredTool(
+                name=t.get("name", ""),
+                type="native",
+                description=t.get("description", ""),
+                require_document=t.get("require_document"),
+                accepted_file_types=t.get("accepted_file_types") or []
+            )
+            for t in tools_data.get("native", [])
+        ]
+
+        mcp_tools = [
+            DiscoveredTool(
+                name=s.get("name", ""),
+                type="mcp",
+                description=s.get("description", ""),
+                mcp_server_name=s.get("name", "")
+            )
+            for s in tools_data.get("mcp_servers", [])
+        ]
+
+        return {"native_tools": native_tools, "mcp_tools": mcp_tools}
+
+    except Exception as e:
+        logger.error("Agent tools fetch failed: {}".format(str(e)))
+        raise HTTPException(status_code=500, detail="Failed to fetch agent tools: {}".format(str(e)))
+    finally:
+        await client.close()
+
+
+# ============================================================================
+# Workflow Endpoints
+# ============================================================================
+
 @api_router.post("/workflows/enhance-description", response_model=WorkflowDescriptionEnhanceResponse, tags=["Workflows"])
-async def enhance_workflow_description(request: WorkflowDescriptionEnhanceRequest):
+async def enhance_workflow_description(request: WorkflowDescriptionEnhanceRequest, raw_request: Request):
     """Enhance a raw workflow description into a detailed specification using Claude."""
     validate_anthropic_api_key()
-    
+
     try:
         logger.info("Enhancing workflow description: {}...".format(request.description[:100]))
+
+        # Get discovered tools for the enhancer (if available)
+        available_tools = None
+        try:
+            api_key = get_paradigm_api_key(raw_request)
+            available_tools = get_cached_discovery(api_key)
+        except Exception:
+            pass
 
         from .clients import create_anthropic_client
         enhancer = WorkflowEnhancer(create_anthropic_client())
         result = await enhancer.enhance_workflow_description(
             request.description,
-            output_example=request.output_example
+            output_example=request.output_example,
+            available_tools=available_tools
         )
 
         logger.info("Workflow description enhanced successfully")
@@ -208,18 +384,29 @@ async def enhance_workflow_description(request: WorkflowDescriptionEnhanceReques
         )
 
 @api_router.post("/workflows-cell-based", response_model=CellBasedWorkflowResponse, tags=["Cell-Based Workflows"])
-async def create_cell_based_workflow(request: WorkflowCreateRequest):
+async def create_cell_based_workflow(request: WorkflowCreateRequest, raw_request: Request):
     """Create a new cell-based workflow with a step-by-step execution plan."""
     validate_anthropic_api_key()
 
     try:
         logger.info("Creating cell-based workflow: {}...".format(request.description[:100]))
 
+        # Get discovered tools for the planner (if available)
+        available_tools = None
+        try:
+            api_key = get_paradigm_api_key(raw_request)
+            cached = get_cached_discovery(api_key)
+            if cached:
+                available_tools = cached
+        except Exception:
+            pass  # No API key or no cache — planner will use hardcoded tools
+
         planner = WorkflowPlanner()
         plan = await planner.create_plan(
             description=request.description,
             context=request.context,
-            output_example=request.output_example
+            output_example=request.output_example,
+            available_tools=available_tools
         )
 
         # Store output_example in context for later use in evaluation
@@ -347,7 +534,14 @@ async def execute_workflow_stream(workflow_id: str, request: CellBasedExecuteReq
                 len(plan.cells)
             ))
 
-            executor = CellExecutor(paradigm_api_key=api_key)
+            # Pass agent_id and discovered tools to executor
+            agent_id = raw_request.query_params.get("agent_id") or raw_request.headers.get("X-Paradigm-Agent-Id")
+            cached_tools = get_cached_discovery(api_key)
+            executor = CellExecutor(
+                paradigm_api_key=api_key,
+                agent_id=int(agent_id) if agent_id else None,
+                available_tools=cached_tools
+            )
 
             if is_parallel:
                 async for event in executor.execute_workflow_parallel(
@@ -418,7 +612,14 @@ async def execute_workflow_parallel(workflow_id: str, request: CellBasedExecuteR
                 len(plan.cells)
             ))
 
-            executor = CellExecutor(paradigm_api_key=api_key)
+            # Pass agent_id and discovered tools to executor
+            agent_id = raw_request.query_params.get("agent_id") or raw_request.headers.get("X-Paradigm-Agent-Id")
+            cached_tools = get_cached_discovery(api_key)
+            executor = CellExecutor(
+                paradigm_api_key=api_key,
+                agent_id=int(agent_id) if agent_id else None,
+                available_tools=cached_tools
+            )
 
             if is_parallel:
                 async for event in executor.execute_workflow_parallel(
@@ -495,7 +696,14 @@ async def execute_workflow_with_evaluation(workflow_id: str, request: ExecuteWit
                 for i, example in enumerate(request.examples)
             ]
 
-            executor = CellExecutor(paradigm_api_key=api_key)
+            # Pass agent_id and discovered tools to executor
+            agent_id = raw_request.query_params.get("agent_id") or raw_request.headers.get("X-Paradigm-Agent-Id")
+            cached_tools = get_cached_discovery(api_key)
+            executor = CellExecutor(
+                paradigm_api_key=api_key,
+                agent_id=int(agent_id) if agent_id else None,
+                available_tools=cached_tools
+            )
             async for event in executor.execute_workflow_with_evaluation(
                 plan=plan,
                 examples=examples,
@@ -721,7 +929,13 @@ async def rerun_cell(workflow_id: str, cell_id: str, raw_request: Request):
             }
             logger.warning("No execution context found, using empty context")
 
-        executor = CellExecutor(paradigm_api_key=api_key)
+        agent_id = raw_request.query_params.get("agent_id") or raw_request.headers.get("X-Paradigm-Agent-Id")
+        cached_tools = get_cached_discovery(api_key)
+        executor = CellExecutor(
+            paradigm_api_key=api_key,
+            agent_id=int(agent_id) if agent_id else None,
+            available_tools=cached_tools
+        )
 
         try:
             import asyncio
@@ -828,7 +1042,13 @@ async def execute_single_cell(
         if request.execution_context:
             context.update(request.execution_context)
 
-        executor = CellExecutor(paradigm_api_key=api_key)
+        agent_id = raw_request.query_params.get("agent_id") or raw_request.headers.get("X-Paradigm-Agent-Id")
+        cached_tools = get_cached_discovery(api_key)
+        executor = CellExecutor(
+            paradigm_api_key=api_key,
+            agent_id=int(agent_id) if agent_id else None,
+            available_tools=cached_tools
+        )
 
         if not cell.generated_code:
             logger.info("Cell {} has no generated code, generating now...".format(cell_id))
@@ -938,7 +1158,13 @@ async def submit_cell_feedback(workflow_id: str, cell_id: str, request: CellFeed
             )
 
         api_key = get_paradigm_api_key(raw_request)
-        executor = CellExecutor(paradigm_api_key=api_key)
+        agent_id = raw_request.query_params.get("agent_id") or raw_request.headers.get("X-Paradigm-Agent-Id")
+        cached_tools = get_cached_discovery(api_key)
+        executor = CellExecutor(
+            paradigm_api_key=api_key,
+            agent_id=int(agent_id) if agent_id else None,
+            available_tools=cached_tools
+        )
 
         feedback_context = """CELL DESCRIPTION:
 {cell_description}
