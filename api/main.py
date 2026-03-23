@@ -163,19 +163,14 @@ app.add_middleware(
         "http://localhost:3000",  # Local development
         "http://127.0.0.1:3000",
         "https://scaffold-ai-test2.vercel.app",  # Production frontend
-        "https://scaffold-ai-test2-milo-rignells-projects.vercel.app",  # Your current deployment
+        "https://scaffold-ai-test2-milo-rignells-projects.vercel.app",
         "https://scaffold-ai-test2-fi4dvy1xl-milo-rignells-projects.vercel.app",
-        "https://scaffold-ai-test2-tawny.vercel.app",  # Your other deployment
+        "https://scaffold-ai-test2-tawny.vercel.app",
         "https://scaffold-ai-test2-git-main-milo-rignells-projects.vercel.app/",
-        "https://*.vercel.app",  # All Vercel deployments
-        "https://*.netlify.app",  # Netlify deployments
-        "https://*.github.io",   # GitHub Pages
-        "https://*.surge.sh",    # Surge deployments
-        "https://*.firebaseapp.com"  # Firebase hosting
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-Paradigm-Api-Key", "Authorization"],
 )
 
 
@@ -1296,7 +1291,15 @@ async def upload_file(
     try:
         logger.info(f"Uploading file: {file.filename}")
 
+        # Read file and enforce size limit (200MB) to prevent OOM
         file_content = await file.read()
+        MAX_FILE_SIZE = 200 * 1024 * 1024  # 200MB
+        if len(file_content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="File too large. Maximum size is 200MB."
+            )
+
         client = ParadigmClient(api_key=api_key)
         result = await client.upload_file(
             file_content=file_content,

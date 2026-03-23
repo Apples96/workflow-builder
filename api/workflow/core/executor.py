@@ -41,7 +41,13 @@ class WorkflowExecutor:
         if self.use_redis:
             logger.info("✅ Using Redis (Upstash) for workflow storage")
         else:
-            logger.warning("⚠️ Using in-memory storage (not suitable for serverless)")
+            if not settings.debug:
+                logger.warning(
+                    "⚠️ WARNING: Running without Redis — workflow state will be lost on server restart. "
+                    "Set KV_REST_API_URL and KV_REST_API_TOKEN environment variables for persistent storage."
+                )
+            else:
+                logger.warning("⚠️ Using in-memory storage (not suitable for serverless)")
 
     def store_workflow(self, workflow: Workflow) -> None:
         """Store a workflow for later execution"""

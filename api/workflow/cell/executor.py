@@ -887,14 +887,22 @@ CRITICAL RULES:
             raise
 
     def _inject_api_keys(self, code: str) -> str:
-        """Replace placeholder API keys in generated code with actual values."""
+        """Replace placeholder config values in generated code.
+
+        API keys are NOT injected into source code — they are passed via
+        execution globals (see _build_exec_globals). This prevents keys from
+        appearing in code previews, logs, or exported packages.
+        Only base URL and non-secret config values are replaced here.
+        """
+        # Remove API key placeholders — the real key is available at runtime
+        # via the LIGHTON_API_KEY execution global
         code = code.replace(
             'LIGHTON_API_KEY = os.getenv("PARADIGM_API_KEY", "your_api_key_here")',
-            'LIGHTON_API_KEY = "{}"'.format(self.paradigm_api_key)
+            '# LIGHTON_API_KEY is injected at runtime via execution context'
         )
         code = code.replace(
             'LIGHTON_API_KEY = "your_api_key_here"',
-            'LIGHTON_API_KEY = "{}"'.format(self.paradigm_api_key)
+            '# LIGHTON_API_KEY is injected at runtime via execution context'
         )
         code = code.replace(
             'LIGHTON_BASE_URL = os.getenv("PARADIGM_BASE_URL", "https://paradigm.lighton.ai")',
