@@ -890,53 +890,7 @@
                 doc.setLineWidth(0.5);
                 doc.line(marginLeft, yPosition, pageWidth - marginRight, yPosition);
 
-                // === EXECUTION INFO SECTION ===
-                yPosition += 12;
-                doc.setFontSize(11);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(0, 0, 0);
-                doc.text(encodeForPDF("Informations d'exécution"), marginLeft, yPosition);
-
-                yPosition += 8;
-                doc.setFontSize(10);
-                doc.setFont('helvetica', 'normal');
-
-                // Statut
-                doc.setFont('helvetica', 'bold');
-                doc.text(encodeForPDF("Statut :"), marginLeft + 5, yPosition);
-                doc.setFont('helvetica', 'normal');
-                const status = currentExecutionData.status || 'completed';
-                const statusColor = status === 'completed' ? [40, 167, 69] : [220, 53, 69];
-                doc.setTextColor(...statusColor);
-                doc.text(encodeForPDF(status === 'completed' ? 'Terminé' : 'Erreur'), marginLeft + 25, yPosition);
-                doc.setTextColor(0, 0, 0);
-
-                // Temps d'exécution
-                yPosition += 6;
-                doc.setFont('helvetica', 'bold');
-                doc.text(encodeForPDF("Temps d'exécution :"), marginLeft + 5, yPosition);
-                doc.setFont('helvetica', 'normal');
-                doc.text(encodeForPDF(`${currentExecutionData.execution_time || 0} secondes`), marginLeft + 47, yPosition);
-
-                // Date/heure de génération
-                yPosition += 6;
-                doc.setFont('helvetica', 'bold');
-                doc.text(encodeForPDF("Généré le :"), marginLeft + 5, yPosition);
-                doc.setFont('helvetica', 'normal');
-                doc.text(new Date().toLocaleString('fr-FR', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                }), marginLeft + 30, yPosition);
-
-                // Separator
-                yPosition += 10;
-                doc.setDrawColor(180, 180, 180);
-                doc.line(marginLeft, yPosition, pageWidth - marginRight, yPosition);
-
-                // === RESULTS SECTION ===
+                // === RESULTS SECTION (shown first) ===
                 yPosition += 12;
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'bold');
@@ -944,6 +898,8 @@
                 doc.text(encodeForPDF("Résultats"), marginLeft, yPosition);
 
                 yPosition += 10;
+
+                const status = currentExecutionData.status || 'completed';
 
                 // === ADD VISUALIZATION (TABLE OR CHART) IF PRESENT ===
                 let resultData = currentExecutionData.result;
@@ -1182,6 +1138,52 @@
                         }
                     }
                 }
+
+                // === ANNEXE: EXECUTION INFO (at the end) ===
+                yPosition = addNewPage();
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(120, 120, 120);
+                doc.text(encodeForPDF("Annexe : Informations d'exécution"), marginLeft, yPosition);
+
+                yPosition += 12;
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.5);
+                doc.line(marginLeft, yPosition, pageWidth - marginRight, yPosition);
+
+                yPosition += 10;
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(0, 0, 0);
+
+                // Statut
+                doc.setFont('helvetica', 'bold');
+                doc.text(encodeForPDF("Statut :"), marginLeft + 5, yPosition);
+                doc.setFont('helvetica', 'normal');
+                const statusColor = status === 'completed' ? [40, 167, 69] : [220, 53, 69];
+                doc.setTextColor(...statusColor);
+                doc.text(encodeForPDF(status === 'completed' ? 'Terminé' : 'Erreur'), marginLeft + 25, yPosition);
+                doc.setTextColor(0, 0, 0);
+
+                // Temps d'exécution
+                yPosition += 6;
+                doc.setFont('helvetica', 'bold');
+                doc.text(encodeForPDF("Temps d'exécution :"), marginLeft + 5, yPosition);
+                doc.setFont('helvetica', 'normal');
+                doc.text(encodeForPDF(`${currentExecutionData.execution_time || 0} secondes`), marginLeft + 47, yPosition);
+
+                // Date/heure de génération
+                yPosition += 6;
+                doc.setFont('helvetica', 'bold');
+                doc.text(encodeForPDF("Généré le :"), marginLeft + 5, yPosition);
+                doc.setFont('helvetica', 'normal');
+                doc.text(new Date().toLocaleString('fr-FR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }), marginLeft + 30, yPosition);
 
                 // Add page numbers to all pages
                 const totalPages = doc.internal.getNumberOfPages();

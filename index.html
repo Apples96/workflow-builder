@@ -7088,54 +7088,24 @@ if __name__ == "__main__":
                     second: '2-digit'
                 })}`, 105, 28, { align: "center" });
 
-                // 5. Add execution info
-                doc.setFontSize(9);
-                doc.setTextColor(150, 150, 150);
-                doc.text(`Execution ID: ${executionId}`, 105, 35, { align: "center" });
-
-                // 6. Add separator line
+                // 5. Add separator line
                 doc.setDrawColor(200, 200, 200);
-                doc.line(20, 40, 190, 40);
+                doc.line(20, 35, 190, 35);
 
-                // 7. Add execution status
-                let yPosition = 50;
-                doc.setFontSize(11);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(0, 0, 0);
-                doc.text("Statut:", 20, yPosition);
-
-                doc.setFont('helvetica', 'normal');
-                const status = execution.status || 'unknown';
-                const statusColor = status === 'completed' ? [40, 167, 69] : [220, 53, 69];
-                doc.setTextColor(...statusColor);
-                doc.text(status.toUpperCase(), 45, yPosition);
-
-                // 8. Add execution time
-                yPosition += 8;
-                doc.setTextColor(0, 0, 0);
-                doc.setFont('helvetica', 'bold');
-                doc.text("Temps d'exécution:", 20, yPosition);
-                doc.setFont('helvetica', 'normal');
-                doc.text(`${execution.execution_time || 0} secondes`, 65, yPosition);
-
-                // 9. Add separator
-                yPosition += 8;
-                doc.setDrawColor(200, 200, 200);
-                doc.line(20, yPosition, 190, yPosition);
-
-                // 10. Add results section
-                yPosition += 10;
+                // 6. Add results section FIRST
+                let yPosition = 45;
                 doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
-                doc.text("Résultats:", 20, yPosition);
+                doc.text("Résultats", 20, yPosition);
 
-                // 11. Add result content (simplified, no technical details)
+                // 7. Add result content
                 yPosition += 10;
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'normal');
 
                 const result = execution.result || "Aucun résultat disponible";
+                const status = execution.status || 'unknown';
 
                 // Parse and format the result text
                 const lines = result.split('\n');
@@ -7150,7 +7120,7 @@ if __name__ == "__main__":
 
                     // Handle section headers (lines starting with ##)
                     if (line.trim().startsWith('##')) {
-                        yPosition += 5; // Add spacing before section
+                        yPosition += 5;
                         doc.setFont('helvetica', 'bold');
                         doc.setFontSize(12);
                         const headerText = line.replace(/^#+\s*/, '').trim();
@@ -7209,7 +7179,45 @@ if __name__ == "__main__":
                     }
                 }
 
-                // 12. Add footer on last page
+                // 8. Annexe: Execution info on new page
+                doc.addPage();
+                yPosition = 20;
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(120, 120, 120);
+                doc.text("Annexe : Informations d'exécution", 20, yPosition);
+
+                yPosition += 8;
+                doc.setDrawColor(200, 200, 200);
+                doc.line(20, yPosition, 190, yPosition);
+
+                yPosition += 10;
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 0, 0);
+                doc.text("Statut:", 20, yPosition);
+
+                doc.setFont('helvetica', 'normal');
+                const statusColor = status === 'completed' ? [40, 167, 69] : [220, 53, 69];
+                doc.setTextColor(...statusColor);
+                doc.text(status.toUpperCase(), 45, yPosition);
+
+                yPosition += 8;
+                doc.setTextColor(0, 0, 0);
+                doc.setFont('helvetica', 'bold');
+                doc.text("Temps d'exécution:", 20, yPosition);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`${execution.execution_time || 0} secondes`, 65, yPosition);
+
+                yPosition += 8;
+                doc.setFont('helvetica', 'bold');
+                doc.text("Execution ID:", 20, yPosition);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                doc.setTextColor(150, 150, 150);
+                doc.text(`${execution.execution_id}`, 55, yPosition);
+
+                // 9. Add footer on last page
                 const pageCount = doc.internal.getNumberOfPages();
                 doc.setPage(pageCount);
                 doc.setFontSize(8);
@@ -7390,6 +7398,112 @@ if __name__ == "__main__":
          * 1. MAIN CONTENT: Final workflow output (last cell results) - well formatted
          * 2. ANNEXE: Workflow details including metadata, execution time, and cell iterations
          */
+        // Basic markdown to HTML renderer for report PDF generation
+        function renderMarkdownToHTML(text) {
+            if (!text) return '';
+            // Escape HTML first to prevent XSS
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            const lines = html.split('\n');
+            let result = [];
+            let inList = false;
+            let inTable = false;
+            let tableHeaders = [];
+            for (let line of lines) {
+                const trimmed = line.trim();
+                // Horizontal rules
+                if (trimmed.match(/^-{3,}$/) && !inTable) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push('<hr style="border:none;border-top:1px solid #ddd;margin:12px 0;">');
+                    continue;
+                }
+                // Table rows (detect pipes)
+                if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    const cells = trimmed.split('|').filter((_, i, arr) => i > 0 && i < arr.length - 1).map(c => c.trim());
+                    // Check if this is a separator row (e.g., |---|---|)
+                    if (cells.every(c => c.match(/^[-:]+$/))) {
+                        continue; // Skip separator rows
+                    }
+                    if (!inTable) {
+                        inTable = true;
+                        tableHeaders = cells;
+                        result.push('<table style="width:100%;border-collapse:collapse;margin:10px 0;font-size:0.95em;">');
+                        result.push('<thead><tr>');
+                        for (const cell of cells) {
+                            result.push(`<th style="border:1px solid #ddd;padding:8px 12px;background:#f5f5f5;text-align:left;font-weight:bold;">${applyInlineMarkdown(cell)}</th>`);
+                        }
+                        result.push('</tr></thead><tbody>');
+                    } else {
+                        result.push('<tr>');
+                        for (const cell of cells) {
+                            result.push(`<td style="border:1px solid #ddd;padding:6px 12px;">${applyInlineMarkdown(cell)}</td>`);
+                        }
+                        result.push('</tr>');
+                    }
+                    continue;
+                }
+                // Close table if we were in one
+                if (inTable) {
+                    result.push('</tbody></table>');
+                    inTable = false;
+                }
+                // Headers
+                if (trimmed.startsWith('#### ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h4 style="margin:10px 0 4px;font-size:1em;">${applyInlineMarkdown(trimmed.slice(5))}</h4>`);
+                    continue;
+                }
+                if (trimmed.startsWith('### ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h3 style="margin:12px 0 6px;font-size:1.05em;">${applyInlineMarkdown(trimmed.slice(4))}</h3>`);
+                    continue;
+                }
+                if (trimmed.startsWith('## ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h2 style="margin:16px 0 8px;font-size:1.15em;">${applyInlineMarkdown(trimmed.slice(3))}</h2>`);
+                    continue;
+                }
+                if (trimmed.startsWith('# ')) {
+                    if (inList) { result.push('</ul>'); inList = false; }
+                    result.push(`<h1 style="margin:18px 0 10px;font-size:1.3em;">${applyInlineMarkdown(trimmed.slice(2))}</h1>`);
+                    continue;
+                }
+                // Bullet points
+                if (trimmed.match(/^[-*•]\s/)) {
+                    if (!inList) { result.push('<ul style="margin:4px 0;padding-left:20px;">'); inList = true; }
+                    result.push(`<li style="margin:2px 0;">${applyInlineMarkdown(trimmed.replace(/^[-*•]\s+/, ''))}</li>`);
+                    continue;
+                }
+                // Indented sub-bullets
+                if (line.match(/^\s{2,}[-*•]\s/)) {
+                    if (!inList) { result.push('<ul style="margin:4px 0;padding-left:20px;">'); inList = true; }
+                    result.push(`<li style="margin:2px 0;margin-left:15px;">${applyInlineMarkdown(trimmed.replace(/^[-*•]\s+/, ''))}</li>`);
+                    continue;
+                }
+                if (inList) { result.push('</ul>'); inList = false; }
+                // Empty lines
+                if (trimmed === '') {
+                    result.push('<br>');
+                    continue;
+                }
+                // Regular text
+                result.push(`<p style="margin:3px 0;line-height:1.6;">${applyInlineMarkdown(trimmed)}</p>`);
+            }
+            if (inList) result.push('</ul>');
+            if (inTable) result.push('</tbody></table>');
+            return result.join('\n');
+        }
+
+        // Apply inline markdown formatting (bold, italic)
+        function applyInlineMarkdown(text) {
+            return text
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>');
+        }
+
         function downloadReportPDF() {
             if (!currentWorkflowId) {
                 alert('Please create and execute a workflow first');
@@ -7480,11 +7594,9 @@ if __name__ == "__main__":
                                 margin-bottom: 10px;
                             }
                             .main-result-variable-value {
-                                font-family: 'Georgia', serif;
-                                white-space: pre-wrap;
                                 word-break: break-word;
                                 font-size: 1em;
-                                line-height: 1.8;
+                                line-height: 1.6;
                             }
                             .annexe {
                                 margin-top: 60px;
@@ -7623,17 +7735,23 @@ if __name__ == "__main__":
                         const exampleOutput = lastCellOutputs[example.id];
 
                         if (testExamples.length > 1) {
-                            reportHTML += `<h3 style="color: #27ae60; margin-top: ${exIndex > 0 ? '30px' : '0'};">Example ${exIndex + 1} Result</h3>`;
+                            reportHTML += `
+                                <div style="margin-top: ${exIndex > 0 ? '40px' : '0'}; ${exIndex > 0 ? 'padding-top: 30px; border-top: 2px solid #c3e6cb;' : ''}">
+                                    <h2 style="color: #27ae60; margin-bottom: 15px; font-size: 1.3em;">
+                                        Example ${exIndex + 1}: ${escapeHTML(example.query || 'Input ' + (exIndex + 1))}
+                                    </h2>
+                            `;
                         }
 
                         if (exampleOutput) {
                             const variables = exampleOutput.variables || {};
                             if (Object.keys(variables).length > 0) {
                                 for (const [key, value] of Object.entries(variables)) {
+                                    const strValue = String(value);
                                     reportHTML += `
                                         <div class="main-result-variable">
                                             <div class="main-result-variable-name">${escapeHTML(key)}</div>
-                                            <div class="main-result-variable-value">${escapeHTML(String(value))}</div>
+                                            <div class="main-result-variable-value">${renderMarkdownToHTML(strValue)}</div>
                                         </div>
                                     `;
                                 }
@@ -7653,6 +7771,10 @@ if __name__ == "__main__":
                             }
                         } else {
                             reportHTML += '<p style="color: #999;">Output not available</p>';
+                        }
+
+                        if (testExamples.length > 1) {
+                            reportHTML += '</div>';
                         }
                     });
                 } else {
