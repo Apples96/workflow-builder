@@ -10,6 +10,13 @@ from ...clients import create_anthropic_client
 from ...config import settings
 from ..prompts.loader import PromptLoader
 
+def _get_eval_output_max_chars() -> int:
+    """Get the configurable output truncation limit (read at call time, not import time).
+
+    Controlled via EVAL_OUTPUT_MAX_CHARS env var, default 4000.
+    """
+    return settings.eval_output_max_chars
+
 logger = logging.getLogger(__name__)
 
 # Tool schema for structured evaluation output via Anthropic tool_use
@@ -212,6 +219,10 @@ IMPORTANT GUIDELINES:
   - Output contradicts the cell's purpose
   - Data that is clearly corrupted or malformed
 
+TRUNCATED OUTPUTS: If you see a [TRUNCATED: showing X of Y total characters...] notice,
+evaluate only the visible portion. Do NOT fail because later sections appear missing —
+they likely exist beyond the truncation boundary. Only fail for problems in the visible content.
+
 Use the submit_evaluation tool to submit your structured evaluation. Provide:
 - is_valid: true/false
 - confidence: 0.0-1.0 (how confident you are in your judgment)
@@ -220,6 +231,21 @@ Use the submit_evaluation tool to submit your structured evaluation. Provide:
 - issues: list of specific problems found (empty list if none)
 - output_analysis: if invalid, what is wrong with the output
 - field_scores: per-output-variable scores (0.0-1.0)"""
+
+    def _truncate_with_notice(self, text: str, max_chars: int, label: str = "output") -> str:
+        """Truncate text and append a notice for the evaluator if truncation occurred.
+
+        The notice tells the LLM judge the full length so it can evaluate
+        fairly based on what is visible, without penalizing for 'missing' content.
+        """
+        if len(text) <= max_chars:
+            return text
+        return (
+            text[:max_chars]
+            + "\n\n[TRUNCATED: showing {shown} of {total} total characters for {label}. "
+            "The full output is longer than what is shown here. Evaluate based on the visible "
+            "portion only — do NOT fail because later sections are not visible.]"
+        ).format(shown=max_chars, total=len(text), label=label)
 
     def _build_smoke_test_message(
         self,
@@ -233,6 +259,10 @@ Use the submit_evaluation tool to submit your structured evaluation. Provide:
         variables_display = self._format_variables_for_display(
             smoke_test_output.formatted_variables
         )
+        # Apply configurable truncation with evaluator-awareness
+        output_text = smoke_test_output.output_text or "(no printed output)"
+        output_text = self._truncate_with_notice(output_text, _get_eval_output_max_chars(), "printed output")
+        variables_display = self._truncate_with_notice(variables_display, _get_eval_output_max_chars(), "output variables")
 
         message = """Please evaluate the following cell output from a smoke test execution:
 
@@ -275,7 +305,7 @@ Provide your evaluation using the submit_evaluation tool.""".format(
             tools=", ".join(cell.paradigm_tools_used) if cell.paradigm_tools_used else "none",
             cell_code=cell_code[:3000] if len(cell_code) > 3000 else cell_code,
             user_input=smoke_test_output.user_input[:500] if smoke_test_output.user_input else "(empty)",
-            output_text=smoke_test_output.output_text or "(no printed output)",
+            output_text=output_text,
             variables=variables_display
         )
 
@@ -319,18 +349,16 @@ IMPORTANT: This is a FORMAT reference, not expected content.
     ) -> str:
         """Build the user message for evaluating ALL examples together."""
         examples_text = ""
-        max_output_length = 1500  # Per-example output limit
-        max_total_length = 8000  # Total examples section limit
+        # Use configurable limit; total scales with number of examples
+        max_output_length = _get_eval_output_max_chars()
+        max_total_length = _get_eval_output_max_chars() * 3  # Room for multiple examples
 
         for idx, example in enumerate(example_outputs, 1):
             variables_display = self._format_variables_for_display(example.formatted_variables)
 
             output_text = example.output_text or "(no printed output)"
-            if len(output_text) > max_output_length:
-                output_text = output_text[:max_output_length] + "... (truncated)"
-
-            if len(variables_display) > max_output_length:
-                variables_display = variables_display[:max_output_length] + "... (truncated)"
+            output_text = self._truncate_with_notice(output_text, max_output_length, "printed output")
+            variables_display = self._truncate_with_notice(variables_display, max_output_length, "output variables")
 
             example_section = """
 EXAMPLE {idx}:

@@ -20,7 +20,7 @@ The code must start with imports and define the `execute_cell` function.
    - This function is REQUIRED and the code will be REJECTED if it's missing
    - The function signature must match EXACTLY: async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 2. **DO NOT define ParadigmClient** - it is pre-injected into the execution environment (see below)
-3. Use `.format()` for string interpolation - NEVER use f-strings
+3. NEVER use f-strings. Use `.format()` for print/log messages and short strings with known-safe values. For building return values that include text from context variables (previous cell outputs), use string concatenation (`+`) or `"".join()` — context data may contain literal `{` or `}` characters that crash `.format()`.
 4. Access inputs via `context["variable_name"]`
 5. Return outputs as a dictionary with the required output variable names
 6. Print progress updates using: `print("CELL_OUTPUT: message")`
@@ -136,11 +136,13 @@ return {
 ### Rule 6: Report/aggregation cells — just read strings from context
 When generating code for a report or aggregation cell, all inputs should already be strings (status summaries, detailed text, etc.). Simply read them from context and concatenate into the report. No dict traversal needed.
 
+**IMPORTANT**: Use string concatenation (`+`) to assemble report text that includes context variables — NOT `.format()`. Context variables come from previous cells and may contain literal `{` or `}` characters (from JSON, markdown tables, LLM output) which cause `.format()` to crash with `unmatched '{' in format spec` or `Replacement index N out of range`.
+
 ```python
-# Pattern for report cells — inputs are strings, assembly is trivial
+# Pattern for report cells — use concatenation for context data
 status = context.get("zone_a_status", "Non exécuté")
 details = context.get("zone_a_details", "Aucun détail disponible")
-report_section = "## Zone A\n**Statut:** {}\n\n{}\n".format(status, details)
+report_section = "## Zone A\n**Statut:** " + status + "\n\n" + details + "\n"
 ```
 
 If a variable might be a dict (legacy or fallback), convert it safely:
@@ -150,7 +152,7 @@ def ensure_string(data):
     if isinstance(data, str):
         return data
     if isinstance(data, dict):
-        return "\n".join("{}: {}".format(k, v) for k, v in data.items())
+        return "\n".join(str(k) + ": " + str(v) for k, v in data.items())
     return str(data)
 ```
 
@@ -577,11 +579,12 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     print("CELL_OUTPUT: Generating summary...")
 
     # Combine available data — both are already strings
+    # Use concatenation (not .format()) because context data may contain { } characters
     data_to_summarize = []
     if analysis_text:
-        data_to_summarize.append("Analysis: {}".format(analysis_text))
+        data_to_summarize.append("Analysis: " + analysis_text)
     if search_answer:
-        data_to_summarize.append("Search findings: {}".format(search_answer))
+        data_to_summarize.append("Search findings: " + search_answer)
 
     if not data_to_summarize:
         return {"final_result": "No data available to summarize"}
@@ -589,9 +592,7 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     # ParadigmClient is pre-injected - just instantiate it
     paradigm_client = ParadigmClient(LIGHTON_API_KEY, LIGHTON_BASE_URL)
     try:
-        prompt = "You are a helpful assistant. Create a well-formatted summary of the following:\n\n{}".format(
-            "\n\n".join(data_to_summarize)
-        )
+        prompt = "You are a helpful assistant. Create a well-formatted summary of the following:\n\n" + "\n\n".join(data_to_summarize)
 
         result = await paradigm_client.agent_query(
             query=prompt
@@ -653,10 +654,10 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
                 words = text.split()
                 first_words = " ".join(words[:10])
 
-                results.append("File {}: {}".format(file_id, first_words))
-                print("CELL_OUTPUT: File {} first words: {}".format(file_id, first_words))
+                results.append("File " + str(file_id) + ": " + first_words)
+                print("CELL_OUTPUT: File {} first words extracted".format(file_id))
             else:
-                results.append("File {}: No text chunks found".format(file_id))
+                results.append("File " + str(file_id) + ": No text chunks found")
 
         final_output = "\n\n".join(results)
 
@@ -698,7 +699,7 @@ def ensure_string(data):
     if isinstance(data, str):
         return data
     if isinstance(data, dict):
-        return "\n".join("{}: {}".format(k, v) for k, v in data.items())
+        return "\n".join(str(k) + ": " + str(v) for k, v in data.items())
     return str(data)
 
 
@@ -720,18 +721,19 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
     step_c_status = ensure_string(context.get("zone_c_status", "Non exécuté"))
     step_c_details = ensure_string(context.get("zone_c_details", "Aucun détail disponible"))
 
-    # Build summary section
+    # Build summary section — .format() is safe here because status values are short controlled strings
     summary = "# Rapport de Vérification\n\n"
     summary += "## Résumé\n"
-    summary += "- Zone A: {}\n".format(step_a_status)
-    summary += "- Zone B: {}\n".format(step_b_status)
-    summary += "- Zone C: {}\n".format(step_c_status)
+    summary += "- Zone A: " + step_a_status + "\n"
+    summary += "- Zone B: " + step_b_status + "\n"
+    summary += "- Zone C: " + step_c_status + "\n"
     summary += "\n"
 
-    # Build detailed sections — just paste the details strings
-    summary += "## Zone A — Détails\n{}\n\n".format(step_a_details)
-    summary += "## Zone B — Détails\n{}\n\n".format(step_b_details)
-    summary += "## Zone C — Détails\n{}\n\n".format(step_c_details)
+    # Build detailed sections — use concatenation (NOT .format()) because
+    # details strings come from previous cells and may contain { } characters
+    summary += "## Zone A — Détails\n" + step_a_details + "\n\n"
+    summary += "## Zone B — Détails\n" + step_b_details + "\n\n"
+    summary += "## Zone C — Détails\n" + step_c_details + "\n\n"
 
     print("CELL_OUTPUT: Report assembled")
 
@@ -748,7 +750,7 @@ async def execute_cell(context: Dict[str, Any]) -> Dict[str, Any]:
 4. Function must be named `execute_cell`
 5. Function must accept `context: Dict[str, Any]`
 6. Function must return `Dict[str, Any]` with required outputs
-7. Use `.format()` NOT f-strings
+7. NEVER use f-strings. Use `.format()` for print/log messages with simple values. Use concatenation (`+`) when building strings that include context variables from previous cells (they may contain `{` `}` characters that break `.format()`)
 8. Print progress with `print("CELL_OUTPUT: message")`
 9. Always close the ParadigmClient in a finally block
 10. **CRITICAL**: Use `get_file_chunks()` for raw text extraction (v2 file API)

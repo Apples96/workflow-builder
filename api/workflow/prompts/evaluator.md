@@ -157,6 +157,15 @@ When an output example is provided for the final cell, use it as a FORMAT REFERE
 **FAIL:** Output is "The documents match on the name field." (prose instead of table)
 **FAIL:** Output is a bullet list of differences (wrong format type)
 
+## Handling Truncated Outputs
+
+Cell outputs may be truncated for display in this evaluation prompt. When you see a `[TRUNCATED: showing X of Y total characters...]` notice:
+
+- **Evaluate based on the visible portion only.** The full output exists but is too long to include here.
+- **Do NOT fail** because sections or content appear to be "missing" beyond the truncation point. If the visible portion is well-structured and correct, the output is likely valid.
+- **Do NOT list "missing sections"** as issues when those sections may exist beyond the truncation boundary.
+- **DO fail** if the visible portion itself contains errors, malformed data, or contradicts the cell's purpose — truncation does not excuse problems in the content that IS visible.
+
 ## Important Notes
 
 - Your evaluation should be deterministic and based on objective criteria

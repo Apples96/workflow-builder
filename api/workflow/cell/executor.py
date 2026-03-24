@@ -328,9 +328,12 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
         if not all_example_results:
             return "(no example results)"
 
+        from ...config import settings as app_settings
         examples_text = ""
-        max_output_length = 1000  # Per-example output limit
-        max_total_length = 6000  # Total examples section limit
+        # Use configurable limit (same as evaluator) for consistency
+        max_output_length = app_settings.eval_output_max_chars
+        max_var_length = max(300, max_output_length // 4)  # Scale variable limit proportionally
+        max_total_length = max_output_length * 3  # Room for multiple examples
 
         for idx, result in enumerate(all_example_results, 1):
             user_input = result.get("user_input", "(unknown)")
@@ -340,20 +343,32 @@ Your fix MUST be syntactically correct and follow all the coding guidelines exac
             success = result.get("success", False)
 
             if len(output_text) > max_output_length:
-                output_text = output_text[:max_output_length] + "... (truncated)"
+                full_len = len(output_text)
+                output_text = (
+                    output_text[:max_output_length]
+                    + "\n[TRUNCATED: showing {} of {} total characters]".format(max_output_length, full_len)
+                )
 
             vars_display = ""
             if formatted_vars:
                 for var_name, var_value in formatted_vars.items():
                     var_str = str(var_value)
-                    if len(var_str) > 300:
-                        var_str = var_str[:300] + "... (truncated)"
+                    if len(var_str) > max_var_length:
+                        full_len = len(var_str)
+                        var_str = (
+                            var_str[:max_var_length]
+                            + " [TRUNCATED: {} of {} chars]".format(max_var_length, full_len)
+                        )
                     vars_display += "    {}: {}\n".format(var_name, var_str)
             elif variables:
                 for var_name, var_value in variables.items():
                     var_str = str(var_value)
-                    if len(var_str) > 300:
-                        var_str = var_str[:300] + "... (truncated)"
+                    if len(var_str) > max_var_length:
+                        full_len = len(var_str)
+                        var_str = (
+                            var_str[:max_var_length]
+                            + " [TRUNCATED: {} of {} chars]".format(max_var_length, full_len)
+                        )
                     vars_display += "    {}: {}\n".format(var_name, var_str)
             else:
                 vars_display = "    (no variables returned)\n"

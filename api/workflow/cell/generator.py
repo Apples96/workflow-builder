@@ -168,7 +168,7 @@ Generate complete, self-contained Python code that:
 2. Does NOT define ParadigmClient (it is pre-injected, just instantiate it)
 3. Accesses inputs via context["variable_name"]
 4. Returns a dict with all required outputs
-5. Uses .format() for string interpolation (NOT f-strings)
+5. NEVER uses f-strings. Uses .format() for print/log messages. Uses concatenation (+) when building strings that include context variables from previous cells (they may contain { } that break .format())
 6. Prints progress with print("CELL_OUTPUT: message")
 """.format(
             workflow_description=workflow_description,

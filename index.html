@@ -69,6 +69,90 @@ Architecture:
             --lo-success: #10b981;
         }
 
+        /* Phase containers - progressive disclosure */
+        .phase {
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .phase.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Onboarding hint for first-time users */
+        .onboarding-hint {
+            background: var(--lo-primary-light);
+            border-left: 3px solid var(--lo-primary);
+            padding: 12px 14px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 12px;
+            font-size: 0.8125rem;
+            color: var(--lo-text);
+            line-height: 1.5;
+        }
+
+        .onboarding-hint.hidden {
+            display: none;
+        }
+
+        /* Results summary card */
+        .results-summary {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+        }
+
+        .results-summary-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .results-summary-badge.success {
+            background: #ecfdf5;
+            color: var(--lo-success);
+            border: 1px solid #a7f3d0;
+        }
+
+        .results-summary-badge.failed {
+            background: #fef2f2;
+            color: var(--lo-error);
+            border: 1px solid #fecaca;
+        }
+
+        .results-summary-stats {
+            display: flex;
+            gap: 16px;
+            font-size: 0.8125rem;
+            color: var(--lo-text-light);
+        }
+
+        .results-summary-stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Responsive styles for mobile */
+        @media (max-width: 640px) {
+            body { padding: 12px; }
+            .api-key-bar { flex-wrap: wrap; }
+            .settings-bar-compact { flex-wrap: wrap; }
+            .auto-progress-container { flex-wrap: wrap; gap: 8px; }
+            .auto-progress-connector { display: none; }
+            .cell-criteria-row { flex-direction: column; }
+            .results-summary { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .results-summary-stats { flex-wrap: wrap; }
+        }
+
         /* Base layout and typography */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -94,6 +178,7 @@ Architecture:
             font-size: 1.5rem;
             font-weight: 600;
             margin-bottom: 8px;
+            letter-spacing: -0.01em;
         }
 
         h2 {
@@ -101,12 +186,14 @@ Architecture:
             font-size: 1.1rem;
             font-weight: 600;
             margin-bottom: 12px;
+            letter-spacing: -0.01em;
         }
 
         h3 {
             font-size: 0.95rem;
             font-weight: 600;
             color: var(--lo-text);
+            letter-spacing: -0.01em;
         }
 
         p {
@@ -651,6 +738,31 @@ Architecture:
             margin-bottom: 4px;
         }
 
+        /* Compact cell cards - click to expand */
+        .cell-details {
+            display: none;
+            margin-top: 6px;
+        }
+
+        .cell-item[data-expanded="true"] .cell-details {
+            display: block;
+        }
+
+        .cell-item {
+            cursor: pointer;
+        }
+
+        .cell-item .cell-expand-indicator {
+            font-size: 10px;
+            color: var(--lo-text-light);
+            margin-left: 8px;
+            transition: transform 0.2s ease;
+        }
+
+        .cell-item[data-expanded="true"] .cell-expand-indicator {
+            transform: rotate(90deg);
+        }
+
         .cell-description {
             font-size: 12px;
             color: #666;
@@ -700,14 +812,24 @@ Architecture:
             margin-bottom: 2px;
         }
 
-        /* Shared context schema block above execution plan cells */
+        /* Shared context schema block above execution plan cells - collapsed by default */
         .shared-context-schema {
             margin-bottom: 16px;
-            padding: 10px 12px;
+            padding: 0;
             background: #f8f9fa;
             border: 1px solid #e0e0e0;
             border-radius: 6px;
             font-size: 12px;
+            overflow: hidden;
+        }
+
+        .shared-context-schema .schema-vars {
+            display: none;
+            padding: 8px 12px;
+        }
+
+        .shared-context-schema.expanded .schema-vars {
+            display: block;
         }
 
         .shared-context-schema-title {
@@ -1075,6 +1197,7 @@ Architecture:
             font-size: 11px;
             color: #888;
             margin-left: 8px;
+            font-variant-numeric: tabular-nums;
         }
 
         /* Layer grouping styles for parallel execution */
@@ -1589,35 +1712,38 @@ Architecture:
             background: #545b62;
         }
 
-        /* Compact logs toggle */
+        /* Compact logs toggle - subtle, non-distracting */
         .logs-toggle-btn {
             display: flex;
             align-items: center;
             justify-content: space-between;
             width: 100%;
-            padding: 12px 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
+            padding: 10px 14px;
+            background: var(--lo-bg);
+            border: 1px solid var(--lo-border);
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            color: white;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: var(--lo-text-light);
             margin-bottom: 0;
             transition: all 0.2s ease;
         }
 
         .logs-toggle-btn:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
+            background: #eef0f2;
+            border-color: #ced4da;
+            color: var(--lo-text);
         }
 
         .logs-toggle-btn.expanded {
             border-radius: 6px 6px 0 0;
+            border-bottom: none;
         }
 
         .logs-toggle-btn .log-count {
-            background: rgba(255,255,255,0.2);
+            background: var(--lo-border);
+            color: var(--lo-text-light);
             padding: 2px 8px;
             border-radius: 10px;
             font-size: 11px;
@@ -2029,6 +2155,49 @@ Architecture:
         }
 
         /* API Key configuration bar */
+        /* Settings bar - wraps API key, agent, and tools */
+        .settings-bar {
+            margin-bottom: 16px;
+        }
+
+        .settings-bar-compact {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--lo-white);
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--lo-border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .settings-bar-compact:hover {
+            background: var(--lo-bg);
+        }
+
+        .settings-connected-label {
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: var(--lo-success);
+        }
+
+        .settings-agent-label {
+            font-size: 0.8125rem;
+            color: var(--lo-text-light);
+            margin-left: auto;
+        }
+
+        .settings-expand-btn {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--lo-primary);
+            padding: 3px 10px;
+            border: 1px solid var(--lo-primary);
+            border-radius: 4px;
+        }
+
         .api-key-bar {
             display: flex;
             align-items: center;
@@ -2107,12 +2276,11 @@ Architecture:
             align-items: center;
             flex-wrap: wrap;
             gap: 6px;
-            background: var(--lo-white);
+            background: var(--lo-bg);
             padding: 10px 16px;
-            border-radius: 8px;
+            border-radius: 0 0 8px 8px;
             border: 1px solid var(--lo-border);
-            margin-bottom: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border-top: none;
             font-size: 0.8rem;
         }
         .discovered-tools-bar .tools-label {
@@ -2162,30 +2330,42 @@ Architecture:
         <span>workflow builder</span>
     </h1>
 
-    <!-- Paradigm API Key & Agent Configuration -->
-    <div class="api-key-bar">
-        <label for="paradigmApiKey">API Key:</label>
-        <input type="password" id="paradigmApiKey" placeholder="Enter your Paradigm API key..." />
-        <button onclick="saveApiKey()">Save</button>
-        <button onclick="toggleApiKeyVisibility()" style="background: var(--lo-text-light);" title="Show/hide key">👁</button>
-        <div id="apiKeyStatus" class="api-key-status disconnected" title="No API key set"></div>
-        <label for="paradigmAgent" style="margin-left: 12px;">Agent:</label>
-        <select id="paradigmAgent" onchange="onAgentSelected()" disabled>
-            <option value="">-- save API key to load --</option>
-        </select>
+    <!-- Settings Bar: API Key, Agent, Tools -->
+    <div class="settings-bar" id="settingsBar">
+        <!-- Compact connected state -->
+        <div class="settings-bar-compact" id="settingsCompact" style="display: none;" onclick="toggleSettingsExpand()">
+            <div id="apiKeyStatus" class="api-key-status connected" title="Connected"></div>
+            <span class="settings-connected-label">Connected to Paradigm</span>
+            <span class="settings-agent-label" id="settingsAgentLabel"></span>
+            <span class="settings-expand-btn">Edit</span>
+        </div>
+        <!-- Full expanded state -->
+        <div class="settings-bar-expanded" id="settingsExpanded">
+            <div class="api-key-bar">
+                <label for="paradigmApiKey">API Key:</label>
+                <input type="password" id="paradigmApiKey" placeholder="Enter your Paradigm API key..." />
+                <button onclick="saveApiKey()">Save</button>
+                <button onclick="toggleApiKeyVisibility()" style="background: var(--lo-text-light);" title="Show/hide key">👁</button>
+                <div id="apiKeyStatusInner" class="api-key-status disconnected" title="No API key set"></div>
+                <label for="paradigmAgent" style="margin-left: 12px;">Agent:</label>
+                <select id="paradigmAgent" onchange="onAgentSelected()" disabled>
+                    <option value="">-- save API key to load --</option>
+                </select>
+            </div>
+            <!-- Discovered Tools Display -->
+            <div class="discovered-tools-bar" id="discoveredToolsBar">
+                <span class="tools-label">Available tools:</span>
+                <span class="tools-placeholder" id="toolsPlaceholder">Save your API key to discover available tools</span>
+                <span id="toolBadges"></span>
+            </div>
+        </div>
     </div>
 
-    <!-- Discovered Tools Display -->
-    <div class="discovered-tools-bar" id="discoveredToolsBar">
-        <span class="tools-label">Available tools:</span>
-        <span class="tools-placeholder" id="toolsPlaceholder">Save your API key to discover available tools</span>
-        <span id="toolBadges"></span>
-    </div>
-
-    <!-- Step 1: Workflow Description & Examples -->
+    <!-- Phase 1: Build - Workflow Description, Enhancement & Examples -->
+    <div class="phase visible" id="phaseBuild">
     <div class="container">
-        <h2>1. Workflow Description & Examples</h2>
-        <p>Describe your desired workflow in natural language and add test examples. Click to expand.</p>
+        <h2>Workflow Description</h2>
+        <p>Describe what you want your workflow to do, then click <strong>Run All</strong>.</p>
 
         <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
             <div class="deploy-option-header">
@@ -2194,6 +2374,10 @@ Architecture:
                 <span class="deploy-option-chevron">▼</span>
             </div>
             <div class="deploy-option-content" onclick="event.stopPropagation()">
+                <!-- Onboarding hint for first-time users -->
+                <div class="onboarding-hint" id="onboardingHint">
+                    Describe what you want your workflow to do in plain language, then click <strong>Run All</strong>. The system will enhance your description, plan the execution steps, and run them automatically.
+                </div>
                 <p>Describe your desired workflow in natural language:</p>
                 <textarea id="rawWorkflowDescription" placeholder="Example: I want to search for documents about my question and then analyze them to provide a summary..." style="color: #999;"></textarea>
 
@@ -2295,8 +2479,8 @@ Architecture:
 
     <!-- Step 2: Enhanced Workflow -->
     <div class="container">
-        <h2>2. Enhanced Workflow</h2>
-        <p>Review the enhanced workflow description and generate the execution plan. Click to expand.</p>
+        <h2>Enhanced Workflow</h2>
+        <p>Review and optionally edit the enhanced workflow description.</p>
 
         <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
             <div class="deploy-option-header">
@@ -2309,7 +2493,7 @@ Architecture:
                 <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 13px; color: #666;">
                     <strong>Available tools:</strong> <span id="stepToolsSummary">Save your API key above to discover tools</span><br>
                     <strong>📚 API Reference:</strong> <a href="https://paradigm.lighton.ai/api/schema/swagger-ui/#/" target="_blank" style="color: #00d4aa;">Paradigm API Swagger documentation</a><br>
-                    <strong>💡 Tip:</strong> Use Step 1 above to get an enhanced workflow description, or manually enter your workflow here.
+                    <strong>💡 Tip:</strong> Use the description field above to get an enhanced workflow description, or manually enter your workflow here.
                 </div>
                 <textarea id="workflowDescription" placeholder="Example: Search for documents about LightOn, then analyze those documents to summarize key information..." style="color: #999;"></textarea>
 
@@ -2328,10 +2512,17 @@ Architecture:
         </div>
     </div>
 
-    <!-- Step 3: Run & Test Workflow -->
+    </div><!-- /phaseBuild -->
+
+    <!-- Phase 2: Results - Execution & Output -->
+    <div class="phase" id="phaseResults" style="display: none;">
+
+    <!-- Results Summary Card (populated by JS after execution) -->
+    <div id="resultsSummary" class="container" style="display: none;"></div>
+
     <div class="container">
-        <h2>3. Run & Test Workflow</h2>
-        <p>Execute your workflow and test it with the examples defined in Step 1.</p>
+        <h2>Execution & Results</h2>
+        <p>Workflow execution progress and outputs.</p>
 
         <!-- Cell-based execution progress section -->
         <div id="cellProgressSection" style="margin-top: 15px; display: none;">
@@ -2374,10 +2565,14 @@ Architecture:
         <div id="testResult" style="margin-top: 15px;"></div>
     </div>
 
-    <!-- Step 4: Deploy Workflow -->
+    </div><!-- /phaseResults -->
+
+    <!-- Phase 3: Next Steps - Deploy, Integrate, Share -->
+    <div class="phase" id="phaseNextSteps" style="display: none;">
+
     <div class="container">
-        <h2>4. Deploy your workflow</h2>
-        <p>Choose your deployment method based on your infrastructure and requirements. Click an option to expand.</p>
+        <h2>Deploy Your Workflow</h2>
+        <p>Choose your deployment method. Click an option to expand.</p>
 
         <!-- Option A: Docker -->
         <div class="deploy-option expanded" onclick="toggleDeployOption(this)">
@@ -2391,7 +2586,7 @@ Architecture:
                 <p>Deploy your generated workflow with Docker for a complete, production-ready solution.</p>
                 <ol style="margin-left: 20px;">
                     <li><strong>Prerequisites:</strong> Install <a href="https://www.docker.com/get-started" target="_blank">Docker Desktop</a></li>
-                    <li><strong>Download Workflow Package:</strong> After generating your workflow in Step 3, click the <strong>"Download Workflow Package"</strong> button to get a ZIP file</li>
+                    <li><strong>Download Workflow Package:</strong> After running your workflow, click the <strong>"Download Workflow Package"</strong> button to get a ZIP file</li>
                     <li><strong>Extract the Package:</strong> Unzip the downloaded file to your desired location (e.g., <code>C:\workflows\my-workflow\</code>)</li>
                     <li><strong>Configure Environment:</strong> In the extracted folder, you'll find a <code>.env.example</code> file. Either:
                         <ul style="margin-left: 20px; margin-top: 5px;">
@@ -2556,8 +2751,8 @@ if __name__ == "__main__":
 
     <!-- Step 5: Integrate with Paradigm using MCP -->
     <div class="container">
-        <h2>5. Integrate your workflow with Paradigm using MCP</h2>
-        <p>Connect your generated workflow to Paradigm as an MCP server. Click to expand.</p>
+        <h2>Integrate with Paradigm (MCP)</h2>
+        <p>Connect your generated workflow to Paradigm as an MCP server.</p>
 
         <div class="deploy-option" onclick="toggleDeployOption(this)">
             <div class="deploy-option-header">
@@ -2640,11 +2835,13 @@ if __name__ == "__main__":
         </div>
     </div>
 
-    <!-- Step 6: Test and Share -->
+    <!-- Share -->
     <div class="container">
-        <h2>6. 🚀 Test and share</h2>
+        <h2>Share</h2>
         <p>You are now set up to use your workflow as a third party tool within Paradigm. The other users in your company can also access this tool, so spread the news and show them how it works!</p>
     </div>
+
+    </div><!-- /phaseNextSteps -->
 
     <script>
         /*
@@ -2720,6 +2917,65 @@ if __name__ == "__main__":
         let outputExamples = [];                 // Array of output examples {id, text, files: [{id, filename, extractedText, status}]}
         let outputExampleCounter = 0;            // Counter for generating output example IDs
         let pendingEnhancedData = null;          // Stored enhanced data during pause
+
+        // =============================================================
+        // PHASE VISIBILITY MANAGEMENT
+        // =============================================================
+
+        /**
+         * Show a phase with a smooth transition.
+         * @param {string} phaseId - The ID of the phase element
+         */
+        function showPhase(phaseId) {
+            const phase = document.getElementById(phaseId);
+            if (!phase) return;
+            phase.style.display = '';
+            // Trigger reflow to enable CSS transition
+            phase.offsetHeight;
+            phase.classList.add('visible');
+            // Scroll into view smoothly
+            phase.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        /**
+         * Hide a phase.
+         * @param {string} phaseId - The ID of the phase element
+         */
+        function hidePhase(phaseId) {
+            const phase = document.getElementById(phaseId);
+            if (!phase) return;
+            phase.classList.remove('visible');
+            phase.style.display = 'none';
+        }
+
+        /**
+         * Show a results summary card at the top of the Results phase.
+         * @param {string} outcome - 'completed' or 'failed'
+         * @param {object} details - {completedCells, totalCells, totalTime, finalResult}
+         */
+        function showResultsSummary(outcome, details = {}) {
+            const summaryDiv = document.getElementById('resultsSummary');
+            if (!summaryDiv) return;
+
+            const isSuccess = outcome === 'completed';
+            const badgeClass = isSuccess ? 'success' : 'failed';
+            const badgeText = isSuccess ? 'Completed' : 'Failed';
+            const badgeIcon = isSuccess ? '&#10003;' : '&#10007;';
+
+            const completedCells = details.completedCells || document.querySelectorAll('.cell-item.completed').length;
+            const totalCells = details.totalCells || currentCells.length;
+
+            summaryDiv.innerHTML = `
+                <div class="results-summary">
+                    <span class="results-summary-badge ${badgeClass}">${badgeIcon} ${badgeText}</span>
+                    <div class="results-summary-stats">
+                        <span class="results-summary-stat">${completedCells}/${totalCells} cells completed</span>
+                        ${details.totalTime ? `<span class="results-summary-stat">${details.totalTime}</span>` : ''}
+                    </div>
+                </div>
+            `;
+            summaryDiv.style.display = 'block';
+        }
 
         // =============================================================
         // PARADIGM API KEY MANAGEMENT
@@ -2976,13 +3232,59 @@ if __name__ == "__main__":
          * @param {boolean} hasKey - Whether a key is currently stored
          */
         function updateApiKeyStatus(hasKey) {
-            const status = document.getElementById('apiKeyStatus');
+            const statusInner = document.getElementById('apiKeyStatusInner');
+            const statusCompact = document.getElementById('apiKeyStatus');
             if (hasKey) {
-                status.className = 'api-key-status connected';
-                status.title = 'API key configured';
+                if (statusInner) { statusInner.className = 'api-key-status connected'; statusInner.title = 'API key configured'; }
+                if (statusCompact) { statusCompact.className = 'api-key-status connected'; statusCompact.title = 'Connected'; }
+                // Collapse to compact view after a short delay
+                setTimeout(() => collapseSettings(), 500);
             } else {
-                status.className = 'api-key-status disconnected';
-                status.title = 'No API key set';
+                if (statusInner) { statusInner.className = 'api-key-status disconnected'; statusInner.title = 'No API key set'; }
+                if (statusCompact) { statusCompact.className = 'api-key-status disconnected'; }
+                expandSettings();
+            }
+        }
+
+        /**
+         * Collapse settings to compact connected view.
+         */
+        function collapseSettings() {
+            const compact = document.getElementById('settingsCompact');
+            const expanded = document.getElementById('settingsExpanded');
+            if (compact && expanded) {
+                compact.style.display = 'flex';
+                expanded.style.display = 'none';
+                // Update agent label in compact view
+                const agentSelect = document.getElementById('paradigmAgent');
+                const agentLabel = document.getElementById('settingsAgentLabel');
+                if (agentSelect && agentLabel && agentSelect.selectedOptions[0]) {
+                    agentLabel.textContent = agentSelect.selectedOptions[0].textContent;
+                }
+            }
+        }
+
+        /**
+         * Expand settings to full edit view.
+         */
+        function expandSettings() {
+            const compact = document.getElementById('settingsCompact');
+            const expanded = document.getElementById('settingsExpanded');
+            if (compact && expanded) {
+                compact.style.display = 'none';
+                expanded.style.display = 'block';
+            }
+        }
+
+        /**
+         * Toggle between compact and expanded settings.
+         */
+        function toggleSettingsExpand() {
+            const expanded = document.getElementById('settingsExpanded');
+            if (expanded && expanded.style.display === 'none') {
+                expandSettings();
+            } else {
+                collapseSettings();
             }
         }
 
@@ -4415,8 +4717,8 @@ if __name__ == "__main__":
                     return;
                 }
                 // If manual execution, show clear error message
-                alert('No test examples found. Please add test examples in Step 1 before running tests.\n\nYour workflow processes documents, so you need to upload documents as test inputs.');
-                addLog('❌ Cannot run tests - no test examples. Add examples in Step 1.', 'error');
+                alert('No test examples found. Please add test examples in the Workflow Description section before running tests.\n\nYour workflow processes documents, so you need to upload documents as test inputs.');
+                addLog('❌ Cannot run tests - no test examples. Add examples in the Workflow Description section.', 'error');
                 return;
             }
 
@@ -4617,9 +4919,12 @@ if __name__ == "__main__":
                 if (workflowOutcome === 'completed') {
                     addLog(`\n🎉 Workflow execution with evaluation completed!`, 'workflow-start');
                     showResult(document.getElementById('testResult'), '✅ Multi-example test with evaluation completed!', 'success');
+                    showResultsSummary('completed');
+                    showPhase('phaseNextSteps');
                 } else if (workflowOutcome === 'failed') {
                     addLog(`\n❌ Workflow execution failed: ${outcomeMessage}`, 'error');
                     showResult(document.getElementById('testResult'), `❌ Workflow failed: ${outcomeMessage}`, 'error');
+                    showResultsSummary('failed');
                 } else if (workflowOutcome === 'stopped') {
                     // Already handled in handleEvaluationEvent
                 } else if (workflowOutcome === 'error') {
@@ -4814,6 +5119,8 @@ if __name__ == "__main__":
                     document.getElementById('reportButton').disabled = false;
                     document.getElementById('packageButton').disabled = false;
                     document.getElementById('mcpPackageButton').disabled = false;
+                    showResultsSummary('completed', {completedCells: event.completed_cells, totalCells: event.total_cells});
+                    showPhase('phaseNextSteps');
                     break;
 
                 case 'workflow_failed':
@@ -5001,6 +5308,11 @@ if __name__ == "__main__":
 
                 // Update status
                 cellDiv.className = `cell-item ${status}`;
+
+                // Auto-expand on executing, failed, or completed status
+                if (status === 'executing' || status === 'failed' || status === 'completed') {
+                    cellDiv.setAttribute('data-expanded', 'true');
+                }
 
                 // Get outputs for this cell
                 const exampleOutputsForCell = currentExampleOutputs[cellId] || {};
@@ -5225,7 +5537,8 @@ if __name__ == "__main__":
             const progressList = document.getElementById('cellProgressList');
             const badge = document.getElementById('cellProgressBadge');
 
-            // Show the section
+            // Show the Results phase and the progress section
+            showPhase('phaseResults');
             progressSection.style.display = 'block';
 
             // Update badge
@@ -5253,13 +5566,18 @@ if __name__ == "__main__":
                 const schemaDiv = document.createElement('div');
                 schemaDiv.className = 'shared-context-schema';
                 schemaDiv.innerHTML = `
-                    <div class="shared-context-schema-title">SHARED CONTEXT SCHEMA</div>
+                    <div class="shared-context-schema-title" onclick="this.parentElement.classList.toggle('expanded')" style="cursor: pointer; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Shared Context Schema (${Object.keys(schema).length} variables)</span>
+                        <span style="font-size: 10px; color: #999;">&#9660;</span>
+                    </div>
+                    <div class="schema-vars">
                     ${Object.entries(schema).map(([varName, typeDesc]) =>
                         `<div class="schema-var-row">
                             <span class="schema-var-name">${varName}</span>
                             <span class="schema-var-type">${typeDesc}</span>
                         </div>`
                     ).join('')}
+                    </div>
                 `;
                 progressList.appendChild(schemaDiv);
             }
@@ -5291,6 +5609,8 @@ if __name__ == "__main__":
                     const cellDiv = document.createElement('div');
                     cellDiv.className = 'cell-item pending';
                     cellDiv.id = `cell-item-${cell.id}`;
+                    cellDiv.setAttribute('data-expanded', 'false');
+                    cellDiv.onclick = function(e) { toggleCellExpand(this, e); };
 
                     // Use display_step if available, otherwise construct from layer.sublayer_index
                     const displayStep = cell.display_step || `${cell.layer || 1}.${cell.sublayer_index || 1}`;
@@ -5303,18 +5623,20 @@ if __name__ == "__main__":
                     cellDiv.innerHTML = `
                         <div class="cell-number">${displayStep}</div>
                         <div class="cell-content">
-                            <div class="cell-name">${cell.name}</div>
-                            <div class="cell-description">${cell.description}</div>
-                            <div class="cell-meta">
-                                <span class="cell-meta-item">📥 ${cell.inputs_required.join(', ') || 'none'}</span>
-                                <span class="cell-meta-item">📤 ${cell.outputs_produced.join(', ') || 'none'}</span>
+                            <div class="cell-name">${cell.name} <span class="cell-expand-indicator">&#9654;</span></div>
+                            <div class="cell-details">
+                                <div class="cell-description">${cell.description}</div>
+                                <div class="cell-meta">
+                                    <span class="cell-meta-item">📥 ${cell.inputs_required.join(', ') || 'none'}</span>
+                                    <span class="cell-meta-item">📤 ${cell.outputs_produced.join(', ') || 'none'}</span>
+                                </div>
+                                <div class="cell-detail-row"><span class="detail-label">Tools: </span>${cell.paradigm_tools_used.join(', ') || 'none'}</div>
+                                <div class="cell-detail-row"><span class="detail-label">Depends on: </span>${cell.depends_on && cell.depends_on.length ? cell.depends_on.join(', ') : 'none'}</div>
+                                <div class="cell-detail-row"><span class="detail-label">Layer: </span>${cell.layer || 1}, <span class="detail-label">Position: </span>${cell.sublayer_index || 1}</div>
+                                ${successCriteriaHtml}
                             </div>
-                            <div class="cell-detail-row"><span class="detail-label">Tools: </span>${cell.paradigm_tools_used.join(', ') || 'none'}</div>
-                            <div class="cell-detail-row"><span class="detail-label">Depends on: </span>${cell.depends_on && cell.depends_on.length ? cell.depends_on.join(', ') : 'none'}</div>
-                            <div class="cell-detail-row"><span class="detail-label">Layer: </span>${cell.layer || 1}, <span class="detail-label">Position: </span>${cell.sublayer_index || 1}</div>
-                            ${successCriteriaHtml}
                         </div>
-                        <span class="cell-code-toggle" onclick="toggleCellCode('${cell.id}')" title="View code">👁️</span>
+                        <span class="cell-code-toggle" onclick="event.stopPropagation(); toggleCellCode('${cell.id}')" title="View code">👁️</span>
                         <div class="cell-status-icon">⏳</div>
                     `;
 
@@ -5424,11 +5746,20 @@ if __name__ == "__main__":
                 case 'workflow_completed':
                     addLog(`🎉 Workflow completed successfully!`, 'workflow-step');
                     showResult(resultDiv, `✅ Workflow Completed!\n\n${event.final_result || 'No result'}`, 'success');
+                    // Show download buttons and Next Steps phase
+                    const stepwiseDownloadBtns = document.getElementById('workflowDownloadButtons');
+                    if (stepwiseDownloadBtns) stepwiseDownloadBtns.style.display = 'block';
+                    document.getElementById('reportButton').disabled = false;
+                    document.getElementById('packageButton').disabled = false;
+                    document.getElementById('mcpPackageButton').disabled = false;
+                    showResultsSummary('completed', {completedCells: event.completed_cells, totalCells: event.total_cells});
+                    showPhase('phaseNextSteps');
                     break;
 
                 case 'workflow_failed':
                     addLog(`❌ Workflow failed: ${event.error}`, 'error');
                     showResult(resultDiv, `❌ Workflow Failed\n\nCompleted cells: ${event.completed_cells || 0}\n\nError: ${event.error}`, 'error');
+                    showResultsSummary('failed', {completedCells: event.completed_cells, totalCells: event.total_cells});
                     break;
 
                 case 'error':
@@ -5477,6 +5808,11 @@ if __name__ == "__main__":
             // Update class
             cellDiv.className = `cell-item ${status}`;
 
+            // Auto-expand on executing, failed, or completed status
+            if (status === 'executing' || status === 'failed' || status === 'completed') {
+                cellDiv.setAttribute('data-expanded', 'true');
+            }
+
             // Update status icon
             const statusIcon = cellDiv.querySelector('.cell-status-icon');
             if (statusIcon) {
@@ -5502,7 +5838,7 @@ if __name__ == "__main__":
                         <div class="cell-code-header">Generated Code</div>
                         <div class="cell-code-content"></div>
                     `;
-                    cellDiv.querySelector('.cell-content').appendChild(codeSection);
+                    (cellDiv.querySelector('.cell-details') || cellDiv.querySelector('.cell-content')).appendChild(codeSection);
                 }
                 const codeContent = codeSection.querySelector('.cell-code-content');
                 if (codeContent) {
@@ -5516,7 +5852,7 @@ if __name__ == "__main__":
                 if (!outputDiv) {
                     outputDiv = document.createElement('div');
                     outputDiv.className = 'cell-output';
-                    cellDiv.querySelector('.cell-content').appendChild(outputDiv);
+                    (cellDiv.querySelector('.cell-details') || cellDiv.querySelector('.cell-content')).appendChild(outputDiv);
                 }
 
                 // Build output HTML
@@ -5583,7 +5919,7 @@ if __name__ == "__main__":
                 if (!errorDiv) {
                     errorDiv = document.createElement('div');
                     errorDiv.className = 'cell-error';
-                    cellDiv.querySelector('.cell-content').appendChild(errorDiv);
+                    (cellDiv.querySelector('.cell-details') || cellDiv.querySelector('.cell-content')).appendChild(errorDiv);
                 }
                 errorDiv.textContent = error;
 
@@ -5592,7 +5928,7 @@ if __name__ == "__main__":
                 if (!actionsDiv) {
                     actionsDiv = document.createElement('div');
                     actionsDiv.className = 'cell-actions';
-                    cellDiv.querySelector('.cell-content').appendChild(actionsDiv);
+                    (cellDiv.querySelector('.cell-details') || cellDiv.querySelector('.cell-content')).appendChild(actionsDiv);
                 }
                 actionsDiv.innerHTML = `
                     <div class="cell-approval-buttons" id="cell-approval-buttons-${cellId}">
@@ -5626,7 +5962,7 @@ if __name__ == "__main__":
                     let criteriaRowDiv = cellDiv.querySelector('.cell-criteria-row');
                     if (!criteriaRowDiv) {
                         criteriaRowDiv = document.createElement('div');
-                        cellDiv.querySelector('.cell-content').appendChild(criteriaRowDiv);
+                        (cellDiv.querySelector('.cell-details') || cellDiv.querySelector('.cell-content')).appendChild(criteriaRowDiv);
                     }
                     criteriaRowDiv.outerHTML = criteriaRowHTML;
                 }
@@ -5647,6 +5983,18 @@ if __name__ == "__main__":
          */
         function hideCellProgressDisplay() {
             document.getElementById('cellProgressSection').style.display = 'none';
+        }
+
+        /**
+         * Toggle a cell card's expanded/collapsed state.
+         * @param {HTMLElement} cellDiv - The cell-item element
+         * @param {Event} e - Click event
+         */
+        function toggleCellExpand(cellDiv, e) {
+            // Don't toggle if clicking on buttons, textareas, or interactive elements inside cell-details
+            if (e && e.target.closest('button, textarea, a, .cell-approval-buttons, .cell-feedback-input-container')) return;
+            const isExpanded = cellDiv.getAttribute('data-expanded') === 'true';
+            cellDiv.setAttribute('data-expanded', isExpanded ? 'false' : 'true');
         }
 
         /**
@@ -6493,6 +6841,10 @@ if __name__ == "__main__":
                 }
             }
 
+            // Hide onboarding hint
+            const hint = document.getElementById('onboardingHint');
+            if (hint) hint.classList.add('hidden');
+
             // Initialize auto-execution state
             autoExecutionMode = true;
             autoExecutionStage = 'enhance';
@@ -6786,7 +7138,7 @@ if __name__ == "__main__":
 
                     const description = document.getElementById('workflowDescription').value.trim();
                     if (!description) {
-                        alert('Please ensure there is a workflow description in Step 2');
+                        alert('Please ensure there is a workflow description in the Enhanced Workflow section');
                         resetAutoExecution();
                         return;
                     }
@@ -7285,10 +7637,12 @@ if __name__ == "__main__":
                 }
             });
             
-            // Handle input - change color when user types
+            // Handle input - change color when user types, hide onboarding hint
             rawWorkflowTextarea.addEventListener('input', function() {
                 if (this.value !== rawExampleText) {
                     this.style.color = '#333';
+                    const hint = document.getElementById('onboardingHint');
+                    if (hint) hint.classList.add('hidden');
                 }
             });
             

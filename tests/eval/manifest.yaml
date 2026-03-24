@@ -108,3 +108,33 @@ tests:
       - type: total_time_under
         max_seconds: 600
     tags: [report, output-example, multi-doc, en]
+
+  - name: email-attachment-extraction
+    workflow_file: tests/ugap-test/test-email-attachment-extraction.md
+    assertions:
+      - type: all_cells_completed
+      - type: cell_count_gte
+        min_cells: 3
+      - type: cell_has_output
+        cell_name_contains: "email"
+        output_variable: "email_subject"
+        check: not_empty
+      - type: cell_has_output
+        cell_name_contains: "investment"
+        output_variable: "company_name"
+        check: not_empty
+      - type: cell_has_output
+        cell_name_contains: "report"
+        output_variable: "final_report"
+        check: not_empty
+      - type: output_matches_pattern
+        cell_name_contains: "report"
+        output_variable: "final_report"
+        pattern: "(?i)emad bakeries"
+      - type: llm_judge
+        cell_name_contains: "report"
+        prompt: "Does the report contain both email metadata (sender, date, subject) AND investment details (company name, sector, financial metrics) combined into a structured format? The report should NOT contain error messages or 'not available' placeholders."
+        pass_threshold: 0.7
+      - type: total_time_under
+        max_seconds: 600
+    tags: [extraction, multi-doc, aggregation, report, en]
