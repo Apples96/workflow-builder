@@ -36,6 +36,11 @@ class Settings:
 
         # Environment detection (Vercel sets VERCEL=1)
         self.is_vercel: bool = os.getenv("VERCEL", "").lower() in ["1", "true"]
+
+        # Public base URL of the running server (e.g. https://workflowbuilder.onrender.com).
+        # Used to build absolute MCP server URLs we hand back to the user when they deploy
+        # a workflow as an MCP server. Falls back to request.base_url when unset.
+        self.public_base_url: str = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
         
         # LightOn Paradigm API settings
         self.lighton_base_url: str = "https://paradigm.lighton.ai"

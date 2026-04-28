@@ -276,7 +276,8 @@ class ParadigmClient:
         company_scope: bool = False,
         model: str = "alfred-ft5",
         chat_setting_id: Optional[int] = None,
-        timeout: int = 300
+        timeout: int = 300,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Unified v3 Agent API - the primary interface for Paradigm queries.
@@ -294,6 +295,9 @@ class ParadigmClient:
             model: The model to use (default: "alfred-ft5")
             chat_setting_id: Agent settings ID (uses instance default if not provided)
             timeout: Request timeout in seconds (default: 300)
+            response_format: Optional JSON schema enforcing a structured output shape.
+                Example: {"type": "object", "properties": {"name": {"type": "string"}},
+                          "required": ["name"]}
 
         Returns:
             dict: Full v3 API response - use extract_answer() to get text
@@ -326,6 +330,8 @@ class ParadigmClient:
             payload["workspace_ids"] = workspace_ids
         if force_tool:
             payload["force_tool"] = force_tool
+        if response_format:
+            payload["response_format"] = response_format
 
         try:
             logger.info(f"🤖 PARADIGM v3 AGENT QUERY")

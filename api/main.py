@@ -40,6 +40,8 @@ from .workflow.core.executor import workflow_executor
 from .workflow.models import Workflow, WorkflowExecution, ExecutionStatus, WorkflowPlan, WorkflowCell, CellStatus
 from .workflow.cell.planner import WorkflowPlanner
 from .workflow.cell.executor import CellExecutor
+from .workflow.mcp_gateway import mcp_gateway
+from .workflow.web_gateway import web_gateway
 from .paradigm_client import ParadigmClient, paradigm_client
 
 logging.basicConfig(level=logging.INFO if settings.debug else logging.WARNING)
@@ -160,7 +162,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "null",  # Allow file:// protocol for local HTML testing
-        "http://localhost:3000",  # Local development
+        # Local dev — backend serves both UI and API on :8000. Both the
+        # localhost and 127.0.0.1 variants must be present, otherwise a
+        # browser opening one and fetching the other gets blocked even
+        # though they resolve to the same machine.
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        # Separate-frontend dev (e.g. Vite/Next on :3000 hitting backend on :8000).
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://scaffold-ai-test2.vercel.app",  # Production frontend
         "https://scaffold-ai-test2-milo-rignells-projects.vercel.app",
@@ -1372,8 +1381,13 @@ async def get_file_chunks(file_id: int, raw_request: Request):
 
 @api_router.post("/workflow/generate-package/{workflow_id}", tags=["Workflow Runner"])
 async def generate_workflow_package(workflow_id: str):
-    """Generate a standalone deployable workflow runner package as a ZIP file."""
-    # Disabled on Vercel to stay within 12 Serverless Functions limit
+    """Download a standalone runner package ZIP for a workflow.
+
+    Snapshots the cached web-app registration, so the live ``/app/{id}/`` and
+    the downloaded ZIP always carry the same workflow code + UI config. If the
+    workflow hasn't been deployed yet, deploys it first (the heavy LLM-driven
+    UI analysis only runs once per deploy).
+    """
     if settings.is_vercel:
         raise HTTPException(
             status_code=503,
@@ -1381,95 +1395,33 @@ async def generate_workflow_package(workflow_id: str):
         )
 
     try:
-        from .workflow.generators.workflow_package import WorkflowPackageGenerator, generate_ui_config_simple
-        from .workflow.core.analyzer import analyze_workflow_for_ui, generate_simple_description
+        reg = web_gateway.get_registration(workflow_id)
+        if not reg:
+            logger.info("No web registration for %s — auto-deploying before download", workflow_id)
+            try:
+                reg = await web_gateway.register(workflow_id)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
-        logger.info(f"Generating package for workflow: {workflow_id}")
-
-        workflow = workflow_executor.get_workflow(workflow_id)
-        if not workflow:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Workflow not found: {workflow_id}"
-            )
-
-        workflow_code = workflow.generated_code
-
-        # For cell-based workflows, combine cell code into a single module
-        if not workflow_code:
-            plan = workflow_executor.get_workflow_plan(workflow_id)
-            if plan and plan.cells:
-                has_code = any(cell.generated_code for cell in plan.cells)
-                if has_code:
-                    from .workflow.cell.combiner import combine_workflow_cells
-                    workflow_code = combine_workflow_cells(
-                        plan=plan,
-                        workflow_description=workflow.description or ""
-                    )
-                    logger.info(f"Combined {len(plan.cells)} cells into clean workflow code")
-
-        if not workflow_code:
-            raise HTTPException(
-                status_code=400,
-                detail="Workflow has no generated code. Please ensure the workflow has been executed at least once."
-            )
-
-        logger.info("Analyzing workflow code with Claude to generate UI configuration...")
-        try:
-            ui_config = await analyze_workflow_for_ui(
-                workflow_code=workflow_code,
-                workflow_name=workflow.name or "Unnamed Workflow",
-                workflow_description=workflow.description or "Generated workflow"
-            )
-            logger.info(f"UI config generated: {ui_config}")
-        except Exception as e:
-            logger.error(f"Failed to analyze workflow with Claude: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to analyze workflow code to generate UI configuration. Error: {str(e)}. Please try again or check the workflow code."
-            )
-
-        logger.info("Generating simple description...")
-        try:
-            simple_description = await generate_simple_description(
-                workflow_description=workflow.description or "",
-                workflow_name=workflow.name or "Unnamed Workflow"
-            )
-            logger.info(f"Simple description generated: {simple_description}")
-        except Exception as e:
-            logger.warning(f"Failed to generate simple description: {e}. Using original.")
-            simple_description = workflow.description or "Generated workflow"
-
-        package_generator = WorkflowPackageGenerator(
-            workflow_name=workflow.name or "Unnamed Workflow",
-            workflow_description=simple_description,
-            workflow_code=workflow_code,
-            ui_config=ui_config
+        zip_buffer = web_gateway.build_download_zip(reg)
+        filename = "workflow-{slug}-{short}.zip".format(
+            slug=reg.workflow_name_slug, short=workflow_id[:8]
         )
-
-        zip_buffer = package_generator.generate_zip()
-
-        raw_name = workflow.name or "workflow"
-        workflow_name_slug = re.sub(r'[^a-z0-9]+', '-', raw_name.lower()).strip('-')[:50]
-        filename = f"workflow-{workflow_name_slug}-{workflow_id[:8]}.zip"
-
-        logger.info(f"Package generated successfully: {filename}")
+        logger.info("Package generated: %s", filename)
 
         return StreamingResponse(
             zip_buffer,
             media_type="application/zip",
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}"
-            }
+            headers={"Content-Disposition": "attachment; filename={}".format(filename)},
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to generate package: {str(e)}")
+        logger.exception("Failed to generate package")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate package: {str(e)}"
+            detail="Failed to generate package: {}".format(e),
         )
 
 
@@ -1565,7 +1517,334 @@ async def generate_mcp_package(workflow_id: str):
         )
 
 
+# ============================================================================
+# MCP Gateway
+# ============================================================================
+#
+# These routes turn the running backend into a multi-tenant MCP-over-HTTP
+# server. Clicking "Deploy as MCP Server" in the UI hits the deploy-mcp
+# endpoint below; that registers the workflow with mcp_gateway and returns a
+# URL + bearer token. Paradigm (or any HTTP MCP client) then talks to the
+# routes mounted under /mcp/{workflow_id}/...
+
+from fastapi import Header
+from pydantic import BaseModel
+
+mcp_router = APIRouter()
+
+
+class MCPToolCallRequest(BaseModel):
+    """Body of POST /mcp/{workflow_id}/tools/call — matches the http_server.py template."""
+    name: str
+    arguments: Dict[str, Any] = {}
+
+
+def _public_base_url(request: Request) -> str:
+    """Return the externally reachable base URL of this server.
+
+    Prefers PUBLIC_BASE_URL env var (recommended for Render / Cloud Run);
+    otherwise reconstructs from the inbound request, which works behind a
+    single trusted proxy.
+    """
+    if settings.public_base_url:
+        return settings.public_base_url
+    return str(request.base_url).rstrip("/")
+
+
+@api_router.post("/workflow/deploy-mcp/{workflow_id}", tags=["MCP"])
+async def deploy_workflow_as_mcp(workflow_id: str, request: Request):
+    """Register a workflow as a hosted MCP server endpoint and return URL + bearer token.
+
+    Calling this again rotates the token and recompiles if the workflow code changed.
+    """
+    try:
+        reg = mcp_gateway.register(workflow_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to deploy workflow %s as MCP", workflow_id)
+        raise HTTPException(status_code=500, detail="Failed to deploy as MCP: {}".format(e))
+
+    base = _public_base_url(request)
+    return {
+        "workflow_id": reg.workflow_id,
+        "url": "{base}/mcp/{wid}".format(base=base, wid=reg.workflow_id),
+        "bearer_token": reg.bearer_token,
+        "tool_name": reg.tool_name,
+        "workflow_name": reg.workflow_name,
+        "created_at": reg.created_at,
+    }
+
+
+@api_router.get("/workflow/mcp-info/{workflow_id}", tags=["MCP"])
+async def get_mcp_info(workflow_id: str, request: Request):
+    """Return existing MCP registration for a workflow (bearer token masked)."""
+    reg = mcp_gateway.get_registration(workflow_id)
+    if not reg:
+        raise HTTPException(status_code=404, detail="Workflow is not deployed as MCP")
+
+    base = _public_base_url(request)
+    masked = (reg.bearer_token[:4] + "…" + reg.bearer_token[-4:]) if reg.bearer_token else ""
+    return {
+        "workflow_id": reg.workflow_id,
+        "url": "{base}/mcp/{wid}".format(base=base, wid=reg.workflow_id),
+        "bearer_token_masked": masked,
+        "tool_name": reg.tool_name,
+        "workflow_name": reg.workflow_name,
+        "created_at": reg.created_at,
+    }
+
+
+@mcp_router.get("/{workflow_id}/health", tags=["MCP"])
+@mcp_router.post("/{workflow_id}/health", tags=["MCP"])
+async def mcp_health(workflow_id: str):
+    """Liveness probe — does not require authentication."""
+    reg = mcp_gateway.get_registration(workflow_id)
+    return {
+        "status": "ok" if reg else "unknown_workflow",
+        "workflow_id": workflow_id,
+        "deployed": reg is not None,
+    }
+
+
+@mcp_router.get("/{workflow_id}/tools", tags=["MCP"])
+async def mcp_list_tools(
+    workflow_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """MCP tool discovery — Paradigm calls this to learn what tool to expose."""
+    if not mcp_gateway.verify_bearer(workflow_id, authorization):
+        raise HTTPException(status_code=401, detail="Invalid or missing bearer token")
+    try:
+        tool = mcp_gateway.tool_definition(workflow_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Workflow not deployed as MCP")
+    return {"tools": [tool]}
+
+
+@mcp_router.post("/{workflow_id}/tools/call", tags=["MCP"])
+async def mcp_call_tool(
+    workflow_id: str,
+    body: MCPToolCallRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """MCP tool invocation — Paradigm POSTs ``{name, arguments}`` here."""
+    if not mcp_gateway.verify_bearer(workflow_id, authorization):
+        raise HTTPException(status_code=401, detail="Invalid or missing bearer token")
+
+    reg = mcp_gateway.get_registration(workflow_id)
+    if not reg:
+        raise HTTPException(status_code=404, detail="Workflow not deployed as MCP")
+    if body.name != reg.tool_name:
+        raise HTTPException(status_code=404, detail="Unknown tool: {}".format(body.name))
+
+    try:
+        result = await mcp_gateway.execute(workflow_id, body.arguments or {})
+        # Match the MCP shape used by the http_server.py template.
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(result, ensure_ascii=False, default=str, indent=2),
+                }
+            ]
+        }
+    except Exception as e:
+        logger.exception("MCP tool call failed for workflow %s", workflow_id)
+        # Errors are returned as MCP-shaped responses so Paradigm can render them
+        # rather than receiving a raw 500.
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"status": "failed", "error": str(e)},
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                }
+            ]
+        }
+
+
+# ============================================================================
+# Web App Gateway
+# ============================================================================
+#
+# These routes turn the running backend into a multi-tenant web-app server.
+# Clicking "Deploy as Web App" registers the workflow with web_gateway and
+# returns a public URL with a one-time access token. Visiting that URL sets a
+# scoped cookie so subsequent fetches don't need the token in the URL.
+#
+# The downloadable workflow package is generated from the SAME registration —
+# the live app and the ZIP are byte-equivalent on workflow code + UI config.
+
+from fastapi import Cookie, Form, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse
+
+web_router = APIRouter()
+
+
+def _public_origin(request: Request) -> str:
+    """Return the externally reachable origin for this server (no /api suffix)."""
+    if settings.public_base_url:
+        return settings.public_base_url
+    return str(request.base_url).rstrip("/")
+
+
+def _slug_for(workflow_id: str) -> str:
+    return workflow_id.replace("-", "")
+
+
+@api_router.post("/workflow/deploy-web/{workflow_id}", tags=["Web App"])
+async def deploy_workflow_as_web_app(workflow_id: str, request: Request):
+    """Register a workflow as a hosted web app and return URL + access token.
+
+    Re-clicking refreshes the cached code/UI config and rotates the token.
+    """
+    try:
+        reg = await web_gateway.register(workflow_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to deploy web app for %s", workflow_id)
+        raise HTTPException(status_code=500, detail="Failed to deploy web app: {}".format(e))
+
+    origin = _public_origin(request)
+    return {
+        "workflow_id": reg.workflow_id,
+        "url": "{origin}/app/{wid}/?token={tok}".format(
+            origin=origin, wid=reg.workflow_id, tok=reg.access_token
+        ),
+        "url_no_token": "{origin}/app/{wid}/".format(origin=origin, wid=reg.workflow_id),
+        "access_token": reg.access_token,
+        "workflow_name": reg.workflow_name,
+        "workflow_description": reg.workflow_description,
+        "ui_config_summary": {
+            "requires_text_input": reg.ui_config.get("requires_text_input"),
+            "requires_files": reg.ui_config.get("requires_files"),
+            "file_count": len(reg.ui_config.get("files", []) or []),
+        },
+        "created_at": reg.created_at,
+    }
+
+
+@api_router.get("/workflow/web-info/{workflow_id}", tags=["Web App"])
+async def get_web_info(workflow_id: str, request: Request):
+    """Return existing web-app registration (token masked)."""
+    reg = web_gateway.get_registration(workflow_id)
+    if not reg:
+        raise HTTPException(status_code=404, detail="Workflow is not deployed as web app")
+    origin = _public_origin(request)
+    masked = (reg.access_token[:4] + "…" + reg.access_token[-4:]) if reg.access_token else ""
+    return {
+        "workflow_id": reg.workflow_id,
+        "url_no_token": "{origin}/app/{wid}/".format(origin=origin, wid=reg.workflow_id),
+        "access_token_masked": masked,
+        "workflow_name": reg.workflow_name,
+        "workflow_description": reg.workflow_description,
+        "created_at": reg.created_at,
+    }
+
+
+def _check_app_access(
+    workflow_id: str, token: Optional[str], cookie_token: Optional[str]
+) -> None:
+    """Raise 401 if the request is not authorized for this app."""
+    if not web_gateway.verify_access(workflow_id, token, cookie_token):
+        raise HTTPException(status_code=401, detail="Invalid or missing access token")
+
+
+@web_router.get("/{workflow_id}/health", tags=["Web App"])
+@web_router.post("/{workflow_id}/health", tags=["Web App"])
+async def web_health(workflow_id: str):
+    """Liveness probe — does not require authentication."""
+    reg = web_gateway.get_registration(workflow_id)
+    return {
+        "status": "ok" if reg else "unknown_workflow",
+        "workflow_id": workflow_id,
+        "deployed": reg is not None,
+    }
+
+
+@web_router.get("/{workflow_id}/", tags=["Web App"], response_class=HTMLResponse)
+@web_router.get("/{workflow_id}", tags=["Web App"], response_class=HTMLResponse)
+async def web_index(
+    workflow_id: str,
+    request: Request,
+    token: Optional[str] = None,
+):
+    """Serve the runner template, set the per-app cookie when token is valid.
+
+    First-load expects ``?token=<access_token>`` in the URL (from the deploy
+    button). We validate it once, set a scoped cookie, and the rendered page's
+    relative fetches authenticate automatically thereafter.
+    """
+    cookie_name = web_gateway.cookie_name(workflow_id)
+    cookie_token = request.cookies.get(cookie_name)
+    _check_app_access(workflow_id, token, cookie_token)
+
+    reg = web_gateway.get_registration(workflow_id)  # checked above
+    html = web_gateway.render_index_html(reg)
+    response = HTMLResponse(content=html)
+    # Persist the validated token so subsequent /config.json + /execute calls
+    # don't need ?token= in every URL. Path scope keeps the cookie limited to
+    # this one app.
+    if token:
+        response.set_cookie(
+            key=cookie_name,
+            value=token,
+            max_age=30 * 24 * 3600,
+            path="/app/{}".format(workflow_id),
+            httponly=True,
+            samesite="lax",
+        )
+    return response
+
+
+@web_router.get("/{workflow_id}/config.json", tags=["Web App"])
+async def web_config(
+    workflow_id: str,
+    request: Request,
+    token: Optional[str] = None,
+):
+    cookie_name = web_gateway.cookie_name(workflow_id)
+    cookie_token = request.cookies.get(cookie_name)
+    _check_app_access(workflow_id, token, cookie_token)
+    reg = web_gateway.get_registration(workflow_id)
+    return JSONResponse(content=web_gateway.render_config_json(reg))
+
+
+@web_router.post("/{workflow_id}/execute", tags=["Web App"])
+async def web_execute(
+    workflow_id: str,
+    request: Request,
+    user_input: str = Form(""),
+    files: List[UploadFile] = File(default=[]),
+    token: Optional[str] = None,
+):
+    cookie_name = web_gateway.cookie_name(workflow_id)
+    cookie_token = request.cookies.get(cookie_name)
+    _check_app_access(workflow_id, token, cookie_token)
+    return await web_gateway.upload_and_execute(workflow_id, user_input, files)
+
+
+@web_router.delete("/{workflow_id}/files/{file_id}", tags=["Web App"])
+async def web_delete_file(
+    workflow_id: str,
+    file_id: int,
+    request: Request,
+    token: Optional[str] = None,
+):
+    cookie_name = web_gateway.cookie_name(workflow_id)
+    cookie_token = request.cookies.get(cookie_name)
+    _check_app_access(workflow_id, token, cookie_token)
+    return await web_gateway.delete_uploaded_file(file_id)
+
+
 app.include_router(api_router, prefix="/api")
+app.include_router(mcp_router, prefix="/mcp")
+app.include_router(web_router, prefix="/app")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

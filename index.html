@@ -2540,8 +2540,12 @@ Architecture:
             <div id="workflowDownloadButtons" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
                 <div style="font-weight: 600; margin-bottom: 10px; color: #495057;">📥 Export Options</div>
                 <button onclick="downloadReportPDF()" id="reportButton" disabled style="background: #6f42c1; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer;">📄 Download as Report</button>
+                <button onclick="deployWebApp()" id="deployWebButton" disabled style="background: #00b894; color: white; border: none; padding: 8px 14px; border-radius: 6px; margin-left: 8px; cursor: pointer; font-size: 0.8125rem;">🌐 Deploy as Web App</button>
                 <button onclick="downloadWorkflowPackage()" id="packageButton" disabled style="background: #00d4aa; color: white; border: none; padding: 8px 14px; border-radius: 6px; margin-left: 8px; cursor: pointer; font-size: 0.8125rem;">📦 Download Workflow Package</button>
+                <button onclick="deployMCPServer()" id="deployMcpButton" disabled style="background: #0e7490; color: white; border: none; padding: 8px 14px; border-radius: 6px; margin-left: 8px; cursor: pointer; font-size: 0.8125rem;">🚀 Deploy as MCP Server</button>
                 <button onclick="downloadMCPPackage()" id="mcpPackageButton" disabled style="background: #0891b2; color: white; border: none; padding: 8px 14px; border-radius: 6px; margin-left: 8px; cursor: pointer; font-size: 0.8125rem;">🔧 Download MCP Package</button>
+                <div id="webDeployResult" style="display: none; margin-top: 12px; padding: 14px; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px; font-size: 0.875rem;"></div>
+                <div id="mcpDeployResult" style="display: none; margin-top: 12px; padding: 14px; background: #ecfeff; border: 1px solid #67e8f9; border-radius: 8px; font-size: 0.875rem;"></div>
             </div>
         </div>
 
@@ -2879,10 +2883,12 @@ if __name__ == "__main__":
         
          
         // Global configuration and state variables
-        // Auto-detect environment: use localhost:8000 in development, same-domain /api in production
-        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:8000/api'  // Local development
-            : '/api';                       // Production (Vercel, Docker, etc.)
+        // Use a relative path when served by any host (avoids the localhost vs
+        // 127.0.0.1 cross-origin trap), and fall back to a hardcoded localhost
+        // URL only when the file is opened directly via file:// (no host).
+        const API_BASE = (window.location.protocol === 'file:')
+            ? 'http://localhost:8000/api'  // file:// has no host, must hardcode
+            : '/api';                       // any served page: same-origin relative
 
         console.log(`🔧 API_BASE configured as: ${API_BASE}`);
 
@@ -4351,6 +4357,8 @@ if __name__ == "__main__":
 
                     document.getElementById('packageButton').disabled = false;
                     document.getElementById('mcpPackageButton').disabled = false;
+                    document.getElementById('deployMcpButton').disabled = false;
+                    document.getElementById('deployWebButton').disabled = false;
 
                     addLog(`✅ Cell-based workflow created with ${currentCells.length} steps`, 'response');
 
@@ -5119,6 +5127,8 @@ if __name__ == "__main__":
                     document.getElementById('reportButton').disabled = false;
                     document.getElementById('packageButton').disabled = false;
                     document.getElementById('mcpPackageButton').disabled = false;
+                    document.getElementById('deployMcpButton').disabled = false;
+                    document.getElementById('deployWebButton').disabled = false;
                     showResultsSummary('completed', {completedCells: event.completed_cells, totalCells: event.total_cells});
                     showPhase('phaseNextSteps');
                     break;
@@ -5752,6 +5762,8 @@ if __name__ == "__main__":
                     document.getElementById('reportButton').disabled = false;
                     document.getElementById('packageButton').disabled = false;
                     document.getElementById('mcpPackageButton').disabled = false;
+                    document.getElementById('deployMcpButton').disabled = false;
+                    document.getElementById('deployWebButton').disabled = false;
                     showResultsSummary('completed', {completedCells: event.completed_cells, totalCells: event.total_cells});
                     showPhase('phaseNextSteps');
                     break;
@@ -6985,6 +6997,8 @@ if __name__ == "__main__":
                 // Enable buttons
                 document.getElementById('packageButton').disabled = false;
                 document.getElementById('mcpPackageButton').disabled = false;
+                document.getElementById('deployMcpButton').disabled = false;
+                document.getElementById('deployWebButton').disabled = false;
 
                 // Display workflow result
                 let resultMessage = `✅ Cell-Based Workflow Created!\n\n`;
@@ -8353,6 +8367,183 @@ if __name__ == "__main__":
                 addLog(`❌ Failed to download MCP package: ${error.message}`, 'error');
                 alert(`Failed to download MCP package: ${error.message}`);
             }
+        }
+
+        /**
+         * Deploy the current workflow as a hosted MCP server.
+         *
+         * Calls POST /api/workflow/deploy-mcp/{id} which registers the workflow
+         * with the in-process MCP gateway and returns a public URL plus a fresh
+         * bearer token. The result panel surfaces both so the user can paste
+         * them straight into Paradigm's MCP server configuration.
+         */
+        async function deployMCPServer() {
+            if (!currentWorkflowId) {
+                alert('Please create a workflow first');
+                addLog('❌ No workflow to deploy', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('deployMcpButton');
+            const originalLabel = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ Deploying...';
+            addLog('🚀 Deploying workflow as MCP server...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/workflow/deploy-mcp/${currentWorkflowId}`, {
+                    method: 'POST',
+                    headers: getApiHeaders()
+                });
+
+                if (!response.ok) {
+                    let detail = 'Failed to deploy';
+                    try { detail = (await response.json()).detail || detail; } catch (_) {}
+                    throw new Error(detail);
+                }
+
+                const data = await response.json();
+                showMcpDeployResult(data);
+                addLog(`✅ MCP server deployed at ${data.url}`, 'success');
+            } catch (error) {
+                console.error('MCP deploy error:', error);
+                addLog(`❌ Failed to deploy MCP server: ${error.message}`, 'error');
+                alert(`Failed to deploy MCP server: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalLabel;
+            }
+        }
+
+        /**
+         * Render the MCP deploy result panel with copy buttons.
+         * Bearer token is only returned at deploy time — instruct the user to
+         * save it now since /mcp-info only returns a masked version afterwards.
+         */
+        function showMcpDeployResult(data) {
+            const panel = document.getElementById('mcpDeployResult');
+            if (!panel) return;
+            panel.style.display = 'block';
+            panel.innerHTML = `
+                <div style="font-weight: 600; color: #155e75; margin-bottom: 10px;">✅ MCP server deployed</div>
+                <div style="display: grid; grid-template-columns: 110px 1fr auto; gap: 8px 10px; align-items: center;">
+                    <div style="color: #475569;">URL</div>
+                    <code id="mcpUrlValue" style="background: white; padding: 4px 8px; border-radius: 4px; word-break: break-all;">${escapeHtml(data.url)}</code>
+                    <button onclick="copyMcpField('mcpUrlValue', this)" style="background: white; border: 1px solid #67e8f9; color: #0e7490; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Copy</button>
+                    <div style="color: #475569;">Bearer token</div>
+                    <code id="mcpTokenValue" style="background: white; padding: 4px 8px; border-radius: 4px; word-break: break-all;">${escapeHtml(data.bearer_token)}</code>
+                    <button onclick="copyMcpField('mcpTokenValue', this)" style="background: white; border: 1px solid #67e8f9; color: #0e7490; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Copy</button>
+                    <div style="color: #475569;">Tool name</div>
+                    <code style="background: white; padding: 4px 8px; border-radius: 4px;">${escapeHtml(data.tool_name)}</code>
+                    <span></span>
+                </div>
+                <div style="margin-top: 12px; padding: 10px; background: white; border-radius: 6px; font-size: 0.8125rem; color: #155e75;">
+                    Paste the URL and bearer token into <strong>Paradigm → Admin → MCP Servers → New</strong>.
+                    <br><strong>Save the bearer token now</strong> — it will be masked from this point on.
+                </div>
+            `;
+        }
+
+        function copyMcpField(elementId, btn) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            navigator.clipboard.writeText(el.textContent).then(() => {
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = orig; }, 1500);
+            });
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        /**
+         * Deploy the current workflow as a hosted web app.
+         *
+         * Calls POST /api/workflow/deploy-web/{id} which compiles the workflow
+         * code, runs the LLM-driven UI analysis once, and registers the result
+         * with the in-process web gateway. Returns a shareable URL containing
+         * a one-time access token; visiting it sets a scoped cookie so the
+         * recipient doesn't have to keep the token in the URL.
+         */
+        async function deployWebApp() {
+            if (!currentWorkflowId) {
+                alert('Please create a workflow first');
+                addLog('❌ No workflow to deploy', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('deployWebButton');
+            const originalLabel = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ Analyzing & deploying...';
+            addLog('🌐 Deploying workflow as web app (this includes a UI analysis call, ~10-30s)...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/workflow/deploy-web/${currentWorkflowId}`, {
+                    method: 'POST',
+                    headers: getApiHeaders()
+                });
+
+                if (!response.ok) {
+                    let detail = 'Failed to deploy';
+                    try { detail = (await response.json()).detail || detail; } catch (_) {}
+                    throw new Error(detail);
+                }
+
+                const data = await response.json();
+                showWebDeployResult(data);
+                addLog(`✅ Web app deployed at ${data.url_no_token}`, 'success');
+            } catch (error) {
+                console.error('Web deploy error:', error);
+                addLog(`❌ Failed to deploy web app: ${error.message}`, 'error');
+                alert(`Failed to deploy web app: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalLabel;
+            }
+        }
+
+        /**
+         * Render the web-app deploy result panel with copy buttons + open link.
+         * The token is in the URL; visiting it once sets a cookie so the URL
+         * without the token still works for the same browser thereafter.
+         */
+        function showWebDeployResult(data) {
+            const panel = document.getElementById('webDeployResult');
+            if (!panel) return;
+            panel.style.display = 'block';
+            const summary = data.ui_config_summary || {};
+            const inputBits = [];
+            if (summary.requires_text_input) inputBits.push('text input');
+            if (summary.requires_files) inputBits.push(`${summary.file_count || 0} file field(s)`);
+            const inputLabel = inputBits.join(' + ') || '(no inputs detected)';
+            panel.innerHTML = `
+                <div style="font-weight: 600; color: #047857; margin-bottom: 10px;">✅ Web app deployed</div>
+                <div style="display: grid; grid-template-columns: 130px 1fr auto; gap: 8px 10px; align-items: center;">
+                    <div style="color: #475569;">Shareable URL</div>
+                    <code id="webUrlValue" style="background: white; padding: 4px 8px; border-radius: 4px; word-break: break-all;">${escapeHtml(data.url)}</code>
+                    <button onclick="copyMcpField('webUrlValue', this)" style="background: white; border: 1px solid #6ee7b7; color: #047857; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Copy</button>
+                    <div style="color: #475569;">Access token</div>
+                    <code id="webTokenValue" style="background: white; padding: 4px 8px; border-radius: 4px; word-break: break-all;">${escapeHtml(data.access_token)}</code>
+                    <button onclick="copyMcpField('webTokenValue', this)" style="background: white; border: 1px solid #6ee7b7; color: #047857; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Copy</button>
+                    <div style="color: #475569;">Detected inputs</div>
+                    <span style="color: #064e3b;">${escapeHtml(inputLabel)}</span>
+                    <span></span>
+                </div>
+                <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
+                    <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener" style="background: #00b894; color: white; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 500;">Open web app ↗</a>
+                    <span style="color: #047857; font-size: 0.8125rem;">
+                        Anyone with this URL can use the app. Re-deploy to rotate the token.
+                    </span>
+                </div>
+                <div style="margin-top: 10px; padding: 8px 10px; background: white; border-radius: 6px; font-size: 0.8125rem; color: #047857;">
+                    The downloadable workflow package now snapshots this same deployment — click "📦 Download Workflow Package" to get an identical self-host bundle.
+                </div>
+            `;
         }
     </script>
 </body>

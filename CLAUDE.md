@@ -16,7 +16,6 @@ Web app for process automation: users describe workflows in natural language, th
 ## LLM Prompt Files
 
 Prompt templates live in `api/workflow/prompts/*.md`. These are critical to how the system behaves.
-- **Do NOT modify prompt files without asking first** — even small wording changes can significantly affect generated output
 - Prompts are loaded by `api/workflow/prompts/loader.py`
 
 ## Key Conventions
