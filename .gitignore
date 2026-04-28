@@ -70,8 +70,6 @@ RAPPORT_TEST_UGAP_DC4.md
 # tests inside tests/. Use a leading "/" so the pattern is anchored.
 /test_*.py
 /test_*.json
-# This file historically held a hardcoded Paradigm API key; never check it in.
-tests/test_api_key.py
 tests/ugap-test/
 
 # Log files
