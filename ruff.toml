@@ -1,0 +1,28 @@
+# Ruff configuration for the workflow builder.
+# Exists primarily to support the .claude/ Stop hook lint gate.
+
+# Templates contain f-string placeholders like {WORKFLOW_INPUT_SCHEMA} that ruff
+# reads as undefined names. They're filled in via .format() at generation time.
+extend-exclude = [
+    "api/workflow/templates/",
+    ".venv",
+    "__pycache__",
+    "backend.log",
+    "frontend.log",
+]
+
+[lint.per-file-ignores]
+# main.py defines three sub-routers (api/, mcp/, web/) with intentional
+# late imports between sections to keep router definitions co-located with
+# their handlers.
+"api/main.py" = ["E402"]
+
+# These files mutate sys.path before importing project modules — that's the
+# whole reason the imports are late.
+"tests/eval/runner.py" = ["E402"]
+"tests/eval/test_mcp_integration.py" = ["E402"]
+"tests/eval/test_web_integration.py" = ["E402"]
+
+# executable.py pins sys.modules["paradigm_client"] to a specific module
+# before importing project code that depends on that name resolution.
+"api/workflow/executable.py" = ["E402"]

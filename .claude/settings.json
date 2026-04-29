@@ -37,7 +37,20 @@
             "type": "command",
             "command": "bash .claude/run-unit-tests.sh",
             "timeout": 30,
-            "statusMessage": "Running unit tests..."
+            "statusMessage": "Linting + unit tests..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/run-stop-checks.sh",
+            "timeout": 60,
+            "statusMessage": "Pre-completion checks..."
           }
         ]
       }
