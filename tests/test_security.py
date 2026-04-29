@@ -303,7 +303,7 @@ class TestCORSSecurity:
                 headers={"Origin": "https://malicious-site.com"}
             )
             # Document the CORS header for analysis
-            cors_header = response.headers.get("access-control-allow-origin", "")
+            _cors_header = response.headers.get("access-control-allow-origin", "")
             # The app uses a specific origin list (not wildcard *)
             # Note: FastAPI CORS middleware may still reflect the origin
             # if it's in the allow list, or return nothing if not

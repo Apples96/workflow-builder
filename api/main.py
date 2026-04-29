@@ -2,7 +2,6 @@
 
 import hashlib
 import logging
-import asyncio
 import json
 import re
 import time
@@ -16,7 +15,6 @@ import uvicorn
 from .config import settings
 from .models import (
     WorkflowCreateRequest,
-    WorkflowExecuteRequest,
     ErrorResponse,
     FileUploadResponse,
     FileInfoResponse,
@@ -37,12 +35,12 @@ from .models import (
 )
 from .workflow.core.enhancer import WorkflowEnhancer
 from .workflow.core.executor import workflow_executor
-from .workflow.models import Workflow, WorkflowExecution, ExecutionStatus, WorkflowPlan, WorkflowCell, CellStatus
+from .workflow.models import Workflow, CellStatus
 from .workflow.cell.planner import WorkflowPlanner
 from .workflow.cell.executor import CellExecutor
 from .workflow.mcp_gateway import mcp_gateway
 from .workflow.web_gateway import web_gateway
-from .paradigm_client import ParadigmClient, paradigm_client
+from .paradigm_client import ParadigmClient
 
 logging.basicConfig(level=logging.INFO if settings.debug else logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -1241,11 +1239,9 @@ async def update_cell_success_criteria(workflow_id: str, cell_id: str, request: 
             )
 
         cell = None
-        cell_index = -1
-        for i, c in enumerate(plan.cells):
+        for c in plan.cells:
             if c.id == cell_id:
                 cell = c
-                cell_index = i
                 break
 
         if not cell:
@@ -1679,7 +1675,7 @@ async def mcp_call_tool(
 # The downloadable workflow package is generated from the SAME registration —
 # the live app and the ZIP are byte-equivalent on workflow code + UI config.
 
-from fastapi import Cookie, Form, UploadFile, File
+from fastapi import UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 
 web_router = APIRouter()

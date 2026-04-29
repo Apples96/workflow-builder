@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, Tuple
 
 from ..models import WorkflowPlan, WorkflowCell, CellStatus
 from ...clients import create_anthropic_client
@@ -34,7 +34,7 @@ def parse_layer_structure_from_description(description: str) -> Dict[str, Tuple[
                 layers[layer] = []
             layers[layer].append(step_id)
 
-        parallel_layers = [l for l, steps in layers.items() if len(steps) > 1]
+        parallel_layers = [layer for layer, steps in layers.items() if len(steps) > 1]
         if parallel_layers:
             logger.info("Detected parallel structure: {} total layers, parallel layers: {}".format(
                 len(layers), parallel_layers
@@ -124,7 +124,7 @@ class WorkflowPlanner:
 
             if plan.is_parallel_workflow():
                 layers = plan.get_cells_by_layer()
-                parallel_layers = [l for l, cells in layers.items() if len(cells) > 1]
+                parallel_layers = [layer for layer, cells in layers.items() if len(cells) > 1]
                 logger.info("Created PARALLEL plan with {} cells across {} layers (parallel: {})".format(
                     len(plan.cells), len(layers), parallel_layers
                 ))
@@ -280,7 +280,7 @@ class WorkflowPlanner:
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
                     f.write(raw_output)
                     logger.error("Full output saved to: {}".format(f.name))
-            except:
+            except Exception:
                 logger.error("Full raw output (first 2000 chars): {}".format(raw_output[:2000]))
 
             fixed_json = self._try_fix_json(cleaned)
@@ -455,7 +455,7 @@ class WorkflowPlanner:
             logger.info("Fixed layer structure for {} cells".format(fixes_made))
 
             layers = plan.get_cells_by_layer()
-            parallel_layers = [l for l, cells in layers.items() if len(cells) > 1]
+            parallel_layers = [layer for layer, cells in layers.items() if len(cells) > 1]
             if parallel_layers:
                 logger.info("Corrected plan has {} layers with parallelization in: {}".format(
                     len(layers), parallel_layers

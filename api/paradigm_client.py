@@ -524,7 +524,7 @@ class ParadigmClient:
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
         try:
-            logger.info(f"📁 PARADIGM FILE UPLOAD (POST /api/v2/files)")
+            logger.info("📁 PARADIGM FILE UPLOAD (POST /api/v2/files)")
             logger.info(f"📄 FILENAME: {filename}")
             logger.info(f"📦 FILE SIZE: {len(file_content)} bytes")
 

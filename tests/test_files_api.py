@@ -7,7 +7,6 @@ import os
 import pytest
 import httpx
 import asyncio
-from io import BytesIO
 
 # Configuration
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")

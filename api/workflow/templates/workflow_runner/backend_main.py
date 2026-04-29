@@ -15,11 +15,10 @@ import os
 import time
 import asyncio
 import logging
-from typing import List, Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from typing import List
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Import the generated workflow and Paradigm client

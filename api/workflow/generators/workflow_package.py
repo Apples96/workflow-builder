@@ -13,12 +13,11 @@ This module generates standalone workflow runner packages (ZIP files) containing
 The generated package can be deployed independently by clients.
 """
 
-import os
 import io
 import re
 import zipfile
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any
 from pathlib import Path
 
 

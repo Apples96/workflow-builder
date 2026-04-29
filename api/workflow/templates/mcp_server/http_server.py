@@ -11,11 +11,10 @@ Usage:
 """
 
 import argparse
-import asyncio
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request

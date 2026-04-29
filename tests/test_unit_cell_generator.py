@@ -148,7 +148,7 @@ def test_build_user_message_template_has_only_known_placeholders():
     str.format.
     """
     g = _make_generator()
-    msg = g._build_user_message(
+    g._build_user_message(
         cell=_make_cell(),
         available_context={},
         workflow_description="WORKFLOW_DESC_MARKER",

@@ -12,12 +12,10 @@ This module generates MCP (Model Context Protocol) server packages containing:
 The generated package can be used directly in Claude Desktop or any MCP-compatible client.
 """
 
-import os
 import io
 import zipfile
 import json
-from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from pathlib import Path
 
 
@@ -481,7 +479,6 @@ build/
             param_name = param.get('name', 'input')
             param_description = param.get('description', '')
             param_required = param.get('required', True)
-            param_type = param.get('type', 'string')
 
             required_str = "(required)" if param_required else "(optional)"
             lines.append("- {}: {} {}".format(param_name, param_description, required_str))

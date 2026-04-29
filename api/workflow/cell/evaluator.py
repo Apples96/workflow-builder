@@ -1,6 +1,5 @@
 """Cell output evaluation using Claude as a judge (LLM-as-a-Judge pattern)."""
 
-import json
 import logging
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional

@@ -44,7 +44,7 @@ try:
 
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ Succès!")
+            print("✅ Succès!")
             print(f"Réponse: {data['choices'][0]['message']['content'][:100]}")
         else:
             print(f"❌ Erreur HTTP {response.status_code}")

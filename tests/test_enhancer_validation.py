@@ -1,6 +1,5 @@
 """Unit tests for enhancer questions/warnings extraction"""
 
-import pytest
 from api.workflow.core.enhancer import WorkflowEnhancer
 
 
