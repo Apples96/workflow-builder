@@ -751,16 +751,21 @@ When an output example is provided, use it to derive **success criteria for the 
 
 1. **Identify the format type**: Is it a markdown table, bullet list, JSON, prose, etc.?
 2. **Identify structural elements**: What columns, sections, or required fields are present?
-3. **Create verifiable criteria** based on structure, NOT content
+3. **Write prose criteria** describing the format/structure
+4. **Include a content-anonymized SKELETON** of the format inside the criteria — strictly more informative than prose alone, and the generator and evaluator can both match against it
+
+### What an anonymized skeleton is:
+
+The same shape as the user's example, but with every concrete value replaced by an angle-bracketed placeholder describing what goes there. The skeleton imposes FORMAT, not CONTENT. It MUST NOT contain any literal values copied from the user's example (no real names, numbers, dates, or labels).
 
 ### Example derivations:
 
-| Output Example Shows | Derived Success Criteria |
-|---------------------|-------------------------|
-| Markdown table with columns A, B, C | "Must return a markdown table with columns: A, B, C" |
-| JSON with keys "summary", "data" | "Must return JSON with 'summary' (str) and 'data' (list) keys" |
-| Numbered list of findings | "Must return a numbered list of findings (at least one item)" |
-| Prose with specific sections | "Must include sections for: [section names from example]" |
+| Output Example Shows | Derived Success Criteria (prose + skeleton) |
+|---------------------|---------------------------------------------|
+| Markdown table with columns A, B, C | Prose: "Must return a markdown table with columns: A, B, C" — plus a skeleton row `\| <A value> \| <B value> \| <C value> \|` |
+| JSON with keys "summary", "data" | Prose: "Must return JSON with 'summary' (str) and 'data' (list) keys" — plus skeleton `{"summary": "<one-paragraph summary>", "data": [<item>, ...]}` |
+| Numbered list of findings | Prose: "Must return a numbered list of findings (at least one item)" — plus skeleton `1. <finding>\n2. <finding>\n...` |
+| Prose with specific sections | Prose: "Must include sections for: [section names]" — plus skeleton with `## <Section name>\n<section content>` per section |
 
 ### Important rules:
 
@@ -769,6 +774,7 @@ When an output example is provided, use it to derive **success criteria for the 
 - Focus on **format and structure**, not exact content
 - Use "should resemble" not "must match exactly"
 - Allow flexibility for valid alternatives that meet the same goals
+- The skeleton MUST use placeholders (`<...>`) for every value — never copy literal content from the user's example
 
 ### Example success_criteria field for final cell:
 
@@ -785,6 +791,15 @@ The final cell's success_criteria should include:
 - Table must include columns: Field, Doc A, Doc B, Match
 - Match column should indicate Yes/No or equivalent
 - Must NOT return plain text or unformatted data
+- Required structural skeleton (placeholders only, populate with real data):
+
+  | Field        | Doc A         | Doc B         | Match    |
+  |--------------|---------------|---------------|----------|
+  | <field name> | <doc A value> | <doc B value> | <Yes/No> |
+
+  ...one row per field actually compared. Replace every <...> placeholder
+  with real content derived from the workflow data. Number of rows depends
+  on how many fields are compared.
 ```
 
 ## REMEMBER

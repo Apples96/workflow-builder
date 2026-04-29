@@ -301,19 +301,20 @@ When an output example is provided by the user, analyze it to understand:
 
 **How to incorporate the output example into your step descriptions:**
 
-- For the **final step** that produces user-visible output: Explicitly describe the expected output format based on the example
+- For the **final step** that produces user-visible output: Explicitly describe the expected output format based on the example, AND include a content-anonymized skeleton of the format (placeholders only, no real values) so the generator and evaluator have an unambiguous shape to match
 - For **intermediate steps**: Describe what data format they should produce to support the final output
 - Work **backwards from the example**: If the final output needs a table comparing two documents, intermediate steps should extract data in formats suitable for tabular comparison
 
 **IMPORTANT RULES:**
-- Do NOT copy content from the example—use it to understand the desired output SHAPE
+- Use the example to understand the desired output SHAPE, not to import its content
 - The example shows DESIRED FORMAT, not expected content values
-- Extract abstract criteria (e.g., "markdown table with columns A, B, C") not literal text
+- You MAY include a content-anonymized skeleton of the format (e.g. `| <field name> | <doc A value> | <doc B value> | <Yes/No> |`) — this is stricter and more informative than prose alone
+- Every value in the skeleton must be an angle-bracketed placeholder describing what goes there. NEVER copy a literal value (no real names, numbers, dates, labels) from the user's example into the skeleton
 
 **Example derivation:**
-- If example shows a markdown table with "| Field | Doc A | Doc B | Match |" → describe final step as: "Format comparison results as a markdown table with columns: Field, Doc A value, Doc B value, and Match status (Yes/No)"
-- If example shows JSON with specific keys → describe final step to output JSON with those keys
-- If example shows bullet points → describe final step to format results as bullet points
+- If example shows a markdown table with "| Field | Doc A | Doc B | Match |" → describe final step as: "Format comparison results as a markdown table matching this skeleton: `| <field name> | <doc A value> | <doc B value> | <Yes/No> |` — one row per field compared, every placeholder filled with real data"
+- If example shows JSON with specific keys → describe final step to output JSON with those keys, optionally including a skeleton like `{"summary": "<...>", "data": [<item>, ...]}`
+- If example shows bullet points → describe final step to format results as bullet points (skeleton: `- <bullet content>`)
 
 ## OUTPUT FORMAT
 

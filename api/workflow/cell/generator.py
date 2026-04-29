@@ -30,7 +30,9 @@ class CellCodeGenerator:
         available_context: Dict[str, str],
         workflow_description: str,
         producer_return_hints: Optional[Dict[str, str]] = None,
-        available_tools=None
+        available_tools=None,
+        output_example: Optional[str] = None,
+        is_final_cell: bool = False
     ) -> str:
         """Generate Python code for a single cell. Retries once on validation failure.
 
@@ -40,6 +42,11 @@ class CellCodeGenerator:
             workflow_description: The full workflow description
             producer_return_hints: Hints from upstream cells about output formats
             available_tools: AgentDiscoveryResponse with discovered tools (optional)
+            output_example: User-provided example of the desired final output format.
+                Only injected into the prompt when is_final_cell is True; treated as a
+                FORMAT template, not as expected content.
+            is_final_cell: True when this cell produces the user-visible final_result.
+                Gates whether output_example is shown to the model.
         """
         logger.info("Generating code for cell: {} (step {})".format(
             cell.name, cell.step_number
@@ -52,7 +59,9 @@ class CellCodeGenerator:
         user_message = self._build_user_message(
             cell, available_context, workflow_description,
             producer_return_hints=producer_return_hints,
-            available_tools=available_tools
+            available_tools=available_tools,
+            output_example=output_example,
+            is_final_cell=is_final_cell
         )
 
         last_error = None
@@ -127,7 +136,9 @@ class CellCodeGenerator:
         available_context: Dict[str, str],
         workflow_description: str,
         producer_return_hints: Optional[Dict[str, str]] = None,
-        available_tools=None
+        available_tools=None,
+        output_example: Optional[str] = None,
+        is_final_cell: bool = False
     ) -> str:
         """Build the user message for the code generation request."""
         inputs_desc = []
@@ -187,6 +198,27 @@ Generate complete, self-contained Python code that:
                 mcp_section = self._build_mcp_tools_section(cell, mcp_tools)
                 if mcp_section:
                     message += mcp_section
+
+        # For the final cell, show the user's output example as a FORMAT template.
+        # Producer/intermediate cells are steered by the planner's success_criteria only —
+        # the example would only confuse them about their own (non-final) output shape.
+        if is_final_cell and output_example:
+            message += """
+
+FINAL CELL OUTPUT FORMAT TEMPLATE:
+The user provided this example of the desired final output FORMAT:
+```
+{example}
+```
+
+CRITICAL RULES for using this template:
+- This is a FORMAT/STRUCTURE reference, NOT expected content
+- Replace every value in the template with REAL data computed from the workflow inputs
+- Match the structural shape: same format type (table/list/JSON/prose), same sections, same columns/keys
+- Do NOT copy any literal content values from the template
+- Do NOT hardcode example field names that should come from real data
+- It is fine — and expected — for your output to have a different number of rows/items than the template
+""".format(example=output_example)
 
         return message
 

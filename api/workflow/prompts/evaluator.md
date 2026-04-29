@@ -119,7 +119,7 @@ These examples show the expected tool call arguments for `submit_evaluation`:
 
 ## OUTPUT EXAMPLE EVALUATION (if provided)
 
-When an output example is provided for the final cell, use it as a FORMAT REFERENCE, not as expected content.
+When an output example is provided for the final cell, use it as a FORMAT REFERENCE, not as expected content. The success_criteria for the final cell may also include a content-anonymized SKELETON (with `<placeholder>` tokens) — treat that skeleton the same way: a structural template the output must match in shape, never in literal values.
 
 ### How to evaluate against the example:
 
@@ -130,6 +130,7 @@ When an output example is provided for the final cell, use it as a FORMAT REFERE
    - Appropriate level of detail?
 3. **Do NOT require exact content match**
 4. **Do NOT fail for valid alternatives** that achieve the same presentation goals
+5. **FAIL** if the output contains literal `<placeholder>` tokens left from a skeleton — those must be replaced with real data computed from the workflow inputs
 
 ### PASS the output if:
 - Output uses the same format type as the example (e.g., both are markdown tables)

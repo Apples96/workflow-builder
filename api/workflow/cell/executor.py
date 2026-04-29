@@ -654,7 +654,9 @@ CRITICAL RULES:
                                 available_context=plan.shared_context_schema,
                                 workflow_description=workflow_description,
                                 producer_return_hints=producer_return_hints,
-                                available_tools=self.available_tools
+                                available_tools=self.available_tools,
+                                output_example=plan.output_example if hasattr(plan, 'output_example') else None,
+                                is_final_cell=(cell.step_number == total_cells)
                             )
 
                         cell.mark_ready(code, cell.description)
@@ -1187,7 +1189,9 @@ CRITICAL RULES:
                 cell=cell,
                 available_context=plan.shared_context_schema,
                 workflow_description=workflow_description,
-                available_tools=self.available_tools
+                available_tools=self.available_tools,
+                output_example=plan.output_example if hasattr(plan, 'output_example') else None,
+                is_final_cell=(cell.step_number == len(plan.cells))
             )
             cell_code = code
             cell.mark_ready(code, cell.description)
@@ -1600,7 +1604,9 @@ CRITICAL RULES:
                 cell=cell,
                 available_context=plan.shared_context_schema,
                 workflow_description=workflow_description,
-                available_tools=self.available_tools
+                available_tools=self.available_tools,
+                output_example=plan.output_example if hasattr(plan, 'output_example') else None,
+                is_final_cell=(cell.step_number == len(plan.cells))
             )
             cell_code = code
             cell.mark_ready(code, cell.description)
@@ -2033,12 +2039,15 @@ CRITICAL RULES:
             })
 
             try:
+                is_final_cell_for_gen = "final_result" in cell.outputs_produced
                 code = await self.cell_generator.generate_cell_code(
                     cell=cell,
                     available_context=shared_context_schema or {},
                     workflow_description=workflow_description,
                     producer_return_hints=producer_return_hints,
-                    available_tools=self.available_tools
+                    available_tools=self.available_tools,
+                    output_example=output_example if is_final_cell_for_gen else None,
+                    is_final_cell=is_final_cell_for_gen
                 )
                 cell_code = code
                 cell.mark_ready(code, cell.description)
