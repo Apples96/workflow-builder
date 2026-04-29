@@ -218,18 +218,23 @@ async def test_syntax_check():
     try:
         # Try importing the new modules
         print("\nImporting cell_planner...")
+        from api.workflow.cell.planner import WorkflowPlanner  # noqa: F401
         print("  OK")
 
         print("Importing cell_generator...")
+        from api.workflow.cell.generator import CellCodeGenerator  # noqa: F401
         print("  OK")
 
         print("Importing cell_executor...")
+        from api.workflow.cell.executor import CellExecutor  # noqa: F401
         print("  OK")
 
         print("Importing updated models...")
+        from api.workflow.models import WorkflowCell, WorkflowPlan, CellStatus  # noqa: F401
         print("  OK")
 
         print("Importing response models...")
+        from api.models import CellResponse, WorkflowPlanResponse, CellBasedWorkflowResponse  # noqa: F401
         print("  OK")
 
         print("\nAll imports successful!")

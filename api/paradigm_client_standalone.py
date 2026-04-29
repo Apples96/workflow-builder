@@ -1033,7 +1033,7 @@ class ParadigmClient:
                     raise Exception(f"File {file_id} not found: {error_text}")
 
                 else:
-                    await response.text()
+                    error_text = await response.text()
                     logger.error(f"❌ Get file chunks failed: {response.status}")
                     raise Exception(f"Get file chunks API error {response.status}: {error_text}")
 
@@ -1181,7 +1181,7 @@ class ParadigmClient:
                     raise Exception(f"File {file_id} not found: {error_text}")
 
                 else:
-                    await response.text()
+                    error_text = await response.text()
                     logger.error(f"❌ Get file failed: {response.status}")
                     raise Exception(f"Get file API error {response.status}: {error_text}")
 
