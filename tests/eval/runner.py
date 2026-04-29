@@ -23,10 +23,15 @@ from typing import Dict, Any, List, Optional
 
 import httpx
 import yaml
+from dotenv import load_dotenv
 
 # Add project root to path for imports
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
+
+# Load .env from repo root so API keys are available to llm_judge and any
+# downstream calls. Done at import so --compare also picks them up if needed.
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 from tests.eval.assertions import run_assertions
 from tests.eval.reporter import generate_report, save_report, compare_reports, print_comparison
@@ -421,7 +426,16 @@ def main():
         print_comparison(comparison)
         return
 
-    # Run mode
+    # Run mode — verify required API keys are present before any test runs.
+    # Without these, llm_judge assertions silently "fail" with key-missing errors,
+    # which is indistinguishable from a real judgment regression.
+    missing = [k for k in ("LIGHTON_API_KEY", "ANTHROPIC_API_KEY") if not os.environ.get(k)]
+    if missing:
+        sys.exit(
+            "ERROR: required env vars not set: {}. "
+            "Add them to .env at the repo root or export them before running.".format(", ".join(missing))
+        )
+
     manifest = load_manifest(args.manifest)
     filter_tags = args.tags.split(",") if args.tags else None
 
