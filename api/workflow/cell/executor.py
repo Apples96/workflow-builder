@@ -6,7 +6,7 @@ import json
 import logging
 import time
 import re
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stderr
 from datetime import datetime
 from typing import Optional, Dict, Any, List, AsyncGenerator, Tuple
 from dataclasses import dataclass
@@ -54,7 +54,6 @@ class CellExecutor:
 
     def _format_output_variables(self, variables: Dict[str, Any]) -> Dict[str, str]:
         """Format output variables for UI display, showing full content without truncation."""
-        import json
 
         formatted = {}
         for key, value in variables.items():
@@ -2071,6 +2070,9 @@ CRITICAL RULES:
                     error=error_msg,
                     events=events
                 )
+
+        is_final_cell = "final_result" in cell.outputs_produced
+        cell_output_example = output_example if is_final_cell else None
 
         while attempt < self.max_retry_attempts:
             attempt += 1

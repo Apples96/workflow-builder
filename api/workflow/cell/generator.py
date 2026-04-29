@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Optional, Dict, Any, List, Tuple
 
-from ..models import WorkflowCell, CellStatus
+from ..models import WorkflowCell
 from ...clients import create_anthropic_client
 from ...config import settings
 from ..prompts.loader import PromptLoader
@@ -195,9 +195,6 @@ Generate complete, self-contained Python code that:
 
         Only includes MCP tool info if the cell references MCP tools.
         """
-        # Check if any of the cell's tools might be MCP-related
-        cell_tools = cell.paradigm_tools_used or []
-
         # Build list of available MCP tool names for reference
         mcp_names = []
         for tool in mcp_tools:

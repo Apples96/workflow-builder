@@ -518,7 +518,6 @@ class TestCompleteUserJourney:
             )
 
             assert result_response.status_code == 200
-            result = result_response.json()
 
             # 5. Exporter en PDF
             pdf_response = await client.get(

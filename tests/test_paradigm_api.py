@@ -7,7 +7,6 @@ import os
 import pytest
 import httpx
 import asyncio
-from typing import List, Dict, Any
 
 # Configuration
 PARADIGM_BASE_URL = "https://paradigm.lighton.ai"
@@ -463,13 +462,10 @@ class TestParadigmImageAnalysis:
     @pytest.mark.slow
     async def test_image_analysis(self, paradigm_headers):
         """Test analyse d'image"""
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=60.0):
             # Note: Nécessite une vraie image uploadée
-            # Ce test est un placeholder pour la structure
-            payload = {
-                "query": "Décris cette image",
-                "image_ids": []  # Nécessite un vrai image_id
-            }
+            # Ce test est un placeholder pour la structure — payload structure
+            # documented in the docstring rather than as a dead local var.
 
             # Ce test échouera sans image_id valide
             # Il est là pour documenter la structure

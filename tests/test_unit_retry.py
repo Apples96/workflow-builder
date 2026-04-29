@@ -5,7 +5,6 @@ Tests the retry behavior contract: exponential backoff, retryable error detectio
 and the call_with_retry wrapper.
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

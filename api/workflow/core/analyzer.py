@@ -241,7 +241,7 @@ Réponds UNIQUEMENT avec la description courte, sans introduction ni explication
 
         return description
 
-    except Exception as e:
+    except Exception:
         # Fallback: return first line of original description if generation fails
         first_line = workflow_description.split('\n')[0]
         if len(first_line) > 300:

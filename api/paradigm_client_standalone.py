@@ -334,7 +334,7 @@ class ParadigmClient:
             payload["response_format"] = response_format
 
         try:
-            logger.info(f"🤖 PARADIGM v3 AGENT QUERY")
+            logger.info("🤖 PARADIGM v3 AGENT QUERY")
             logger.info(f"📡 ENDPOINT: {endpoint}")
             logger.info(f"🔍 QUERY: {query[:100]}...")
             logger.info(f"📋 FILE_IDS: {file_ids}")
@@ -354,13 +354,13 @@ class ParadigmClient:
                 if response.status == 200:
                     result = json.loads(response_text)
                     answer = _extract_v3_answer(result)
-                    logger.info(f"✅ AGENT QUERY SUCCESS")
+                    logger.info("✅ AGENT QUERY SUCCESS")
                     logger.info(f"💬 ANSWER: {answer[:300]}..." if answer else "No text answer")
                     return result
 
                 elif response.status == 202:
                     # Background processing - return partial result
-                    logger.info(f"⏳ AGENT QUERY ACCEPTED (202) - processing in background")
+                    logger.info("⏳ AGENT QUERY ACCEPTED (202) - processing in background")
                     result = json.loads(response_text)
                     return result
 
@@ -623,7 +623,7 @@ class ParadigmClient:
                 elif response.status == 404:
                     return {"status": "processing"}
                 else:
-                    error_text = await response.text()
+                    await response.text()
                     raise Exception(f"Failed to get analysis result: {response.status}")
 
         except Exception as e:
@@ -819,7 +819,7 @@ class ParadigmClient:
                     logger.info(f"✅ Chat completed ({len(answer)} chars)")
                     return answer
                 else:
-                    error_text = await response.text()
+                    await response.text()
                     logger.error(f"❌ Chat failed: {response.status}")
                     raise Exception(f"Chat completion failed: {response.status}")
 
@@ -863,7 +863,7 @@ class ParadigmClient:
                     logger.info(f"✅ File uploaded: ID={file_id}")
                     return result
                 else:
-                    error_text = await response.text()
+                    await response.text()
                     logger.error(f"❌ Upload failed: {response.status}")
                     raise Exception(f"File upload failed: {response.status}")
 
@@ -1322,10 +1322,10 @@ class ParadigmClient:
                 if response.status == 200:
                     result = await response.json()
                     answer = result.get("answer", "No analysis result provided")
-                    logger.info(f"✅ Image analysis completed")
+                    logger.info("✅ Image analysis completed")
                     return answer
                 else:
-                    error_text = await response.text()
+                    await response.text()
                     logger.error(f"❌ Image analysis failed: {response.status}")
                     raise Exception(f"Image analysis failed: {response.status}")
 
